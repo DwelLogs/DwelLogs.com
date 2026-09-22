@@ -32,7 +32,7 @@ Always written with a capital L, matching SaasyLogs.
 
 ## Background line
 
-One continuous path: blip, house with chimney, heartbeat, barn, blip, castle,
+One continuous path: blip, house with chimney, heartbeat, castle, blip, barn,
 big beat, apartment block. Every kind of dwelling. Fixed behind the content;
 draws in over 5s, static for reduced-motion users.
 

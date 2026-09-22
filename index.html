@@ -37,18 +37,24 @@
     }
     * { box-sizing: border-box; }
     body {
-      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+      /* svh, not vh: on iOS, 100vh is the height with the URL bar hidden, which
+         makes the page taller than the screen. vh stays as a fallback. */
+      margin: 0; min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column;
+      overflow-x: clip;
       background: var(--bg); color: var(--ink);
       font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
     h1, strong, .wordmark, .soon { font-family: "Space Grotesk", system-ui, sans-serif; }
 
-    /* Fixed background: one heart-monitor line that traces a house, a barn, a
-       castle and an apartment block between beats. Stays put while content
+    /* Fixed background: one heart-monitor line that traces a house, a castle, a
+       barn and an apartment block between beats. Stays put while content
        scrolls over it. "slice" crops the sides on phones so the shapes stay
        readable instead of shrinking to a squiggle. */
-    .vitals { position: fixed; inset: 0; z-index: 0; pointer-events: none; display: flex; align-items: flex-end; }
-    .vitals svg { width: 100%; height: 38vh; margin-bottom: 3vh; }
+    /* overflow: hidden matters on iOS Safari: "slice" draws the line wider than
+       the screen, and Safari can count that overflow toward the scrollable page
+       even though the layer is fixed, adding empty scroll past the footer. */
+    .vitals { position: fixed; inset: 0; z-index: 0; pointer-events: none; display: flex; align-items: flex-end; overflow: hidden; }
+    .vitals svg { display: block; width: 100%; height: 38vh; height: 38svh; margin-bottom: 3vh; margin-bottom: 3svh; overflow: hidden; }
     .vitals path {
       fill: none; stroke: var(--trace); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; opacity: .55;
       stroke-dasharray: 4200; stroke-dashoffset: 4200; animation: trace 5s ease-out forwards;
@@ -89,10 +95,10 @@
       <path d="M0 300 H110 l10 -18 l10 34 l10 -16 H200
                L230 300 V200 H250 V172 H266 V186 L320 140 L400 206 V300
                H450 L462 300 L472 250 L486 360 L500 170 L514 330 L524 300 H600
-               L630 300 V210 L656 160 L716 128 L776 160 L802 210 V300
-               H880 l12 -26 l12 44 l12 -18 H960
-               V150 H976 V166 H992 V150 H1008 V166 H1024 V150 H1040 V230 H1052 V214 H1066 V230 H1080 V214 H1094 V230 H1108
-               V160 H1124 V176 H1140 V160 H1156 V300
+               H630 V150 H646 V166 H662 V150 H678 V166 H694 V150 H710 V230 H722 V214 H736 V230 H750 V214 H764 V230 H778
+               V160 H794 V176 H810 V160 H826 V300
+               H890 l12 -26 l12 44 l12 -18 H984
+               V210 L1010 160 L1070 128 L1130 160 L1156 210 V300
                H1200 L1212 300 L1222 256 L1236 350 L1250 176 L1264 322 L1274 300 H1330
                V150 H1440 V300 H1600"/>
       <circle cx="1600" cy="300" r="5"/>

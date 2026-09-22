@@ -46,6 +46,14 @@ Site-specific:
   no "nag"). Tone is proactive and informed, never scolding.
 - Free. Don't promise features that aren't built; say "coming" or leave it out.
 - No invented numbers (savings, user counts, "X% of homeowners...").
+- **Visual identity lives in [`brand/README.md`](brand/README.md)**: Blueprint
+  palette, Space Grotesk, the heart-monitor mark, and which file goes where.
+  Change colors there and in `index.html` together.
+- **No third-party requests.** Fonts are self-hosted (never Google Fonts), no
+  CDNs, no analytics or embeds without a deliberate decision. The product's
+  stance on customer data starts with the site.
+- Emails and link previews use `/og-image.png`. Regenerate it if the headline
+  or palette changes.
 
 ## Known gaps
 

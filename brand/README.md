@@ -38,6 +38,13 @@ In code: `/css/tokens.css`. Change a color there and in this table together.
 | line     | `#d6e0ea` | `#233450` | borders                     |
 | trace    | `#e0893a` | `#f0a257` | heart-monitor line, mark    |
 
+### Contrast (measured 2026-09-22)
+
+Against the page background, light / dark: ink 13.97 / 15.64, muted
+5.55 / 8.12, accent 5.77 / 7.23. All pass WCAG AA for body text.
+**The trace orange is 2.41 in light mode** — decoration only. Never put text
+or a status icon in it on a light background. Re-measure any new pairing.
+
 ## Type
 
 - **Space Grotesk** (SIL Open Font License, `/fonts/OFL.txt`) for the wordmark,

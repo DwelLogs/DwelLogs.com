@@ -18,6 +18,15 @@ Everything committed here, including history, is visible to anyone.
 
 - Plain static HTML/CSS served by **GitHub Pages** from `main`. No build step
   until there's a reason for one.
+- **Styles live in `css/`, not in the HTML.** `css/tokens.css` holds the font
+  and palette (CSS variables) and is the one place colors are defined;
+  `css/site.css` holds page styles and uses only `var(--…)`, never hex values.
+  The app should import the same tokens so the brand stays in one place.
+- **Icon and preview URLs carry `?v=N`.** Bump it on every icon URL and
+  `og:image` whenever one changes, or caches keep the old one.
+- **`LICENSE` is all rights reserved**, modeled on the SaasyLogs site licence.
+  Space Grotesk is carved out under its own OFL; any new third-party asset
+  needs the same carve-out and its licence file.
 - Custom domain: `dwellogs.com` (the `CNAME` file GitHub creates — don't
   delete it). `dwelllogs.com` is forwarded to it at Porkbun, not served here.
 - Enforce HTTPS is on in Pages settings once the certificate issues.
@@ -42,10 +51,20 @@ Site-specific:
 
 - Always written **DwelLogs** (capital L), matching SaasyLogs.
 - For anyone who holds the keys: owners, renters, condos, ranches.
+- **Concept: the pulse of the home.** Tagline "Keep a pulse on your home."; say
+  check-ups, readings, vital signs. Details in `brand/README.md`.
 - No gender or household stereotypes in copy or imagery (no "honey-do",
   no "nag"). Tone is proactive and informed, never scolding.
 - Free. Don't promise features that aren't built; say "coming" or leave it out.
 - No invented numbers (savings, user counts, "X% of homeowners...").
+- **Visual identity lives in [`brand/README.md`](brand/README.md)**: Blueprint
+  palette, Space Grotesk, the heart-monitor mark, and which file goes where.
+  Change colors there and in `css/tokens.css` together.
+- **No third-party requests.** Fonts are self-hosted (never Google Fonts), no
+  CDNs, no analytics or embeds without a deliberate decision. The product's
+  stance on customer data starts with the site.
+- Emails and link previews use `/og-image.png`. Regenerate it if the headline
+  or palette changes.
 
 ## Known gaps
 

@@ -3,46 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DwelLogs — coming soon</title>
-  <meta name="description" content="DwelLogs keeps track of everything your home needs — filters, flushes, fuel, septic, and the people who help — so you hear about it before it's a problem. Free.">
-  <style>
-    :root {
-      --bg: #f7f5f0; --ink: #1f2a24; --muted: #5b665f; --accent: #2f6b4f; --card: #ffffff; --line: #e3dfd6;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg: #141a17; --ink: #eef1ec; --muted: #a3ada6; --accent: #7cc39f; --card: #1c2420; --line: #2c3631; }
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
-      background: var(--bg); color: var(--ink);
-      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    }
-    main { flex: 1; width: 100%; max-width: 720px; margin: 0 auto; padding: 72px 20px 40px; }
-    .wordmark { font-size: 1.1rem; font-weight: 700; letter-spacing: .02em; color: var(--accent); margin: 0 0 48px; }
-    h1 { font-size: clamp(2rem, 6vw, 3rem); line-height: 1.15; margin: 0 0 20px; letter-spacing: -.02em; }
-    .lede { font-size: 1.15rem; color: var(--muted); margin: 0 0 40px; max-width: 34em; }
-    ul { list-style: none; padding: 0; margin: 0 0 40px; display: grid; gap: 12px; }
-    li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
-    li strong { display: block; }
-    li span { color: var(--muted); font-size: .95rem; }
-    .soon { display: inline-block; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 6px 14px; font-size: .9rem; font-weight: 600; }
-    footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px 20px; }
-  </style>
+  <title>DwelLogs — keep a pulse on your home</title>
+  <meta name="description" content="DwelLogs keeps a pulse on your home — check-ups, supplies, fuel, septic, and the people who help — so you hear about it before it's a problem. Free.">
+  <meta name="theme-color" content="#eef3f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1726" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="icon" href="/favicon.ico?v=2" sizes="32x32">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://dwellogs.com/">
+  <meta property="og:title" content="DwelLogs — keep a pulse on your home">
+  <meta property="og:description" content="Your home's vital signs in one place. Everything it needs, before it needs it. Free, for houses, condos, rentals, and ranches.">
+  <meta property="og:image" content="https://dwellogs.com/og-image.png?v=2">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preload" href="/fonts/SpaceGrotesk.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
+  <div class="vitals" aria-hidden="true">
+    <svg viewBox="0 0 1600 400" preserveAspectRatio="xMidYMax slice">
+      <path d="M0 300 H110 l10 -18 l10 34 l10 -16 H200
+               L230 300 V200 H250 V172 H266 V186 L320 140 L400 206 V300
+               H450 L462 300 L472 250 L486 360 L500 170 L514 330 L524 300 H600
+               H630 V150 H646 V166 H662 V150 H678 V166 H694 V150 H710 V230 H722 V214 H736 V230 H750 V214 H764 V230 H778
+               V160 H794 V176 H810 V160 H826 V300
+               H890 l12 -26 l12 44 l12 -18 H984
+               V210 L1010 160 L1070 128 L1130 160 L1156 210 V300
+               H1200 L1212 300 L1222 256 L1236 350 L1250 176 L1264 322 L1274 300 H1330
+               V150 H1440 V300 H1600"/>
+      <circle cx="1600" cy="300" r="5"/>
+    </svg>
+  </div>
   <main>
-    <p class="wordmark">DwelLogs</p>
-    <h1>Everything your home needs, before it needs it.</h1>
-    <p class="lede">The owner's manual your place never came with. Add what's in your home once, and DwelLogs keeps the schedule, the parts, the people, and the costs — so nothing sneaks up on you.</p>
+    <p class="wordmark"><img src="/favicon.svg?v=2" alt=""><b>Dwel<span>Logs</span></b></p>
+    <h1>Keep a pulse on your home.</h1>
+    <p class="lede">Everything your home needs, before it needs it. Add what's in your place once, and DwelLogs watches its vital signs — the check-ups, the supplies, the people, and the costs — so nothing sneaks up on you.</p>
     <ul>
-      <li><strong>Know what's due</strong><span>Filters, flushes, septic pump-outs, pool care — including the ones nobody told you about.</span></li>
-      <li><strong>Never run out</strong><span>Softener salt, pool chemicals, propane and heating fuel, tracked by what you actually use.</span></li>
+      <li><strong>Regular check-ups</strong><span>Filters, flushes, septic pump-outs, pool care — including the ones nobody told you about.</span></li>
+      <li><strong>Readings, not guesses</strong><span>Softener salt, pool chemicals, propane and heating fuel, tracked by what you actually use, so you never run out.</span></li>
       <li><strong>See the costs coming</strong><span>What the next month, quarter, and year will take, and why.</span></li>
       <li><strong>For wherever you dwell</strong><span>Houses, condos, rentals, and ranches. Free.</span></li>
     </ul>
     <span class="soon">Coming soon</span>
   </main>
-  <footer>&copy; 2026 DwelLogs</footer>
+  <footer><p>&copy; 2026 DwelLogs. Built by a first-time homeowner who inherited three fridges, a well, and a septic system &mdash; none of which came with a manual &mdash; and is doing something about it.</p></footer>
 </body>
 </html>

@@ -1,5 +1,18 @@
 # DwelLogs brand
 
+## Concept: the pulse of the home
+
+DwelLogs is a monitor for your home's vital signs. The heart-monitor mark and
+background line are the concept, not decoration.
+
+- **Tagline:** "Keep a pulse on your home." Supporting line: "Everything your
+  home needs, before it needs it."
+- **Language:** check-ups (not chores or tasks), readings (gauge and level
+  checks), vital signs. Status reads as healthy, due soon, or needs attention,
+  never "overdue" or "failed."
+- **Tone:** a monitor informs, it doesn't scold. Same rule as the rest of the
+  brand: no nagging, no stereotypes.
+
 ## Mark
 
 A heart-monitor line that traces a house, then beats. The home's vital signs.
@@ -32,7 +45,7 @@ Always written with a capital L, matching SaasyLogs.
 
 ## Background line
 
-One continuous path: blip, house with chimney, heartbeat, barn, blip, castle,
+One continuous path: blip, house with chimney, heartbeat, castle, blip, barn,
 big beat, apartment block. Every kind of dwelling. Fixed behind the content;
 draws in over 5s, static for reduced-motion users.
 

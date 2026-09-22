@@ -42,6 +42,8 @@ Site-specific:
 
 - Always written **DwelLogs** (capital L), matching SaasyLogs.
 - For anyone who holds the keys: owners, renters, condos, ranches.
+- **Concept: the pulse of the home.** Tagline "Keep a pulse on your home."; say
+  check-ups, readings, vital signs. Details in `brand/README.md`.
 - No gender or household stereotypes in copy or imagery (no "honey-do",
   no "nag"). Tone is proactive and informed, never scolding.
 - Free. Don't promise features that aren't built; say "coming" or leave it out.

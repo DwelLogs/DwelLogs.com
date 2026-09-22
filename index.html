@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DwelLogs — coming soon</title>
+  <meta name="description" content="DwelLogs keeps track of everything your home needs — filters, flushes, fuel, septic, and the people who help — so you hear about it before it's a problem. Free.">
+  <style>
+    :root {
+      --bg: #f7f5f0; --ink: #1f2a24; --muted: #5b665f; --accent: #2f6b4f; --card: #ffffff; --line: #e3dfd6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #141a17; --ink: #eef1ec; --muted: #a3ada6; --accent: #7cc39f; --card: #1c2420; --line: #2c3631; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+      background: var(--bg); color: var(--ink);
+      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { flex: 1; width: 100%; max-width: 720px; margin: 0 auto; padding: 72px 20px 40px; }
+    .wordmark { font-size: 1.1rem; font-weight: 700; letter-spacing: .02em; color: var(--accent); margin: 0 0 48px; }
+    h1 { font-size: clamp(2rem, 6vw, 3rem); line-height: 1.15; margin: 0 0 20px; letter-spacing: -.02em; }
+    .lede { font-size: 1.15rem; color: var(--muted); margin: 0 0 40px; max-width: 34em; }
+    ul { list-style: none; padding: 0; margin: 0 0 40px; display: grid; gap: 12px; }
+    li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+    li strong { display: block; }
+    li span { color: var(--muted); font-size: .95rem; }
+    .soon { display: inline-block; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 6px 14px; font-size: .9rem; font-weight: 600; }
+    footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px 20px; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="wordmark">DwelLogs</p>
+    <h1>Everything your home needs, before it needs it.</h1>
+    <p class="lede">The owner's manual your place never came with. Add what's in your home once, and DwelLogs keeps the schedule, the parts, the people, and the costs — so nothing sneaks up on you.</p>
+    <ul>
+      <li><strong>Know what's due</strong><span>Filters, flushes, septic pump-outs, pool care — including the ones nobody told you about.</span></li>
+      <li><strong>Never run out</strong><span>Softener salt, pool chemicals, propane and heating fuel, tracked by what you actually use.</span></li>
+      <li><strong>See the costs coming</strong><span>What the next month, quarter, and year will take, and why.</span></li>
+      <li><strong>For wherever you dwell</strong><span>Houses, condos, rentals, and ranches. Free.</span></li>
+    </ul>
+    <span class="soon">Coming soon</span>
+  </main>
+  <footer>&copy; 2026 DwelLogs</footer>
+</body>
+</html>

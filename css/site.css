@@ -20,9 +20,11 @@ h1, strong, .wordmark, .soon { font-family: "Space Grotesk", system-ui, sans-ser
    the screen, and Safari can count that overflow toward the scrollable page
    even though the layer is fixed, adding empty scroll past the footer. */
 .vitals { position: fixed; inset: 0; z-index: 0; pointer-events: none; display: flex; align-items: flex-end; overflow: hidden; }
-.vitals svg { display: block; width: 100%; height: 38vh; height: 38svh; margin-bottom: 3vh; margin-bottom: 3svh; overflow: hidden; }
+.vitals svg { display: block; width: 100%; height: 46vh; height: 46svh; margin-bottom: 6vh; margin-bottom: 6svh; overflow: hidden; }
 .vitals path {
-  fill: none; stroke: var(--trace); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; opacity: .55;
+  /* Thicker and more opaque after testing: at 3px / .55 it read as a smudge
+     on a phone, and the cards covered the shapes. */
+  fill: none; stroke: var(--trace); stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; opacity: .9;
   stroke-dasharray: 4200; stroke-dashoffset: 4200; animation: trace 5s ease-out forwards;
 }
 .vitals circle { fill: var(--trace); }
@@ -42,7 +44,7 @@ h1 { font-size: clamp(2rem, 6vw, 3.1rem); font-weight: 700; line-height: 1.1; ma
 .lede { font-size: 1.15rem; color: var(--muted); margin: 0 0 40px; max-width: 34em; }
 ul { list-style: none; padding: 0; margin: 0 0 40px; display: grid; gap: 12px; }
 li {
-  background: color-mix(in srgb, var(--card) 78%, transparent); backdrop-filter: blur(2px);
+  background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(3px);
   border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px;
 }
 li strong { display: block; font-weight: 600; }

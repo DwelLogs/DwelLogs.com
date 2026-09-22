@@ -1,0 +1,21 @@
+/* DwelLogs design tokens: font and Blueprint palette.
+   Shared source of truth for the site now and the app later; keep in sync
+   with brand/README.md. */
+
+/* Self-hosted (not Google Fonts) so the site makes no third-party requests:
+   the product's stance on customer data starts with its own website. */
+@font-face {
+  font-family: "Space Grotesk"; src: url("/fonts/SpaceGrotesk.woff2") format("woff2");
+  font-weight: 300 700; font-display: swap;
+}
+/* Blueprint palette. --trace is the heart-monitor line. */
+:root {
+  --bg: #eef3f7; --ink: #15243a; --muted: #52627a; --accent: #1f5fa8;
+  --card: #ffffff; --line: #d6e0ea; --trace: #e0893a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1726; --ink: #e9f0f8; --muted: #9fb0c6; --accent: #6aa8ee;
+    --card: #152236; --line: #233450; --trace: #f0a257;
+  }
+}

@@ -7,87 +7,18 @@
   <meta name="description" content="DwelLogs keeps a pulse on your home — check-ups, supplies, fuel, septic, and the people who help — so you hear about it before it's a problem. Free.">
   <meta name="theme-color" content="#eef3f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0e1726" media="(prefers-color-scheme: dark)">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="icon" href="/favicon.ico" sizes="32x32">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="icon" href="/favicon.ico?v=2" sizes="32x32">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://dwellogs.com/">
   <meta property="og:title" content="DwelLogs — keep a pulse on your home">
   <meta property="og:description" content="Your home's vital signs in one place. Everything it needs, before it needs it. Free, for houses, condos, rentals, and ranches.">
-  <meta property="og:image" content="https://dwellogs.com/og-image.png">
+  <meta property="og:image" content="https://dwellogs.com/og-image.png?v=2">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preload" href="/fonts/SpaceGrotesk.woff2" as="font" type="font/woff2" crossorigin>
-  <style>
-    /* Self-hosted (not Google Fonts) so the site makes no third-party requests:
-       the product's stance on customer data starts with its own website. */
-    @font-face {
-      font-family: "Space Grotesk"; src: url("/fonts/SpaceGrotesk.woff2") format("woff2");
-      font-weight: 300 700; font-display: swap;
-    }
-    /* Blueprint palette. --trace is the heart-monitor line. */
-    :root {
-      --bg: #eef3f7; --ink: #15243a; --muted: #52627a; --accent: #1f5fa8;
-      --card: #ffffff; --line: #d6e0ea; --trace: #e0893a;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0e1726; --ink: #e9f0f8; --muted: #9fb0c6; --accent: #6aa8ee;
-        --card: #152236; --line: #233450; --trace: #f0a257;
-      }
-    }
-    * { box-sizing: border-box; }
-    body {
-      /* svh, not vh: on iOS, 100vh is the height with the URL bar hidden, which
-         makes the page taller than the screen. vh stays as a fallback. */
-      margin: 0; min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column;
-      overflow-x: clip;
-      background: var(--bg); color: var(--ink);
-      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    }
-    h1, strong, .wordmark, .soon { font-family: "Space Grotesk", system-ui, sans-serif; }
-
-    /* Fixed background: one heart-monitor line that traces a house, a castle, a
-       barn and an apartment block between beats. Stays put while content
-       scrolls over it. "slice" crops the sides on phones so the shapes stay
-       readable instead of shrinking to a squiggle. */
-    /* overflow: hidden matters on iOS Safari: "slice" draws the line wider than
-       the screen, and Safari can count that overflow toward the scrollable page
-       even though the layer is fixed, adding empty scroll past the footer. */
-    .vitals { position: fixed; inset: 0; z-index: 0; pointer-events: none; display: flex; align-items: flex-end; overflow: hidden; }
-    .vitals svg { display: block; width: 100%; height: 38vh; height: 38svh; margin-bottom: 3vh; margin-bottom: 3svh; overflow: hidden; }
-    .vitals path {
-      fill: none; stroke: var(--trace); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; opacity: .55;
-      stroke-dasharray: 4200; stroke-dashoffset: 4200; animation: trace 5s ease-out forwards;
-    }
-    .vitals circle { fill: var(--trace); }
-    @keyframes trace { to { stroke-dashoffset: 0; } }
-    @media (prefers-reduced-motion: reduce) { .vitals path { animation: none; stroke-dashoffset: 0; } }
-
-    main, footer { position: relative; z-index: 1; }
-    main { flex: 1; width: 100%; max-width: 720px; margin: 0 auto; padding: 64px 20px 40px; }
-    .wordmark {
-      display: flex; align-items: center; gap: 10px; margin: 0 0 48px;
-      font-size: 1.3rem; font-weight: 700; letter-spacing: -.01em; color: var(--ink);
-    }
-    .wordmark img { width: 36px; height: 36px; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); }
-    .wordmark b { font-weight: 700; }
-    .wordmark span { color: var(--accent); }
-    h1 { font-size: clamp(2rem, 6vw, 3.1rem); font-weight: 700; line-height: 1.1; margin: 0 0 20px; letter-spacing: -.025em; }
-    .lede { font-size: 1.15rem; color: var(--muted); margin: 0 0 40px; max-width: 34em; }
-    ul { list-style: none; padding: 0; margin: 0 0 40px; display: grid; gap: 12px; }
-    li {
-      background: color-mix(in srgb, var(--card) 78%, transparent); backdrop-filter: blur(2px);
-      border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px;
-    }
-    li strong { display: block; font-weight: 600; }
-    li span { color: var(--muted); font-size: .95rem; }
-    .soon {
-      display: inline-block; border: 1px solid var(--accent); color: var(--accent); background: var(--bg);
-      border-radius: 999px; padding: 6px 14px; font-size: .9rem; font-weight: 600;
-    }
-    footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px 20px; }
-    footer p { max-width: 36em; margin: 0 auto; }
-  </style>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
   <div class="vitals" aria-hidden="true">
@@ -105,7 +36,7 @@
     </svg>
   </div>
   <main>
-    <p class="wordmark"><img src="/favicon.svg" alt=""><b>Dwel<span>Logs</span></b></p>
+    <p class="wordmark"><img src="/favicon.svg?v=2" alt=""><b>Dwel<span>Logs</span></b></p>
     <h1>Keep a pulse on your home.</h1>
     <p class="lede">Everything your home needs, before it needs it. Add what's in your place once, and DwelLogs watches its vital signs — the check-ups, the supplies, the people, and the costs — so nothing sneaks up on you.</p>
     <ul>

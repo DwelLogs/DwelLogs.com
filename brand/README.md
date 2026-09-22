@@ -26,6 +26,8 @@ Always written with a capital L, matching SaasyLogs.
 
 ## Palette: Blueprint
 
+In code: `/css/tokens.css`. Change a color there and in this table together.
+
 | Token    | Light     | Dark      | Use                         |
 |----------|-----------|-----------|-----------------------------|
 | bg       | `#eef3f7` | `#0e1726` | page background             |
@@ -53,6 +55,7 @@ draws in over 5s, static for reduced-motion users.
 
 | File | Where it goes |
 |---|---|
+| `/css/tokens.css` | Palette + font as CSS variables. The code copy of this guide |
 | `logo-mark.svg` | Source mark, site favicon |
 | `avatar-512.png` | GitHub org avatar, other profile pictures |
 | `github-social-preview.png` (1280×640) | Repo Settings → Social preview |

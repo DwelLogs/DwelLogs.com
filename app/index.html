@@ -701,7 +701,7 @@ async function boot() {
   DwelLogs.configure(url, tok);
   let res;
   try { res = await DwelLogs.load(); }
-  catch (e) { return connect('Could not reach the sheet: ' + e.message); }
+  catch (e) { return connect(connFail(e)); }
   DB = res.db;
   // Who you are is remembered, because on a shared sheet the first owner row is
   // not necessarily you — and picking the wrong person silently signs somebody
@@ -722,24 +722,86 @@ async function boot() {
   show('home');
 }
 
+/* This screen used to offer two equal buttons and no way to find out what the
+   first one wanted. Almost everybody arriving here should run on the device —
+   it needs nothing, loses nothing, and can be connected to a sheet later — so
+   that is the one that leads, and the sheet gets its own section with a link
+   to the instructions. A screen that asks for an address and does not say
+   where to get it is a wall with a text box in it. */
+let connDraft = { u:'', t:'' };
+
 function connect(msg) {
   $('#tabs').hidden = true;
-  app.innerHTML = `<h1>Connect it to a sheet</h1>
-    <p class="sub">Or leave both blank and it runs on this device only — same app, nothing
-      shared, fine for a walk-through.</p>
+  app.innerHTML = `<h1>Where should this live?</h1>
     ${msg ? `<div class="banner">${esc(msg)}</div>` : ''}
-    <label for="u">Web app URL</label><input id="u" placeholder="https://script.google.com/…/exec">
-    <label for="t">Token</label><input id="t" placeholder="">
-    <p class="hint">The TOKEN you set in Script Properties.</p>
+    <div class="actions" style="margin:.4rem 0 .2rem">
+      <button class="primary" onclick="saveConn(true)">Just on this device</button>
+    </div>
+    <p class="hint">Nothing to set up. It all saves here and none of it leaves this
+      device. You can connect a sheet later without losing any of it.</p>
+
+    <h2>Or connect a Google Sheet</h2>
+    <p class="sub">Keeps it on your phone and your computer, and lets you share it with
+      somebody. About five minutes, once. <a href="setup.html">How to do it</a></p>
+    <label for="u">Script URL</label>
+    <input id="u" value="${esc(connDraft.u)}" placeholder="https://script.google.com/…/exec">
+    <p class="hint">Ends in <code>/exec</code>. Not the sheet&rsquo;s own address — this is the
+      script published from inside it, by Deploy &rarr; New deployment.</p>
+    <label for="t">Password <span style="font-weight:400;color:var(--muted)">— only if you set one</span></label>
+    <input id="t" value="${esc(connDraft.t)}" placeholder="leave blank if you did not">
     <div class="actions">
-      <button class="primary" onclick="saveConn()">Use this sheet</button>
-      <button class="ghost" onclick="saveConn(true)">Just this device</button>
+      <button class="primary" onclick="saveConn()">Connect</button>
     </div>`;
 }
+
+/* The sheet's own address is the obvious thing to paste and it can never work:
+   the app talks to the script published from inside the sheet, not to the
+   sheet. Catching that by name here saves the round trip of pasting it,
+   waiting, and being told something about our cache. */
+function connCheck(u) {
+  const bare = u.replace(/[?#].*$/, '').replace(/\/+$/, '');
+  if (!u) return 'Put the script address in, or choose “Just on this device”.';
+  if (/docs\.google\.com\/spreadsheets/i.test(u))
+    return 'That is the sheet itself. The app needs the script published from inside it: in the ' +
+           'sheet, Extensions → Apps Script, then Deploy → New deployment → Web app. The address ' +
+           'it hands you ends in /exec.';
+  if (/script\.google\.com\/.*\/(edit|d\/)/i.test(u))
+    return 'That is the script editor. Use Deploy → New deployment → Web app, and paste the ' +
+           'address it hands you — it ends in /exec.';
+  if (!/^https:\/\//i.test(u)) return 'That does not look like a web address.';
+  if (!/\/exec$/i.test(bare))
+    return 'That address should end in /exec. Deploy → New deployment → Web app gives you one ' +
+           'that does; anything else is a link to the sheet or the editor.';
+  return null;
+}
+
+/* Whatever they typed survives a rejection. Clearing the box and telling
+   somebody they got it wrong is two insults for the price of one. */
 function saveConn(local) {
-  localStorage.setItem('dwellogs.url', local ? '' : ($('#u').value || '').trim());
-  localStorage.setItem('dwellogs.token', local ? '' : ($('#t').value || '').trim());
+  if (local) {
+    localStorage.setItem('dwellogs.url', '');
+    localStorage.setItem('dwellogs.token', '');
+    return boot();
+  }
+  connDraft = { u: ($('#u').value || '').trim(), t: ($('#t').value || '').trim() };
+  const bad = connCheck(connDraft.u);
+  if (bad) return connect(bad);
+  localStorage.setItem('dwellogs.url', connDraft.u);
+  localStorage.setItem('dwellogs.token', connDraft.t);
   boot();
+}
+
+/* What the reader needs is what to do next, not the state of our cache.
+   "No data, and nothing cached." is true and useless. */
+function connFail(e) {
+  const m = String((e && e.message) || e);
+  if (/nothing cached/i.test(m))
+    return 'Could not reach that sheet. Three things to check: the address is the one Deploy ' +
+           'gave you and ends in /exec, Who has access is set to Anyone, and you are online.';
+  if (/bad token/i.test(m))
+    return 'The sheet answered, but the password did not match the TOKEN set on the script. ' +
+           'If you never set one, leave it blank.';
+  return 'Could not reach that sheet: ' + m;
 }
 
 // ---- first run ----------------------------------------------------------
@@ -860,6 +922,7 @@ const ICON = {
   things:       'M4 8 12 4l8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8',
   animal:       'M6.5 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4M17.5 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4M9.5 8.5a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4M14.5 8.5a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4M12 20c-2.8 0-4.5-1.6-4.5-3.6S9.2 12 12 12s4.5 2.4 4.5 4.4S14.8 20 12 20',
   wrong:        'M12 4 2.5 20h19zM12 10v5M12 17.5v.5',
+  todo:         'M8 4h8a1 1 0 0 1 1 1v15H7V5a1 1 0 0 1 1-1M9.5 3h5v3h-5zM9 11.5l1.6 1.6L14 9.8M9 16.5h6',
   invite:       'M3 6h18v12H3zM3 7l9 6 9-6',
   buildings:    'M3 20V10l5-4 5 4v10M13 20v-7l4-3 4 3v7M1 20h22M6 20v-4h3v4',
   device:       'M3 5h11v9H3zM3 14h11M6 18h5M8.5 14v4M16 9h5v12h-5zM17.5 11.5h2M18.5 19h1',
@@ -1280,50 +1343,44 @@ const PLACE = [
     },
     take: () => true },
 
-  { t:'What’s bugging you today?', s:'Or nothing. Plenty of people set this up on a day when nothing is wrong.',
+  { t:'What needs doing?',
+    s:'The next week or two \u2014 whatever is already on your mind. Add as many as you like; the list grows as you go.',
     skippable:true,
     body: () => {
-      // It used to open on the whole catalogue — every fridge and furnace in
-      // the app — when she had just finished saying what she owns. Her things
-      // first, short. The full list is still there, one tap away, for the thing
-      // she has not added yet.
-      const mine = madeSoFar();
-      const types = Object.entries(STARTER).flatMap(([c, l]) => l.map(([n]) => [c, n]));
-      const isNew = String(draft.pick || '').startsWith('new:');
-      return `<label for="f-t">Which one?</label>
-        <select id="f-t" onchange="pickedThing(this)">
-          <option value=""${draft.pick ? '' : ' selected'}>— nothing right now —</option>
-          ${mine.map(m => `<option value="have:${esc(m.key)}"${
-            draft.pick === 'have:' + m.key ? ' selected' : ''}>${esc(m.label)}</option>`).join('')}
-          ${draft.showAll || isNew
-            ? `<optgroup label="Something you have not added yet">${types.map(([c, n]) =>
-                `<option value="new:${esc(n)}"${draft.pick === 'new:' + n ? ' selected' : ''}
-                  >${esc(n)} — ${esc(c)}</option>`).join('')}</optgroup>`
-            : ''}
+      /* This screen used to ask "what\u2019s bugging you today?" and take exactly one
+         answer, which got the framing and the shape wrong at once. Nobody sets
+         a place up mid-leak; they set it up on a calm morning with four jobs in
+         their head. So: a list you add to, forward-looking by default, with the
+         fault states still there because sometimes a thing really is broken. */
+      const jobs = draft.jobs || [];
+      const lbl = v => (WHENS.concat(FAULTS).find(x => x[0] === v) || [0, v])[1];
+      return `${jobs.length ? `<div class="rows">${jobs.map((j, i) => `<div class="row">
+          ${icon(FAULTS.some(f => f[0] === j.when) ? 'wrong' : 'todo', 22)}
+          <div class="grow"><b>${esc(j.what)}</b><small>${esc(lbl(j.when))}</small></div>
+          <button class="ghost" onclick="dropJob(${i})">Remove</button></div>`).join('')}</div>` : ''}
+        <label for="f-what">What needs doing?</label>
+        <input id="f-what" placeholder="clean the gutters">
+        <label for="f-when">When</label>
+        <select id="f-when">
+          ${WHENS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}
+          <optgroup label="Not a job \u2014 something is wrong">
+            ${FAULTS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}
+          </optgroup>
         </select>
-        ${draft.showAll || isNew ? '' :
-          `<button class="ghost" onclick="draft.showAll=true;drawFirst()">It is something else</button>`}
-        <div id="f-new" ${isNew ? '' : 'hidden'}>
-          <label for="f-tn">Call it <span style="font-weight:400;color:var(--muted)">— optional</span></label>
-          <input id="f-tn" placeholder="leave it and we will use the type" value="${esc(draft.thingName || '')}">
+        <div class="actions" style="margin-top:.8rem">
+          <button class="ghost" onclick="addJob()">Add it</button>
         </div>
-        <label for="f-st">What is it doing?</label>
-        <select id="f-st">
-          ${[['intermittent','It works sometimes'],
-             ['degraded','It works, badly'],
-             ['unusable','It does not work at all'],
-             ['works','It works — I just want it tracked']]
-            .map(([v, l]) => `<option value="${v}"${draft.state === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}
-        </select>
-        ${tip('<i>It works sometimes</i> is its own answer, and the hardest kind to live with — ' +
+        ${tip('<i>It works sometimes</i> is its own answer, and the hardest kind to live with \u2014 ' +
           'a thing that fails on a Tuesday and behaves on a Wednesday never gets fixed, because it ' +
           'never quite earns the call.')}`;
     },
-    take: () => { draft.pick = $('#f-t').value || null;
-      draft.state = $('#f-st').value;
-      // Nothing has to be named. "Dryer" is a perfectly good name for the dryer.
-      draft.thingName = String(draft.pick || '').startsWith('new:')
-        ? (($('#f-tn').value || '').trim() || draft.pick.slice(4)) : '';
+    /* A row half-typed when they tap Done or Skip still counts. Binning what
+       somebody just wrote because they pressed the wrong button first is the
+       bug this whole screen already had once. */
+    take: () => { const w = $('#f-what'); if (!w) return true;
+      const what = (w.value || '').trim();
+      if (what) { draft.jobs = draft.jobs || [];
+        draft.jobs.push({ what, when: $('#f-when').value }); }
       return true; } }
 ];
 /* Somebody who moved in last month genuinely does not know whether the pipes
@@ -1492,6 +1549,34 @@ function addPerson() {
   drawFirst(); say(v + ' is on the list.');
 }
 function dropPerson(i) { syncStep(); draft.household.splice(i, 1); drawFirst(); }
+const WHENS  = [['this_week','this week'], ['next_week','next week'], ['someday','sometime']];
+const FAULTS = [['intermittent','it works sometimes'], ['degraded','it works, badly'],
+                ['unusable','it does not work at all']];
+
+function addJob() {
+  const what = ($('#f-what').value || '').trim();
+  if (!what) return say('Say what needs doing first.');
+  draft.jobs = draft.jobs || [];
+  draft.jobs.push({ what, when: $('#f-when').value });
+  drawFirst();
+  say(what + ' is on the list.');
+}
+function dropJob(i) { draft.jobs.splice(i, 1); drawFirst(); }
+
+/* No dropdown to hunt through. Type "clean the gutters" and if gutters are one
+   of the things you just said you have, we join them up ourselves. If we
+   cannot, the job still stands on its own \u2014 a job we cannot pin to an asset is
+   still a job, and demanding the link is how you end up naming a shed "shed". */
+function guessThing(text) {
+  const t = ' ' + String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' ';
+  let best = null;
+  madeSoFar().forEach(m => {
+    const w = ' ' + m.label.toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' ';
+    if (t.indexOf(w) >= 0 && (!best || w.length > best.w.length)) best = { key:m.key, w };
+  });
+  return best ? best.key : null;
+}
+
 function addAnimal() {
   syncStep();
   const t = $('#j-at').value, n = ($('#j-an').value || '').trim();
@@ -1540,8 +1625,9 @@ const HUB = [
   { id:'Where are you parked?', icon:'location', label:'Where it is parked',
     when: () => ['wheels','floating'].includes(flowGroup()),
     state: () => draft.parkedAt || 'not set' },
-  { id:'What’s bugging you today?', icon:'wrong', label:'Something wrong?',
-    state: () => draft.pick ? 'one logged' : 'nothing yet' }
+  { id:'What needs doing?', icon:'todo', label:'Needs doing',
+    state: () => { const n = (draft.jobs || []).length;
+      return n ? n + (n === 1 ? ' on the list' : ' on the list') : 'nothing yet'; } }
 ];
 function drawHub() {
   hubStep = null;
@@ -1591,8 +1677,8 @@ function saveRename() {
 }
 /* A tile opens its screen in hub mode: one button, Done, and it comes back.
    Addressed by index rather than by title — a title in an onclick attribute is
-   a quoting accident waiting to happen, and "What's bugging you today?" has an
-   apostrophe in it. */
+   a quoting accident waiting to happen: these titles are written as sentences,
+   apostrophes and all. */
 function openTile(i) {
   const tiles = HUB.filter(h => !h.when || h.when());
   if (tiles[i]) openStep(tiles[i].id);
@@ -1986,18 +2072,23 @@ async function createEverything() {
   });
   made.forEach(m => { if (!units[m.type + '#1']) units[m.type + '#1'] = m.rec.id; });
 
-  // The thing bugging them is an ISSUE against a thing, not a second thing.
-  const pick = draft.pick || '';
-  let hurtId = null;
-  if (pick.startsWith('have:')) hurtId = units[pick.slice(5)] || null;
-  else if (pick.startsWith('new:')) hurtId = addThing(pick.slice(4), draft.thingName, '', true);
-  if (hurtId && draft.state && draft.state !== 'works')
-    writes.push({ op:'upsert', table:'issue', record:{ id:uid(), asset_id:hurtId,
-      structure_id:structId,
-      // An issue called "Needs a look" tells nobody anything. Name it after the
-      // thing when they picked one they already own.
-      title: draft.thingName || (made.find(m => m.rec.id === hurtId) || {}).rec?.name || 'Needs a look',
-      first_seen_on:today(), state:draft.state } });
+  /* Two tables, because a job and a fault are two different claims. "Clean the
+     gutters, this week" is something somebody means to do; "it works sometimes"
+     is the house doing something wrong. File a job as a fault and the dashboard
+     shows a problem where there is none — and nobody believes a dashboard twice.
+     The asset is guessed from the words and never demanded. */
+  const SLOTS = WHENS.map(w => w[0]);
+  (draft.jobs || []).forEach(j => {
+    const key = guessThing(j.what);
+    const aid = key ? (units[key] || null) : null;
+    if (SLOTS.indexOf(j.when) >= 0)
+      writes.push({ op:'upsert', table:'work_item', record:{ id:uid(), property_id:propId,
+        asset_id:aid, structure_id:structId, title:j.what, source:'ad_hoc',
+        status:'open', column:'todo', slot:j.when } });
+    else
+      writes.push({ op:'upsert', table:'issue', record:{ id:uid(), asset_id:aid,
+        structure_id:structId, title:j.what, first_seen_on:today(), state:j.when } });
+  });
 
   // What nothing on our lists could say. One row per word, counted, and never
   // promoted without a person reading it.

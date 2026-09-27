@@ -1,0 +1,2995 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DwelLogs</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg:#eef3f7; --card:#ffffff; --ink:#15243a; --muted:#52627a; --line:#d6e0ea;
+    --accent:#1f5fa8; --on-accent:#fff; --ok:#1b6b45; --soon:#8a5a00; --attn:#a3311f;
+    --ok-bg:#e3f1e9; --soon-bg:#fbeed6; --attn-bg:#fbe4e0; --r:.75rem;
+    --placeholder:#7b8798; --trace:#e0893a;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    color-scheme: dark;
+    --bg:#0e1726; --card:#152236; --ink:#e9f0f8; --muted:#9fb0c6; --line:#233450;
+    --accent:#6aa8ee; --on-accent:#0e1726; --ok:#7fd3a6; --soon:#f0c674; --attn:#ff9c85;
+    --ok-bg:#16301f; --soon-bg:#33270d; --attn-bg:#3a1d17;
+    --placeholder:#76869d; --trace:#f0a257;
+  } }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:1rem/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:34rem; margin:0 auto; padding-inline:1rem;
+          padding-block:1rem calc(5rem + env(safe-area-inset-bottom,0px)); }
+  h1 { font-size:1.5rem; line-height:1.2; margin:.3rem 0 .4rem; }
+  h2 { font-size:1rem; margin:1.5rem 0 .5rem; }
+  p.sub { color:var(--muted); margin:.2rem 0 1rem; }
+  label { display:block; font-weight:600; margin:.9rem 0 .3rem; font-size:.9rem; }
+  input, select, button, textarea { font:inherit; color:inherit; min-height:2.75rem;
+    border-radius:.6rem; border:1px solid var(--line); background:var(--card); padding:.6rem .8rem; }
+  input, select, textarea { width:100%; }
+  button { cursor:pointer; width:auto; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:600; }
+  button.ghost { background:transparent; }
+  :focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+  /* An example that looks like a filled-in value gets skipped, and then the
+     form complains about a field the person believes they answered. Two
+     signals, not one: a quarter of the ink's contrast (3.65:1 light,
+     4.31:1 dark — still legible) AND italic, so it never reads as typed. */
+  ::placeholder { color:var(--placeholder); opacity:1; font-style:italic; }
+  input.missing, select.missing { border-color:var(--attn); border-width:2px; }
+  .tick { display:flex; gap:.6rem; align-items:center; font-weight:400; padding:.35rem 0;
+          min-height:2.4rem; }
+  .tick input { width:1.25rem; height:1.25rem; min-height:0; flex:none; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+          padding:.85rem .9rem; margin-bottom:.6rem; }
+  .card.tap { padding:0; } .card.tap > button { width:100%; text-align:start; border:0;
+    background:none; padding:.85rem .9rem; border-radius:var(--r); display:block; }
+  .meta { color:var(--muted); font-size:.92rem; margin:.2rem 0 0; }
+  .title { font-weight:600; }
+  .hint { color:var(--muted); font-size:.85rem; margin:.25rem 0 0; }
+  .actions { display:flex; gap:.6rem; flex-wrap:wrap; margin-top:1.1rem; }
+  .empty { border:1px dashed var(--line); border-radius:var(--r); padding:1.4rem 1rem;
+           text-align:center; color:var(--muted); }
+  .chip { display:inline-block; border-radius:999px; padding:.15rem .55rem; font-size:.78rem;
+          font-weight:600; border:1px solid; }
+  .chip.attn { color:var(--attn); background:var(--attn-bg); border-color:var(--attn); }
+  .chip.soon { color:var(--soon); background:var(--soon-bg); border-color:var(--soon); }
+  .chip.ok   { color:var(--ok);   background:var(--ok-bg);   border-color:var(--ok); }
+  .big { font-size:2.6rem; font-weight:700; line-height:1; display:block; }
+  nav.tabs { position:fixed; inset:auto 0 0 0; background:var(--card); border-top:1px solid var(--line);
+    display:flex; padding:.4rem .4rem calc(.4rem + env(safe-area-inset-bottom,0px)); }
+  nav.tabs button { flex:1; border:0; background:none; font-weight:600; font-size:.95rem; }
+  nav.tabs button[aria-current="page"] { color:var(--accent); text-decoration:underline; }
+  #say { position:fixed; inset:auto .75rem calc(4.3rem + env(safe-area-inset-bottom,0px)) .75rem;
+    max-width:31rem; margin:0 auto; background:var(--ink); color:var(--bg); border-radius:.6rem;
+    padding:.65rem .85rem; font-size:.92rem; z-index:5;
+    /* It floats over whatever is underneath, including the buttons at the foot
+       of a long screen. A message you did not ask for must never eat the tap
+       you did. */
+    pointer-events:none; }
+  #say:empty { display:none; }
+  .step { color:var(--muted); font-size:.8rem; letter-spacing:.06em; text-transform:uppercase;
+          font-weight:600; }
+  .banner { background:var(--soon-bg); border:1px solid var(--soon); color:var(--soon);
+    border-radius:.6rem; padding:.5rem .7rem; font-size:.88rem; margin-bottom:.8rem; }
+  [hidden] { display:none !important; }
+  /* Two columns at phone width. Six questions stacked one option per line is a
+     wall nobody reads to the bottom of; the same options in pairs fit a thumb
+     scroll. Falls back to one column when a label is long. */
+  .opts { display:grid; grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr)); gap:0 .8rem }
+  .opts > button { grid-column:1/-1; justify-self:start; margin-top:.35rem }
+  /* A grid, not wrapped flex: "Carbon monoxide detector" is three lines long and
+     wrapped flex let its box drop out of the row. Equal rows, labels top, boxes
+     bottom, so the inputs line up whatever the label does. */
+  .counts { display:grid; grid-template-columns:repeat(auto-fill,minmax(6.5rem,1fr)); gap:.6rem }
+  .count { display:flex; flex-direction:column; justify-content:space-between }
+  .count span { display:block; font-size:.82rem; color:var(--muted); margin-bottom:.25rem }
+  .count input { width:100%; margin:0 }
+  .other { margin-top:.9rem; padding-top:.7rem; border-top:1px dashed var(--line) }
+  .other label { font-weight:400; color:var(--muted); font-size:.9rem }
+  /* Reasoning belongs one tap away, not in front of somebody who just wants to
+     answer the question. Native <details>, so it works with no JS and reads
+     correctly to a screen reader. */
+  .tip { margin:.35rem 0 0 }
+  .tip summary { font-size:.86rem; color:var(--accent); cursor:pointer; list-style:none;
+    display:inline-block; padding:.35rem 0; min-height:0 }
+  .tip summary::-webkit-details-marker { display:none }
+  .tip summary::before { content:'?'; display:inline-grid; place-items:center;
+    width:1.05rem; height:1.05rem; margin-right:.35rem; border-radius:50%;
+    border:1px solid currentColor; font-size:.7rem; vertical-align:-.15rem }
+  .sub .skiplink::before { content:none }
+  .tip[open] summary { color:var(--muted) }
+  .tip p { font-size:.88rem; line-height:1.45; color:var(--muted); margin:.1rem 0 .2rem }
+  .step .skiplink, .sub .skiplink { background:none; border:0; padding:.2rem .3rem; min-height:0;
+    font:inherit; letter-spacing:inherit; color:var(--accent); text-decoration:underline;
+    cursor:pointer }
+  .step .skiplink::before { content:'· ' ; text-decoration:none; color:var(--muted) }
+  /* Picture buttons. Big enough to hit with a thumb, square so a grid of twelve
+     reads as a set rather than a list with pictures stuck on it. */
+  .pick { display:grid; grid-template-columns:repeat(auto-fill,minmax(6.5rem,1fr)); gap:.6rem;
+    margin:.5rem 0 .2rem }
+  .pick button { display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:.45rem; padding:.9rem .4rem; min-height:6.2rem; width:100%; background:var(--card);
+    border:1px solid var(--line); border-radius:12px; color:var(--ink); cursor:pointer;
+    font:inherit; font-size:.86rem; line-height:1.25; text-align:center }
+  .pick button:hover { border-color:var(--accent) }
+  .pick button[aria-pressed="true"] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent) }
+  .pick svg { color:var(--accent); flex:none }
+  .pick .cap { color:var(--ink) }
+  .group { font-size:.8rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+    margin:1.1rem 0 .1rem }
+  /* The hub: same tiles, with a line of state under each. */
+  .hub { display:grid; grid-template-columns:repeat(auto-fill,minmax(8.5rem,1fr)); gap:.6rem; margin:.6rem 0 }
+  .hub button { display:flex; flex-direction:column; align-items:flex-start; gap:.4rem;
+    padding:.9rem; width:100%; background:var(--card); border:1px solid var(--line);
+    border-radius:12px; color:var(--ink); cursor:pointer; font:inherit; text-align:left }
+  .hub button:hover { border-color:var(--accent) }
+  .hub svg { color:var(--accent) }
+  .hub b { font-weight:600; font-size:.95rem }
+  .hub small { color:var(--muted); font-size:.83rem; line-height:1.3 }
+  .hub .done { color:var(--ok) }
+  /* One back, always top-left, on every screen that has somewhere to go back to.
+     It was three buttons in three places called three things — Back at the foot
+     of the picker, "Not that kind of place" on the hub, Cancel inside a tile. */
+  .back { background:none; border:0; padding:.4rem .5rem .4rem 0; margin:0 0 .2rem -.15rem;
+    min-height:2.2rem; font:inherit; font-size:.92rem; color:var(--muted); cursor:pointer }
+  .back:hover { color:var(--accent) }
+  /* The same trace as the site, but this one is generated from the rows. */
+  .pulse { margin:.2rem 0 .6rem; height:3.4rem }
+  .pulse svg { width:100%; height:100%; display:block; overflow:visible }
+  .pulse path { fill:none; stroke:var(--trace); stroke-width:2;
+    stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke }
+  textarea { width:100%; font:inherit; padding:.7rem .8rem; border-radius:var(--r);
+    border:1px solid var(--line); background:var(--card); color:var(--ink); resize:vertical }
+  textarea::placeholder { color:var(--placeholder); font-style:italic }
+  .ctx { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem;
+    white-space:pre-wrap; background:var(--card); border:1px solid var(--line);
+    border-radius:var(--r); padding:.7rem .8rem; margin:.3rem 0 .2rem; color:var(--muted) }
+  /* The way out to the person level. Top-left, where the back button lives on
+     every other screen, because that is what it is: back, one level further. */
+  .who { display:inline-flex; align-items:center; gap:.4rem; background:none; border:0;
+    padding:.35rem .5rem .35rem 0; margin:0 0 .2rem -.1rem; font:inherit; font-size:.92rem;
+    color:var(--muted); cursor:pointer }
+  .who:hover { color:var(--accent) }
+  .who svg { color:var(--accent) }
+  .rows .row { display:flex; align-items:center; gap:.7rem; padding:.7rem .9rem;
+    border:1px solid var(--line); border-radius:var(--r); background:var(--card); margin:.4rem 0 }
+  .rows .row svg { color:var(--accent); flex:none }
+  .rows .row b { display:block; font-size:.97rem }
+  .rows .row small { color:var(--muted); font-size:.85rem }
+  .rows .row .grow { flex:1; min-width:0 }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<nav class="tabs" id="tabs" hidden></nav>
+<p id="say" role="status" aria-live="polite"></p>
+
+<script src="api.js"></script>
+<script>
+/* DwelLogs — the sheet-backed app, starting from nothing.
+   ------------------------------------------------------------------------
+   Deliberately smaller than the prototype. The prototype explores; this one
+   only contains what a real person needs to get from an empty account to
+   something worth opening tomorrow — which is also the most honest way to
+   draw the v1 line. If a screen is not on the path from zero to useful, it
+   is not here, and that is the argument for it not being in v1 either. */
+
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const say = m => { const e = $('#say'); e.textContent = m;
+  clearTimeout(say._t); if (m) say._t = setTimeout(() => e.textContent = '', 6000); };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const uid = () => 'loc-' + Math.random().toString(36).slice(2, 10);
+const today = () => new Date().toISOString().slice(0, 10);
+const inMonths = n => { const d = new Date(); d.setMonth(d.getMonth() + n);
+                        return d.toISOString().slice(0, 10); };
+const daysTo = d => d ? Math.round((new Date(d) - new Date()) / 864e5) : null;
+
+let DB = null, me = null, prop = null, screen = 'home', behind = false;
+
+/* The starter catalogue. Templates ship WITH the app — a first thing has to
+   bring its check-ups with it or the first screen teaches nothing. Kept small
+   on purpose: every type here is one somebody has to have got right. */
+/* A stand-in for a sourced dataset. It exists to prove the SHAPE — the app
+   offers, a person confirms, and profile_confirmed_on records that they did.
+   A real version needs a licensed climate/hazard source that can be named on
+   screen. Never a guess presented as a fact about somebody's house, and never
+   a risk score the owner cannot argue with. */
+const REGIONS = {
+  ca:{ climate:['hot_dry_summer','mild_winter','arid'], freezes:'no',
+       hazards:['wildfire','drought','earthquake'], terrain:[],
+       why:'California — usually hot dry summers with mild winters, wildfire and drought, and earthquake country.' },
+  or:{ climate:['wet_winter','mild_winter'], freezes:'yes', hazards:['wildfire','earthquake'], terrain:[],
+       why:'Oregon — wet winters, wildfire through the dry months.' },
+  wa:{ climate:['wet_winter'], freezes:'yes', hazards:['wildfire','earthquake','flood'], terrain:['coastal'],
+       why:'Washington — wet, wildfire inland, earthquake risk.' },
+  fl:{ climate:['humid_subtropical'], freezes:'no', hazards:['hurricane','flood'], terrain:['coastal'],
+       why:'Florida — humid, hurricanes, flooding.' },
+  tx:{ climate:['hot_dry_summer','mild_winter'], freezes:'yes', hazards:['tornado','hail','drought'], terrain:['open_plain'],
+       why:'Texas — hot, tornado and hail, and a freeze that catches people out.' },
+  mn:{ climate:['cold_winter'], freezes:'yes', hazards:['ice_storm','flood'], terrain:[],
+       why:'Minnesota — real winters. Freezing pipes are the main event.' },
+  ma:{ climate:['cold_winter'], freezes:'yes', hazards:['ice_storm','flood'], terrain:['coastal'],
+       why:'Massachusetts — cold winters, ice storms, coastal flooding.' },
+  co:{ climate:['cold_winter','arid'], freezes:'yes', hazards:['wildfire','hail','drought'], terrain:['mountain'],
+       why:'Colorado — hail, wildfire, hard freezes.' }
+};
+function guessProfile(region, country) {
+  const hit = REGIONS[String(region || '').trim().toLowerCase().slice(0, 2)];
+  if (hit) return hit;
+  return { climate:[], freezes:'not_sure_yet', hazards:[], terrain:[],
+    why:'Nothing known about ' + (region || country || 'there') + ' yet, so nothing is assumed. Tick what you know.' };
+}
+
+/* Grouped because a flat list of forty is unreadable, and grouped THIS way
+   because the groups are what differ in practice: a home that moves has tyres
+   and a registration, an outbuilding usually has no plumbing, an area has no
+   roof at all. Official taxonomies were little help — the US Census lumps
+   "mobile homes or trailers, tents, and boats" together, because it is built
+   for counting units rather than looking after them. */
+/* Climate is what the sky does, elevation is a number, terrain is how the
+   ground treats the house. Every value below changes actual work — that is the
+   bar for being on the list. No "inland": inland is what you are when you have
+   not ticked coastal, and a none-of-the-above option gets ticked by everyone
+   and means nothing. */
+const TERRAIN = [
+  ['coastal',          'by the sea'],
+  ['lakeside',         'on a lake'],
+  ['riverside',        'on a river or creek'],
+  ['valley_floor',     'valley floor'],
+  ['ridge_or_exposed', 'a ridge, or exposed'],
+  ['mountain',         'mountain'],
+  ['wooded',           'in trees'],
+  ['open_plain',       'open and flat']
+];
+
+/* Plain words, because "arid" is a geography word and nobody describes their
+   own back yard with it. Every label here has to survive being read out loud
+   to somebody who has never used the app. */
+const CLIMATE = [
+  ['hot_dry_summer',    'hot dry summers'],
+  ['mild_winter',       'mild winters'],
+  ['cold_winter',       'cold winters'],
+  ['wet_winter',        'wet winters'],
+  ['humid_subtropical', 'warm and humid most of the year'],
+  ['arid',              'dry all year — very little rain']
+];
+const HAZARD = [
+  ['wildfire','wildfire'], ['flood','flooding'], ['earthquake','earthquakes'],
+  ['hurricane','hurricanes'], ['tornado','tornadoes'], ['ice_storm','ice storms'],
+  ['drought','drought'], ['hail','hail']
+];
+
+/* Every extensible list ends with this. The list is never going to be complete
+   — an attached greenhouse, a cistern, a swamp buggy — and the fastest way to
+   find out what is missing is to let people say it in their own words and
+   count how often the same word comes back. Nothing types itself into the
+   list: a count is evidence, a person decides. That last part is what keeps a
+   thoughtful addition thoughtful and a joke out of the picklist. */
+/* Short line on the screen, the reason behind it. */
+function tip(text, label) {
+  return `<details class="tip"><summary>${esc(label || 'Why we ask')}</summary>
+    <p>${text}</p></details>`;
+}
+function otherBox(key, label) {
+  draft.other = draft.other || {};
+  // The key carries a dot ("structure.water") because that is what it means.
+  // The id cannot — a dot in a CSS selector is a class.
+  const id = 'ot-' + key.replace(/\W/g, '-');
+  return `<div class="other"><label for="${id}">${esc(label || 'Something else?')}</label>
+    <input id="${id}" class="otv" data-k="${key}" placeholder="in your own words"
+      value="${esc(draft.other[key] || '')}">
+    ${tip('If enough people write the same thing, it becomes a real option. Somebody reads them ' +
+       'first — nothing is added automatically.', 'What happens to this')}</div>`;
+}
+function takeOther() {
+  draft.other = draft.other || {};
+  document.querySelectorAll('.otv').forEach(e => {
+    const v = (e.value || '').trim();
+    if (v) draft.other[e.dataset.k] = v; else delete draft.other[e.dataset.k];
+  });
+}
+
+/* She typed "tiny house" for the place, then the next screen asked her to
+   classify it. She had already said it. Match what she wrote against the list
+   and preselect it — and say on screen that is what happened, so the answer is
+   still hers to change rather than something that quietly filled itself in. */
+function guessKind(text) {
+  const t = String(text || '').toLowerCase().trim();
+  if (!t) return null;
+  let hit = null;
+  Object.values(KINDS).flat().forEach(([v, label]) => {
+    const l = label.toLowerCase();
+    const words = [v.replace(/_/g, ' '), l, l.split(/ or | ,|,/)[0]];
+    words.forEach(w => {
+      if (!w || w.length < 3) return;
+      if (t === w || t.includes(w)) { if (!hit || w.length > hit.w.length) hit = { v, label, w }; }
+    });
+  });
+  return hit;
+}
+
+/* ---- calibrating by kind ------------------------------------------------
+   The rule, and it is narrow on purpose: kind may REORDER and may REMOVE what
+   cannot physically exist. It may never tick anything, and it may never imply
+   a hookup — a treehouse with power and a barn without are both ordinary, and
+   structure.kind says exactly that. A houseboat is not asked about a basement
+   because it cannot have one. A tiny house IS still asked about a crawlspace,
+   because plenty sit on blocks over one. Anything hidden stays one tap away
+   behind "show the rest", so an unusual place is never locked out of its own
+   answer. An unrecognised kind — including whatever somebody typed into
+   "other" — filters NOTHING, because we know nothing. */
+const WHEELS   = ['tiny_house','mobile_home','rv','camper_van','travel_trailer',
+                  'bus_conversion','park_model'];
+const FLOATING = ['houseboat','sailboat'];
+const SOFT     = ['yurt','treehouse'];
+const HOMES    = ['house','townhouse','apartment','duplex_unit','adu','cabin','cottage'];
+const OUTBUILD = ['detached_garage','carport','shed','workshop','barn','pole_barn','stable',
+                  'attached_garage','deck','porch','patio','balcony','sunroom','breezeway','carport_attached',
+                  'greenhouse','pump_house','root_cellar','boathouse','pool_house','studio',
+                  'guest_cabin','coop','animal_pen','kennel','silo','warehouse'];
+const LANDISH  = ['garden','orchard','pasture','yard','driveway','dock','pool_area',
+                  'septic_field','well_site','fence_line'];
+/* The group the later screens filter by. A bare lot has no building at all, so
+   the building kind cannot answer it — the place kind has to. */
+function flowGroup() {
+  if (['land','lot'].includes(draft.pkind)) return 'land';
+  return kgroup(draft.bkind);
+}
+function kgroup(k) {
+  if (WHEELS.includes(k))   return 'wheels';
+  if (FLOATING.includes(k)) return 'floating';
+  if (SOFT.includes(k))     return 'soft';
+  if (HOMES.includes(k))    return 'home';
+  if (OUTBUILD.includes(k)) return 'outbuilding';
+  if (LANDISH.includes(k))  return 'land';
+  return 'unknown';   // filters nothing
+}
+/* [value, label, asset types it creates, rules] — rules are {no:[groups]} or
+   {only:[groups]}. Anything that creates no asset creates no asset: city water
+   is a true fact with nothing to service, and inventing a row for it would be
+   a lie about what you own. */
+const SYSTEMS = [
+  { k:'water', multi:true, q:'Where does the water come from?', off:['land'], o:[
+    ['hookup','Whatever I am parked next to',['Inline hookup filter'],{only:['wheels','floating']}],
+    ['well','A well',['Well'],{}],
+    ['city','City or municipal',[],{no:['floating']}],
+    ['shared','A shared or community system',[],{no:['floating']}],
+    ['spring','A spring',['Well'],{no:['floating']}],
+    ['hauled','Hauled in to a tank',['Water storage tank'],{}],
+    ['dockside','A dockside hookup',[],{only:['floating']}],
+    ['onboard_tank','A tank aboard',['Water storage tank'],{only:['floating','wheels']}],
+    ['none','No water here',[],{}] ] },
+
+  { k:'waste', multi:true, q:'Where does the waste go?', off:['land'], o:[
+    ['hookup','Whatever is there when I park',[],{only:['wheels','floating']}],
+    ['septic','A septic system',['Septic tank'],{no:['floating']}],
+    ['sewer','City sewer',[],{no:['floating']}],
+    ['holding_tank','A holding tank',['Holding tank'],{}],
+    ['composting','A composting toilet',['Composting toilet'],{}],
+    ['none','No plumbing here',[],{}] ] },
+
+  { k:'power', q:'Where does the power come from?', multi:true, o:[
+    ['hookup','Whatever is there when I park',[],{only:['wheels','floating']}],
+    ['grid','The grid',[],{}],
+    ['shore','Shore power',[],{only:['floating','wheels']}],
+    ['solar','Solar',['Solar array'],{}],
+    ['battery','A battery bank',['Battery bank'],{}],
+    ['generator','A generator',['Generator'],{}],
+    ['none','No power here',[],{}] ] },
+
+  { k:'heat', q:'What heats it?', multi:true, off:['land'], o:[
+    ['wood','Wood',['Wood stove'],{}],
+    ['pellet','Pellets',['Pellet stove'],{}],
+    ['propane','Propane',['Propane tank'],{}],
+    ['natural_gas','Natural gas',[],{no:['floating','wheels']}],
+    ['kerosene','Kerosene',['Kerosene heater'],{}],
+    ['oil','Heating oil',['Oil tank'],{no:['floating','wheels']}],
+    ['electric','Electric',[],{}],
+    ['heat_pump','A heat pump',['Heat pump'],{}],
+    ['none','Nothing heats it',[],{}] ] },
+
+  { k:'cooling', q:'What cools it?', multi:true, off:['land'], o:[
+    ['central','Central air',['Central air'],{no:['floating','wheels','soft']}],
+    ['mini_split','Mini-splits',['Mini-split'],{}],
+    ['window_unit','Window units',['Window unit'],{}],
+    ['swamp_cooler','A swamp cooler',['Swamp cooler'],{no:['floating']}],
+    ['whole_house_fan','A whole-house fan',['Whole-house fan'],{no:['floating','wheels','soft']}],
+    ['none','Nothing cools it',[],{}] ] },
+
+  { k:'hot_water', multi:true, q:'Where does the hot water come from?', off:['land'], o:[
+    ['tank','A tank heater',['Water heater'],{}],
+    ['tankless','A tankless heater',['Tankless water heater'],{}],
+    ['point_of_use','Heaters at the tap',['Point-of-use heater'],{}],
+    ['solar','Solar',['Solar water heater'],{}],
+    ['none','No hot water here',[],{}] ] }
+];
+/* Spaces become Areas, because a sump pump and a roof leak have to live
+   somewhere. Same rule: a boat is never offered a basement. */
+const SPACES = [
+  ['basement',   'A basement',                                   'utility', {no:['floating','wheels','soft','land']}],
+  ['crawlspace', 'A crawl space underneath',                     'utility', {no:['floating','land']}],
+  ['slab',       'It sits flat on concrete — nothing underneath', null,     {no:['floating','wheels','land']}],
+  ['piers',      'It stands on piers, blocks or stilts',          null,     {no:['floating','land']}],
+  ['attic',      'An attic',                                      'utility', {no:['floating','wheels','land']}],
+  ['loft',       'A loft',                                        'utility', {no:['land']}],
+  ['roof_deck',  'A roof you walk on',                            'outdoor', {no:['land']}],
+  // A boat is not a house with the basement removed. It has its own places
+  // where water collects and machinery lives, and those are the ones that need
+  // looking at. Asking a boat owner nothing would be as wrong as asking them
+  // about a basement.
+  ['bilge',      'A bilge',                        'utility', {only:['floating']}],
+  ['hull',       'Hull below the waterline',       'outdoor', {only:['floating']}],
+  ['engine_bay', 'An engine bay',                  'utility', {only:['floating','wheels']}],
+  ['underbelly', 'An underbelly or belly pan',     'utility', {only:['wheels']}]
+];
+/* The tick reads as a sentence; the area is a place you point at. They are not
+   the same string. */
+const AREA_NAME = { basement:'Basement', crawlspace:'Crawl space', attic:'Attic', loft:'Loft',
+  roof_deck:'Roof', bilge:'Bilge', hull:'Hull', engine_bay:'Engine bay', underbelly:'Underbelly' };
+const ROOMS = [
+  ['bedrooms','Bedrooms','bedroom',{no:['land','outbuilding']}],
+  ['bathrooms','Bathrooms','bathroom',{no:['land']}],
+  ['kitchens','Kitchens','kitchen',{no:['land','outbuilding']}]
+];
+const allowed = (rules, g) =>
+  g === 'unknown' ? true
+  : rules.only ? rules.only.includes(g)
+  : !(rules.no || []).includes(g);
+function splitByKind(list, g, ruleAt) {
+  const keep = [], rest = [];
+  list.forEach(x => (allowed(ruleAt(x), g) ? keep : rest).push(x));
+  return { keep, rest };
+}
+
+const KINDS = {
+  'Homes': [['house','House'],['townhouse','Townhouse or row house'],
+    ['apartment','Apartment, flat or condo'],['duplex_unit','Duplex or multiplex unit'],
+    ['adu','ADU, guest house or granny flat'],['cabin','Cabin'],['cottage','Cottage']],
+  'Homes that move': [['tiny_house','Tiny house on wheels'],
+    ['mobile_home','Mobile or manufactured home'],['rv','RV or motorhome'],
+    ['camper_van','Camper van or conversion'],['travel_trailer','Travel trailer or fifth wheel'],
+    ['bus_conversion','Bus conversion'],['houseboat','Houseboat'],
+    ['sailboat','Sailboat or liveaboard'],['yurt','Yurt'],['park_model','Park model']],
+  'Outbuildings': [['detached_garage','Detached garage'],['carport','Carport'],['shed','Shed'],
+    ['workshop','Workshop'],['barn','Barn'],['pole_barn','Pole barn'],['stable','Stable or tack room'],
+    ['greenhouse','Greenhouse'],['pump_house','Pump house or well house'],['root_cellar','Root cellar'],
+    ['boathouse','Boathouse'],['treehouse','Treehouse'],['pool_house','Pool house or cabana'],
+    ['studio','Studio'],['guest_cabin','Guest cabin'],['coop','Chicken coop'],
+    ['animal_pen','Animal pen or run'],['kennel','Kennel'],['silo','Grain bin or silo'],
+    ['warehouse','Warehouse or storage building']],
+  'Attached to another building': [['attached_garage','Attached garage'],
+    ['deck','Deck or wrap-around deck'],['porch','Porch'],['patio','Patio'],
+    ['balcony','Balcony'],['sunroom','Sunroom or conservatory'],
+    ['breezeway','Breezeway'],['carport_attached','Attached carport']],
+  'Land and areas': [['garden','Garden'],['orchard','Orchard'],['pasture','Pasture or field'],
+    ['yard','Yard'],['driveway','Driveway or road'],['dock','Dock or pier'],
+    ['pool_area','Pool area'],['septic_field','Septic field'],['well_site','Well site'],
+    ['fence_line','Fence line']]
+};
+function kindOptions(sel) {
+  return Object.entries(KINDS).map(([g, list]) =>
+    `<optgroup label="${g}">${list.map(([v, l]) =>
+      `<option value="${v}"${v === sel ? ' selected' : ''}>${l}</option>`).join('')}</optgroup>`).join('')
+    + `<optgroup label="Not here"><option value="__other"${sel === '__other' ? ' selected' : ''}>Something else…</option></optgroup>`;
+}
+/* Typing "tiny house" into the place name moves the kind under it — but only
+   while nobody has touched the kind themselves. */
+/* Nobody names a shed. They point at it and say "the shed", and the app making
+   them type that word is the app asking for something it already knows. So a
+   name is never required: it falls back to what the thing IS, and only when
+   there are two of them does anything need distinguishing — at which point the
+   second becomes "Shed 2" and they can rename it to "the one by the gate" if
+   and when that is useful to them. */
+function kindLabel(v) {
+  const hit = Object.values(KINDS).flat().find(([k]) => k === v);
+  return hit ? hit[1] : String(v || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+}
+function uniqueName(base, taken) {
+  if (!taken.includes(base)) return base;
+  let n = 2;
+  while (taken.includes(base + ' ' + n)) n++;
+  return base + ' ' + n;
+}
+/* Changing the kind redraws the screen, and a redraw rebuilds it from draft —
+   so whatever is typed above has to land in draft first. Third time this bug
+   has appeared; every redraw-mid-answer path now keeps what is on screen. */
+function keepPlace() {
+  ['place','city','region'].forEach(k => {
+    const el = $('#f-' + k); if (el) draft[k] = (el.value || '').trim();
+  });
+}
+/* Picking a kind IS the answer to this screen, so it moves on by itself. */
+function pickPlace(v) {
+  draft.pkind = v;
+  draft.kind = v;
+  draft.bkind = HOLDS_BUILDINGS.includes(v) ? 'house'
+              : ['land','lot'].includes(v) ? '' : (PLACE_IS[v] || 'house');
+  // A name we made up follows the kind. A name SHE typed does not — going back
+  // and picking farm instead of ranch should not quietly rename "Hollow Creek".
+  if (!draft.placeNamed) draft.place = placeLabel(v);
+  if (!draft.buildingNamed)
+    draft.building = HOLDS_BUILDINGS.includes(v) ? kindLabel(draft.bkind) : draft.place;
+  drawHub();
+}
+function pickedPlace(v) {
+  keepPlace();
+  draft.pkind = v; draft.kindTouched = true;
+  drawFirst();
+}
+function maybeKind(v) {
+  if (draft.kindTouched) return;
+  const g = guessPlace(v);
+  if (g && $('#f-pk') && $('#f-pk').value !== g) {
+    // Redrawing rebuilds the screen from draft, so what is being typed has to
+    // land in draft first — otherwise the guess eats the name that triggered it.
+    keepPlace(); draft.place = v;
+    $('#f-pk').value = g; draft.pkind = g; drawFirst();
+    const el = $('#f-place'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }
+}
+/* "The Ranch" is a ranch. Guessed from words people actually put in a place
+   name, matched on whole words and longest-phrase-wins — so "Tiny house" lands
+   on the moving home rather than on "house", and "Mom's place" matches nothing
+   at all, which is the right answer. A wrong guess costs more than no guess:
+   it is a wrong answer somebody has to notice before they can correct it. */
+const PLACE_WORDS = {
+  mobile_home:['tiny house','tiny home','mobile home','motorhome','camper','trailer','rv','airstream'],
+  boat:['houseboat','sailboat','boat','yacht','slip','marina'],
+  smallholding:['smallholding','croft'],
+  homestead:['homestead'],
+  ranch:['ranch'], farm:['farm'], estate:['estate'], compound:['compound'],
+  cabin:['cabin','cottage','chalet','lodge'],
+  townhouse:['townhouse','row house','rowhouse'],
+  condo:['condo','apartment','flat'],
+  rental:['rental'],
+  land:['acreage','land'], lot:['lot'],
+  house:['house','home']
+};
+function guessPlace(text) {
+  const t = ' ' + String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+  if (t.trim().length < 2) return null;
+  let best = null;
+  Object.entries(PLACE_WORDS).forEach(([v, words]) => words.forEach(w => {
+    if (t.includes(' ' + w + ' ') && (!best || w.length > best.w.length)) best = { v, w };
+  }));
+  return best ? best.v : null;
+}
+function otherKind(sel) {
+  const box = document.getElementById(sel.id + '-other');
+  if (!box) return;
+  box.hidden = sel.value !== '__other';
+  if (sel.value === '__other') setTimeout(() => box.querySelector('input').focus(), 0);
+}
+
+const STARTER = {
+  'Water & well': [
+    ['Well',                  [['Test the water', 1, 'year', 'code'],
+                               ['Pressure check', 1, 'year', 'our_estimate']]],
+    ['Water storage tank',    [['Inspect and clean', 1, 'year', 'our_estimate']]],
+    ['Whole-house filter',    [['Replace the cartridge', 6, 'month', 'manufacturer']]],
+    // For a dwelling that hooks up: the filter is hers and travels with her, but
+    // what it is protecting her from changes with the address.
+    ['Inline hookup filter',  [['Check it before you connect', 0, 'arrival', 'our_estimate',
+                                ['well','spring','hauled','shared','not_sure_yet']],
+                               ['Replace the cartridge', 3, 'month', 'manufacturer']]],
+    ['Water softener',        [['Top up the salt', 1, 'month', 'our_estimate']]],
+    ['Water heater',          [['Flush the tank', 1, 'year', 'manufacturer'],
+                               ['Replace the anode rod', 5, 'year', 'manufacturer']]],
+    ['Tankless water heater', [['Flush', 1, 'year', 'manufacturer']]],
+    ['Point-of-use heater',   [['Descale', 1, 'year', 'manufacturer']]],
+    ['Solar water heater',    [['Check the loop and fluid', 1, 'year', 'manufacturer']]]
+  ],
+  'Septic & sewer': [
+    ['Septic tank',       [['Pump-out', 3, 'year', 'code']]],
+    ['Holding tank',      [['Pump-out', 3, 'month', 'our_estimate']]],
+    ['Composting toilet', [['Empty the chamber', 3, 'month', 'manufacturer']]]
+  ],
+  'Power': [
+    ['Solar array',  [['Inspect and clean the panels', 1, 'year', 'our_estimate']]],
+    ['Battery bank', [['Check the cells', 6, 'month', 'our_estimate']]],
+    ['Generator',    [['Run it under load', 1, 'month', 'manufacturer'],
+                      ['Change the oil', 1, 'year', 'manufacturer']]]
+  ],
+  'Heating & fuel': [
+    ['Propane tank',    [['Check the level', 1, 'month', 'our_estimate']]],
+    ['Oil tank',        [['Check the level', 1, 'month', 'our_estimate']]],
+    ['Wood stove',      [['Sweep the chimney', 1, 'year', 'code']]],
+    ['Pellet stove',    [['Clean the burn pot', 1, 'month', 'manufacturer'],
+                         ['Sweep the vent', 1, 'year', 'code']]],
+    ['Kerosene heater', [['Replace the wick', 1, 'year', 'manufacturer']]],
+    ['Furnace',         [['Replace the filter', 3, 'month', 'manufacturer']]],
+    ['Heat pump',       [['Replace the filter', 3, 'month', 'manufacturer'],
+                         ['Clear the outdoor coil', 1, 'year', 'our_estimate']]]
+  ],
+  'Cooling': [
+    ['Central air',     [['Replace the filter', 3, 'month', 'manufacturer']]],
+    ['Mini-split',      [['Clean the filters', 3, 'month', 'manufacturer']]],
+    ['Window unit',     [['Clean the filter', 1, 'month', 'manufacturer']]],
+    ['Swamp cooler',    [['Replace the pads', 1, 'year', 'our_estimate'],
+                         ['Winterise it', 1, 'year', 'our_estimate']]],
+    ['Whole-house fan', [['Clean the louvres', 1, 'year', 'our_estimate']]]
+  ],
+  'Appliances': [
+    ['Refrigerator', [['Replace the water filter', 6, 'month', 'manufacturer'],
+                      ['Vacuum the coils', 1, 'year', 'our_estimate']]],
+    ['Freezer',      [['Defrost and check the seal', 1, 'year', 'our_estimate']]],
+    ['Dishwasher',   [['Clean the filter', 3, 'month', 'manufacturer']]],
+    ['Dryer',        [['Clear the vent hose', 1, 'year', 'code']]],
+    ['Washer',       [['Replace the supply hoses', 5, 'year', 'our_estimate']]],
+    ['Range or oven',[['Clean the hood filter', 3, 'month', 'our_estimate']]]
+  ],
+  'Safety': [
+    ['Smoke detector',           [['Test it', 6, 'month', 'code'],
+                                  ['Replace the unit', 10, 'year', 'code']]],
+    ['Carbon monoxide detector', [['Test it', 6, 'month', 'code'],
+                                  ['Replace the unit', 7, 'year', 'code']]],
+    ['Fire extinguisher',        [['Check the gauge', 1, 'year', 'code']]]
+  ]
+};
+
+
+// ---- boot ---------------------------------------------------------------
+/* Places this person is actually on. A sheet can hold several and a person is
+   not on all of them. */
+function myPlaces() {
+  if (!me) return DB.property || [];
+  const on = new Set((DB.membership || []).filter(m => m.person_id === me.id)
+    .map(m => m.property_id));
+  return (DB.property || []).filter(p => on.has(p.id));
+}
+function switchPlace(id) {
+  prop = (DB.property || []).find(p => p.id === id) || prop;
+  localStorage.setItem('dwellogs.place', prop.id);
+  localStorage.removeItem('dwellogs.new');
+  show('home');
+}
+/* ---- links that carry the setup -----------------------------------------
+   The invite code alone was useless to the person who most needed it. Somebody
+   handed a six-character code still has to find the app, tap "connect to a
+   sheet", and paste a URL and a token they were never given — which is exactly
+   the wall you put a non-technical husband in front of. So the link carries the
+   connection: he taps it and the app is already pointed at the right sheet with
+   his invite waiting.
+
+   It goes in the FRAGMENT, after the #, because fragments are never sent to a
+   server — not ours, not a proxy's, not a log's. And it is worth being plain
+   about what that link is: it holds the sheet's key. Send it the way you would
+   send a house key, not the way you would post an address. */
+function packLink(obj) {
+  return btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function unpackLink(sTxt) {
+  try { return JSON.parse(atob(sTxt.replace(/-/g, '+').replace(/_/g, '/'))); }
+  catch (e) { return null; }
+}
+function handoffLink(extra) {
+  const base = location.href.split('#')[0];
+  return base + '#j=' + packLink(Object.assign({
+    u: localStorage.getItem('dwellogs.url') || '',
+    t: localStorage.getItem('dwellogs.token') || '' }, extra || {}));
+}
+/* Read once, then scrub the address bar: a link this powerful should not sit in
+   history or get shared on by a screenshot of the URL. */
+function takeHandoff() {
+  const m = /^#j=(.+)$/.exec(location.hash || '');
+  if (!m) return null;
+  const d = unpackLink(m[1]);
+  history.replaceState(null, '', location.href.split('#')[0]);
+  if (!d) return null;
+  if (typeof d.u === 'string') localStorage.setItem('dwellogs.url', d.u);
+  if (typeof d.t === 'string') localStorage.setItem('dwellogs.token', d.t);
+  if (d.p) localStorage.setItem('dwellogs.me', d.p);
+  return d;
+}
+
+async function boot() {
+  const handoff = takeHandoff();
+  // An absent key means they have never chosen; an empty one means they chose
+  // this device. Those are different, and conflating them means a new person
+  // never gets offered the sheet.
+  if (localStorage.getItem('dwellogs.url') === null) return connect();
+  const url = localStorage.getItem('dwellogs.url') || '';
+  const tok = localStorage.getItem('dwellogs.token') || '';
+  DwelLogs.configure(url, tok);
+  let res;
+  try { res = await DwelLogs.load(); }
+  catch (e) { return connect('Could not reach the sheet: ' + e.message); }
+  DB = res.db;
+  // Who you are is remembered, because on a shared sheet the first owner row is
+  // not necessarily you — and picking the wrong person silently signs somebody
+  // else's name to everything you log.
+  const mine = localStorage.getItem('dwellogs.me');
+  me = (DB.person || []).find(p => p.id === mine)
+    || (DB.person || []).filter(p => p.role === 'owner')[0] || null;
+  if (me) localStorage.setItem('dwellogs.me', me.id);
+  const last = localStorage.getItem('dwellogs.place');
+  prop = myPlaces().find(p => p.id === last) || myPlaces()[0] || (DB.property || [])[0] || null;
+  if (prop) localStorage.setItem('dwellogs.place', prop.id);
+  if (res.stale) say('Showing the last copy — could not reach the sheet.');
+  behind = !!res.needsMigration;
+  // A link with an invite in it goes straight to the invite, skipping the name
+  // screen and the fork — he was sent here for one thing.
+  if (handoff && handoff.c) return joinByLink(handoff.c);
+  if (!me || !prop) return firstRun();
+  show('home');
+}
+
+function connect(msg) {
+  $('#tabs').hidden = true;
+  app.innerHTML = `<h1>Connect it to a sheet</h1>
+    <p class="sub">Or leave both blank and it runs on this device only — same app, nothing
+      shared, fine for a walk-through.</p>
+    ${msg ? `<div class="banner">${esc(msg)}</div>` : ''}
+    <label for="u">Web app URL</label><input id="u" placeholder="https://script.google.com/…/exec">
+    <label for="t">Token</label><input id="t" placeholder="">
+    <p class="hint">The TOKEN you set in Script Properties.</p>
+    <div class="actions">
+      <button class="primary" onclick="saveConn()">Use this sheet</button>
+      <button class="ghost" onclick="saveConn(true)">Just this device</button>
+    </div>`;
+}
+function saveConn(local) {
+  localStorage.setItem('dwellogs.url', local ? '' : ($('#u').value || '').trim());
+  localStorage.setItem('dwellogs.token', local ? '' : ($('#t').value || '').trim());
+  boot();
+}
+
+// ---- first run ----------------------------------------------------------
+/* Two flows, not one. A PERSON and a PROPERTY are separate rows joined by a
+   membership, and the setup has to say so — otherwise "new user" quietly
+   means "new property", and somebody invited to their mother's place gets
+   asked what kind of building she lives in.
+
+     signUp      -> who you are. Once, ever.
+     fork        -> set up a place, or join one you were invited to.
+     PLACE steps -> reused verbatim by "Add a place" later. A second home runs
+                    exactly this, minus the person.
+     JOIN steps  -> no property is created at all.
+*/
+let fs = 0, draft = {}, flow = null, hubStep = null;
+const FLOW_LABEL = { place:'Setting up a place', join:'Joining a place' };
+
+/* Opened an invite link: name, then the preview. Two taps, no codes typed. */
+function joinByLink(code) {
+  $('#tabs').hidden = true;
+  fs = 0; draft = { code:String(code).toUpperCase() }; flow = 'join'; hubStep = null;
+  const inv = lookupInvite(draft.code);
+  app.innerHTML = `<p class="step">You have been invited</p>
+    <h1>${esc(inv ? 'Join ' + (((DB.property || []).find(p => p.id === inv.property_id) || {}).name
+      || 'their place') : 'That invite is not good')}</h1>
+    <p class="sub">${inv ? 'First, what should we call you?'
+      : 'It may have been used already, revoked, or run out. Ask them for a new link.'}</p>
+    ${inv ? `<label for="f-name">Your name</label>
+      <input id="f-name" placeholder="your name">
+      <p class="hint">So the log can say who did what. No password to forget.</p>
+      <div class="actions"><button class="primary" onclick="tookLinkName()">Next</button></div>`
+    : `<div class="actions"><button class="ghost" onclick="firstRun()">Start fresh instead</button></div>`}`;
+  if (inv) setTimeout(() => $('#f-name').focus(), 0);
+}
+function tookLinkName() {
+  const n = ($('#f-name').value || '').trim();
+  if (!n) { $('#f-name').classList.add('missing'); $('#f-name').focus();
+            return say('We need something to put on the log entries.'); }
+  draft.name = n;
+  const inv = lookupInvite(draft.code);
+  draft.invite = inv;
+  fs = 1;                       // straight to "here is what you would get"
+  drawFirst();
+}
+function firstRun() { $('#tabs').hidden = true; fs = 0; draft = {}; flow = null; hubStep = null; drawWho(); }
+
+/* Name and door on one screen. They were two, and the first one held a single
+   text box — a whole screen to ask one question somebody was always going to
+   answer in three seconds. */
+function drawWho() {
+  $('#tabs').hidden = true;
+  app.innerHTML = `<p class="step">Getting started</p>
+    <h1>Start with your name.</h1>
+    <p class="sub">Every entry says who made it. That is the whole of signing up.</p>
+    <label for="f-name">What should we call you?</label>
+    <input id="f-name" placeholder="your name" value="${esc(draft.name || '')}">
+    <p class="hint">No password to forget.</p>
+    <label style="margin-top:1.4rem">And then?</label>
+    <div class="card tap"><button onclick="tookWho('place')">
+      <span class="title">Set up a new place</span>
+      <p class="meta">A house, a ranch, a rental, a boat, a tiny home.</p>
+    </button></div>
+    <div class="card tap"><button onclick="tookWho('join')">
+      <span class="title">Join one that already exists</span>
+      <p class="meta">Somebody sent you an invite.</p>
+    </button></div>
+    <p class="hint">Either one later — a person can run several places and be on other people's.</p>`;
+  setTimeout(() => $('#f-name').focus(), 0);
+}
+function tookWho(f) {
+  const n = ($('#f-name').value || '').trim();
+  if (!n) { $('#f-name').classList.add('missing'); $('#f-name').focus();
+            return say('We need something to put on the log entries.'); }
+  draft.name = n;
+  startFlow(f);
+}
+function startFlow(f) { flow = f; fs = 0; drawFirst(); }
+
+/* Everything below here is the PLACE flow, and "Add a place" runs the same
+   array from within the app. One definition, so a second property can never
+   drift from the first. */
+/* Line-art outlines, drawn here rather than fetched: one 24×24 grid, stroke in
+   currentColor so every one of them inherits the palette and works in both
+   themes without a second copy. Simple on purpose — at 40px a detailed drawing
+   is mud, and these have to read at a glance in a grid of twelve. */
+const ICON = {
+  house:        'M3 11 12 4l9 7M5 10v9h14v-9M10 19v-5h4v5',
+  townhouse:    'M2 11 6.5 7 11 11M13 11l4.5-4L22 11M3.5 10v9h6v-9M14.5 10v9h6v-9M5.5 19v-4h2v4M16.5 19v-4h2v4',
+  condo:        'M6 21V4h12v17M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10.5 21v-3h3v3',
+  cabin:        'M3 11 12 4l9 7M5 10v9h14v-9M16 6.5V3h2v5M5 13h14M5 16h14M10 19v-3h4v3',
+  mobile_home:  'M3 8h13l4 4v4H3zM7 16v2M16 16v2M6.5 20a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6M16.5 20a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6M20 12h-3V8',
+  boat:         'M3 16h18l-2.5 4h-13zM12 15V6M12 6 18 12h-6M12 8 7 12h5',
+  rental:       'M3 11 12 4l9 7M5 10v9h14v-9M12 13.5a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2M12 13.5V17M12 15.5h1.5',
+  ranch:        'M6 12 9 9l3-2 3 2 3 3M7 11.5V19h10v-7.5M10 19v-4h4v4M12 15v4M1 19h22M2 13v5M5 13v5M1 15h5',
+  farm:         'M2 11 8 6l6 5M3 10.5V19h10v-8.5M17 19V9a2 2 0 0 1 4 0v10M17 12h4M2 19h20M6 19v-4h4v4',
+  homestead:    'M3 11 9 6l6 5M4 10.5V19h10v-8.5M7 19v-4h4v4M2 19h20M19 19v-4M19 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6',
+  smallholding: 'M3 11 8 7l5 4M4 10.5V19h8v-8.5M2 19h20M15 19v-5M18 19v-5M21 19v-5M15 16h6',
+  compound:     'M2 10 7 6l5 4M3 9.5V19h8V9.5M14 19v-5h3v5M19 19v-4h3v4M2 19h20',
+  estate:       'M4 19V9l4-3 4 3v10M12 19v-7l4-3 4 3v7M2 19h20M6.5 19v-4h3v4M15.5 19v-3h3v3',
+  land:         'M2 9h20M3 13h18M4 17h16M2 21h20M8 5l1.5 3M16 5l-1.5 3',
+  lot:          'M3 6h3M9 6h3M15 6h3M21 6v3M21 12v3M21 18h-3M15 18h-3M9 18h-3M3 18v-3M3 12V9M9 14l3-4 3 4z',
+  // outbuildings
+  shed:         'M4 11 12 5l8 6M5.5 10.5V19h13v-8.5M10 19v-5h4v5',
+  barn:         'M3 11 12 4l9 7M4.5 10V19h15v-9M9 19v-6h6v6M12 13v6',
+  detached_garage:'M3 11 12 5l9 6M4.5 10.5V19h15v-8.5M7.5 19v-6h9v6M7.5 15.5h9',
+  greenhouse:   'M3 11 12 5l9 6M4.5 10.5V19h15v-8.5M12 10.5V19M4.5 14.5h15',
+  coop:         'M5 12 11 7l6 5M6 11.5V19h10v-7.5M9.5 19v-4h3v4M19 8v4M18 8h2',
+  workshop:     'M3 12 12 6l9 6M4.5 11V19h15v-8M8 15.5l2.5 2.5M13.5 15.5 16 18',
+  deck:         'M2 14h20v6H2zM6 14v6M10 14v6M14 14v6M18 14v6M3 10h18M3 7v7M21 7v7M9 8v3M15 8v3',
+  pool_house:   'M4 11 12 6l8 5M5.5 10.5V19h13v-8.5M2 21c1.5-1 3-1 4.5 0s3 1 4.5 0 3-1 4.5 0 3 1 4.5 0',
+  studio:       'M4 11 12 5l8 6M5.5 10.5V19h13v-8.5M9 19v-4h6v4M9 15h6',
+  pump_house:   'M6 12 12 7l6 5M7 11.5V19h10v-7.5M11 19v-3h2v3M20 14v5M18 19h4',
+  // the rest of the setup
+  location:     'M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5',
+  systems:      'M9 3v5M15 3v5M7 8h10v4a5 5 0 0 1-10 0zM12 17v4M9 21h6',
+  people:       'M9 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 9 11M3 20v-1.5C3 16 5.7 14.5 9 14.5s6 1.5 6 4V20M17 10.5a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2M17 14.2c2.4.2 4 1.6 4 3.6V20',
+  rooms:        'M3 4h18v16H3zM3 12h18M12 12v8M8 8h3',
+  things:       'M4 8 12 4l8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8',
+  animal:       'M6.5 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4M17.5 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4M9.5 8.5a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4M14.5 8.5a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4M12 20c-2.8 0-4.5-1.6-4.5-3.6S9.2 12 12 12s4.5 2.4 4.5 4.4S14.8 20 12 20',
+  wrong:        'M12 4 2.5 20h19zM12 10v5M12 17.5v.5',
+  invite:       'M3 6h18v12H3zM3 7l9 6 9-6',
+  buildings:    'M3 20V10l5-4 5 4v10M13 20v-7l4-3 4 3v7M1 20h22M6 20v-4h3v4',
+  device:       'M3 5h11v9H3zM3 14h11M6 18h5M8.5 14v4M16 9h5v12h-5zM17.5 11.5h2M18.5 19h1',
+  restart:      'M20 12a8 8 0 1 1-2.6-5.9M20 3v5h-5',
+  speech:       'M4 5h16v11H9l-4 4v-4H4zM8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01',
+  camera:       'M4 7h3l1.5-2h7L17 7h3v12H4zM12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7',
+  person:       'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4.5 20.5v-1.7c0-2.9 3.4-4.8 7.5-4.8s7.5 1.9 7.5 4.8v1.7',
+  leave:        'M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14M10 8l-4 4 4 4M6 12h9',
+  ok:           'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M8 12.2l2.6 2.6L16 9.4',
+  bell:         'M12 3a5.5 5.5 0 0 0-5.5 5.5c0 4-1.5 5.5-1.5 5.5h14s-1.5-1.5-1.5-5.5A5.5 5.5 0 0 0 12 3M10.2 18a2 2 0 0 0 3.6 0',
+  addplace:     'M3 19V10l5-4 5 4v9M1 19h13M6 19v-4h3v4M18 11v8M14 15h8'
+};
+const icon = (k, size = 40) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}"
+  fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+  stroke-linejoin="round" aria-hidden="true"><path d="${ICON[k] || ICON.house}"/></svg>`;
+
+/* A ranch is a kind of PLACE. The house on it is a kind of BUILDING. Merging
+   the two questions made somebody adding a farm answer "house" first and then
+   go hunting for where the barn went — so they are two questions again, and
+   the first one decides whether the second is asked at all. */
+const PLACES = {
+  'It is the one building': [
+    ['house','A house'], ['townhouse','A townhouse or row house'],
+    ['condo','A condo, flat or apartment'], ['cabin','A cabin or cottage'],
+    ['mobile_home','A tiny house, RV or mobile home'], ['boat','A boat'],
+    ['rental','a rental']],
+  'It has buildings on it': [
+    ['ranch','A ranch'], ['farm','A farm'], ['homestead','A homestead'],
+    ['smallholding','A smallholding'], ['compound','A property with outbuildings'],
+    ['estate','An estate']],
+  'Nothing on it yet': [
+    ['land','Land'], ['lot','A lot']]
+};
+/* Which building kind a single-building place implies. Where it is blank the
+   place holds buildings and the main one gets its own question. */
+const PLACE_IS = { house:'house', townhouse:'townhouse', condo:'apartment',
+  cabin:'cabin', mobile_home:'tiny_house', boat:'houseboat', rental:'house' };
+const HOLDS_BUILDINGS = ['ranch','farm','homestead','smallholding','compound','estate'];
+const placeOptions = sel => Object.entries(PLACES).map(([g, list]) =>
+  `<optgroup label="${esc(g)}">${list.map(([v, l]) =>
+    `<option value="${v}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`).join('')}</optgroup>`).join('');
+/* The option text is written to be READ in a list — "A tiny house, RV or mobile
+   home". As a fallback NAME it is absurd, so the short word is kept apart. */
+const PLACE_SHORT = { house:'Home', townhouse:'Home', condo:'Home', cabin:'The cabin',
+  mobile_home:'Home', boat:'The boat', rental:'Home', ranch:'The ranch', farm:'The farm',
+  homestead:'The homestead', smallholding:'The smallholding', compound:'The property',
+  estate:'The estate', land:'The land', lot:'The lot' };
+function placeLabel(v) { return PLACE_SHORT[v] || 'Home'; }
+/* What it IS, for a line that sits under the name — "The ranch · The ranch"
+   tells nobody anything. */
+function placeKindLabel(v) {
+  const hit = Object.values(PLACES).flat().find(([k]) => k === v);
+  return hit ? hit[1].replace(/^A /, 'a ').replace(/^An /, 'an ') : 'a place';
+}
+
+const PLACE = [
+  /* Place and building were two screens, and for a tiny house they were the
+     same question asked twice. One screen: what you call it, where it is, and
+     what it is. The building takes the same name unless somebody says
+     otherwise, which on a ranch they will and in a tiny house they will not. */
+  /* One tap. No form. A grid of twelve outlines reads in a second and asks for
+     nothing you have to compose — and it is the only thing the app actually
+     needs before it can be useful, so it is the only screen before the hub. */
+  { t:'What have you got?', s:'Pick the closest. You can change it whenever.',
+    noNext:true,
+    body: () => Object.entries(PLACES).map(([g, list]) => `<p class="group">${esc(g)}</p>
+      <div class="pick">${list.map(([v, l]) => `<button type="button"
+        aria-pressed="${draft.pkind === v}" onclick="pickPlace('${v}')">
+        ${icon(v, 34)}<span class="cap">${esc(l.replace(/^(A|An) /, ''))}</span>
+      </button>`).join('')}</div>`).join(''),
+    take: () => draft.pkind ? true : 'Pick one — the closest is close enough.' },
+
+  { t:'Where is it?', s:'The region is what the suggestions below are guessed from.',
+    skippable:true,
+    field:'#f-region',
+    topOut: '<button class="ghost" onclick="newHere()">I just moved here — ask me later</button>',
+    body: () => {
+      const g = guessProfile(draft.region, draft.country);
+      if (draft.freezes === undefined) draft.freezes = g.freezes;
+      draft.hazards = draft.hazards || g.hazards.slice();
+      draft.climate = draft.climate || g.climate.slice();
+      draft.terrain = draft.terrain || (g.terrain || []).slice();
+      const tick = (cls, v, on, label) =>
+        `<label class="tick"><input type="checkbox" class="${cls}" value="${v}"${on ? ' checked' : ''}> ${label}</label>`;
+      return `<label for="f-city">Town or city</label>
+        <input id="f-city" placeholder="town or city" value="${esc(draft.city || '')}">
+        <label for="f-region">State or region</label>
+        <input id="f-region" placeholder="two letters is fine" value="${esc(draft.region || '')}"
+          onchange="regionChanged()">
+        <p class="hint" id="why" style="margin:.8rem 0">${esc(g.why)}</p>
+        <label>Climate <span style="font-weight:400;color:var(--muted)">— tick all that apply</span></label>
+        <div class="opts">${CLIMATE
+          .map(([k, l]) => tick('cl', k, draft.climate.includes(k), l)).join('')}</div>
+        ${tip('Most places are more than one — hot dry summers <i>and</i> mild winters ' +
+          '<i>and</i> drought. This list is only what the sky does; where the house sits is the next one.')}
+
+        <label style="margin-top:1.2rem">Where it sits <span
+          style="font-weight:400;color:var(--muted)">— tick all that apply</span></label>
+        <div class="opts">${TERRAIN.map(([k, label]) =>
+          tick('tr', k, draft.terrain.includes(k), label)).join('')}</div>
+        ${tip('Two houses at the same height in the same county need different work. ' +
+          'Sea air eats metal, coils and fasteners. A lake or river means damp and flooding. ' +
+          'A valley floor frosts when the hill above it does not, holds smoke, and funnels wind. ' +
+          'A ridge takes the wind on its roof and fences. A mountain means snow load and roads that ' +
+          'close. Trees mean gutters, roof debris and clearance. Open and flat means hail with ' +
+          'nothing in the way.', 'What each one changes')}
+
+        <label for="f-elev" style="margin-top:1.2rem">How high up are you? <span
+          style="font-weight:400;color:var(--muted)">— optional</span></label>
+        <input id="f-elev" inputmode="numeric" placeholder="feet above sea level"
+          value="${draft.elevation == null ? '' : esc(String(draft.elevation))}">
+        <p class="hint">Only matters above about 2,000 ft.</p>
+        ${tip('Up there gas appliances need a different orifice and sun chews through roofing and ' +
+          'finishes faster. Below it, nothing changes — so leaving this blank costs you nothing. ' +
+          'It starts blank because nobody has measured it and the app will not guess.')}
+
+        <label for="f-freeze" style="margin-top:1.2rem">Do pipes freeze here in winter?</label>
+        <select id="f-freeze">
+          <option value="yes"${draft.freezes === 'yes' ? ' selected' : ''}>Yes</option>
+          <option value="no"${draft.freezes === 'no' ? ' selected' : ''}>No</option>
+          <option value="not_sure_yet"${draft.freezes === 'not_sure_yet' ? ' selected' : ''}>Not sure yet</option>
+        </select>
+        <p class="hint"><i>Not sure yet</i> is a real answer.</p>
+        ${tip('This decides whether you are ever asked to winterise anything. If you have not been ' +
+          'here through a winter, say so — the app will ask again once you have.')}
+
+        <label style="margin-top:1.2rem">What can happen here</label>
+        <div class="opts">${HAZARD
+          .map(([h, l]) => tick('hz', h, draft.hazards.includes(h), l)).join('')}</div>
+        ${tip('Ticking one offers you a plan for it later. It creates nothing now.')}
+
+        ${otherBox('property.climate', 'Something about the weather here we did not ask?')}`;
+    },
+    field:'#f-elev',
+    take: () => { takeOther(); keepHere();
+                  draft.climate = [...document.querySelectorAll('.cl:checked')].map(e => e.value);
+                  draft.freezes = $('#f-freeze').value;
+                  draft.hazards = [...document.querySelectorAll('.hz:checked')].map(e => e.value);
+                  draft.terrain = [...document.querySelectorAll('.tr:checked')].map(e => e.value);
+                  const raw = ($('#f-elev').value || '').trim();
+                  if (!raw) { draft.elevation = null; return true; }
+                  // A number field that silently eats "about 1300 ft" would store
+                  // nothing and say it stored something. Say so instead.
+                  const n = Number(raw.replace(/[, ]/g, ''));
+                  if (!Number.isFinite(n)) return 'Elevation wants a number, or nothing at all.';
+                  draft.elevation = n;
+                  return true; } },
+
+  { t:'What does it run on?',
+    s: () => (draft.building || 'It') + ' — tick what it has. Not sure yet is a real answer.',
+    skippable:true,
+    body: () => {
+      const g = flowGroup();
+      draft.sys = draft.sys || {};
+      return SYSTEMS.filter(sys => !(sys.off || []).includes(g)).map(sys => {
+        const { keep, rest } = splitByKind(sys.o, g, o => o[3]);
+        const cur = draft.sys[sys.k];
+        const one = (o, hidden) => sys.multi
+          ? `<label class="tick${hidden ? ' extra' : ''}"${hidden ? ' hidden' : ''}><input type="checkbox"
+               class="sy-${sys.k}" value="${o[0]}"${(cur || []).includes(o[0]) ? ' checked' : ''}> ${esc(o[1])}</label>`
+          : `<label class="tick${hidden ? ' extra' : ''}"${hidden ? ' hidden' : ''}><input type="radio"
+               name="sy-${sys.k}" class="sy-${sys.k}" value="${o[0]}"${cur === o[0] ? ' checked' : ''}> ${esc(o[1])}</label>`;
+        return `<label style="margin-top:1.1rem">${esc(sys.q)}${sys.multi
+            ? ' <span style="font-weight:400;color:var(--muted)">— tick all that apply</span>' : ''}</label>
+          <div class="opts">${keep.map(o => one(o, false)).join('')}
+          ${rest.length ? rest.map(o => one(o, true)).join('') +
+            `<button class="ghost" onclick="showRest(this)">Show the rest</button>` : ''}</div>
+          ${otherBox('structure.' + sys.k, 'Something else?')}`;
+      }).join('')
+        + (['wheels','floating'].includes(g)
+          ? tip('A house that moves does not have well water or city water — it has a hose, and what ' +
+              'is on the other end changes with the address. Say <i>whatever I am parked next to</i> ' +
+              'and the app asks what was there each time you tell it where you have stopped. ' +
+              'It still affects you: hook onto a well or a pumped stream and your inline filter is the ' +
+              'only thing between that water and your water heater. So the source is kept against the ' +
+              'spot, the filter stays yours, and the check on it only comes up on the water that ' +
+              'warrants it.', 'What “whatever I am parked next to” does')
+          : '')
+        + tip('Nothing is ticked for you. What a ' + esc(
+        (draft.bkind || '').replace(/_/g,' ') || 'building') + ' cannot physically have is tucked ' +
+        'behind <i>show the rest</i> rather than removed — if yours is unusual, it is still there.',
+        'Why some are hidden');
+    },
+    take: () => { takeOther(); const g = flowGroup(); draft.sys = {};
+      SYSTEMS.filter(sys => !(sys.off || []).includes(g)).forEach(sys => {
+        const picked = [...document.querySelectorAll('.sy-' + sys.k + ':checked')].map(e => e.value);
+        if (picked.length) draft.sys[sys.k] = sys.multi ? picked : picked[0];
+      });
+      return true; } },
+
+  /* Only for something that moves. A house on a foundation is parked where it
+     was built and asking would be silly. */
+  { t:'Where are you parked?', s:'And what is on the other end of the hose.',
+    skippable:true,
+    when: () => ['wheels','floating'].includes(flowGroup()),
+    body: () => {
+      draft.here = draft.here || {};
+      return `<label for="pk-a">Where is it right now?</label>
+        <input id="pk-a" placeholder="a lot, a park, an address, a marina"
+          value="${esc(draft.parkedAt || '')}">
+        <label for="pk-s">How long are you here?</label>
+        <select id="pk-s">${STAY.map(([v, l]) =>
+          `<option value="${v}"${draft.stayKind === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>
+        ${tip('How often you move decides how often the app speaks up. Parked on one lot for years, ' +
+          'the arrival checks are a one-off and asking again would be nagging. Moving every few weeks, ' +
+          'those same checks are the routine.', 'Why that matters')}
+        ${hereForm(draft.here)}
+        ${tip('This is kept against the spot, not against your house — so when you move it moves with ' +
+          'the address, and the checks that only matter on a well stop asking the moment you are not ' +
+          'on one.', 'Where this is stored')}`;
+    },
+    take: () => { draft.parkedAt = ($('#pk-a').value || '').trim();
+      draft.stayKind = $('#pk-s').value; draft.here = readHere(); return true; } },
+
+  { t:'What is it made of?',
+    s: () => 'Rooms and spaces in ' + (draft.building || 'it') + '.',
+    skippable:true,
+    /* A pasture has no basement and no bedrooms, so it is never shown an empty
+       screen with everything hidden behind "show the rest". A question with
+       nothing to ask is not a question. */
+    when: () => { const g = flowGroup();
+      return splitByKind(SPACES, g, x => x[3]).keep.length > 0 || ROOMS.some(r => allowed(r[3], g)); },
+    body: () => {
+      const g = flowGroup();
+      draft.spaces = draft.spaces || []; draft.rooms = draft.rooms || {};
+      const sp = splitByKind(SPACES, g, x => x[3]);
+      const rm = ROOMS.filter(r => allowed(r[3], g));
+      // A bathroom is its own room even in a tiny house. Beds and kitchens are
+      // not, when there is only one room.
+      const bathOnly = rm.filter(r => r[0] === 'bathrooms');
+      const box = (x, hidden) => `<label class="tick${hidden ? ' extra' : ''}"${hidden ? ' hidden' : ''}>
+        <input type="checkbox" class="sp" value="${x[0]}"${draft.spaces.includes(x[0]) ? ' checked' : ''}> ${esc(x[1])}</label>`;
+      return `<label>Any of these?</label>
+        <div class="opts">${sp.keep.map(x => box(x, false)).join('')}
+        ${sp.rest.length ? sp.rest.map(x => box(x, true)).join('') +
+          `<button class="ghost" onclick="showRest(this)">Show the rest</button>` : ''}</div>
+        ${otherBox('structure.spaces', 'A space we did not name?')}
+        <label class="tick" style="margin-top:1.2rem"><input type="checkbox" id="open-plan"
+          onchange="draft.openPlan=this.checked;drawFirst()"${draft.openPlan ? ' checked' : ''}>
+          It is one open room</label>
+        ${draft.openPlan ? `
+          <label for="mr-n" style="margin-top:.8rem">What do you call that room?</label>
+          <input id="mr-n" value="${esc(draft.mainRoom || 'Main room')}">
+          <label style="margin-top:1rem">What is in it?</label>
+          ${(draft.corners || []).map((c, i) => `<div class="card">
+            <span class="title">${esc(c)}</span>
+            <button class="ghost" onclick="dropCorner(${i})">Remove</button></div>`).join('')}
+          <input id="cn-n" placeholder="bed, kitchen, eating area…">
+          <div class="actions" style="margin-top:.6rem">
+            <button class="ghost" onclick="addCorner()">Add it</button></div>
+          ${tip('One long room with a bed at one end and a kitchen at the other is one room, not ' +
+            'three, and not a studio apartment with the walls missing. Each corner is kept inside ' +
+            'the room rather than beside it, so a leak under the sink lands in the kitchen corner ' +
+            'and still reads as the same room you sleep in.', 'Why not just count rooms')}
+          ${bathOnly.length ? `<label style="margin-top:1.2rem">And separately?</label>
+            <div class="counts">${bathOnly.map(r => `<div class="count">
+              <span>${esc(r[1])}</span>
+              <input id="rm-${r[0]}" inputmode="numeric" value="${
+                draft.rooms[r[0]] == null ? '' : esc(String(draft.rooms[r[0]]))}" placeholder="0">
+            </div>`).join('')}</div>` : ''}
+        ` : rm.length ? `<label style="margin-top:1.2rem">How many?</label>
+          <div class="counts">${rm.map(r => `<div class="count">
+            <span>${esc(r[1])}</span>
+            <input id="rm-${r[0]}" inputmode="numeric" value="${
+              draft.rooms[r[0]] == null ? '' : esc(String(draft.rooms[r[0]]))}" placeholder="0">
+          </div>`).join('')}</div>
+          <p class="hint">Rough is fine. Blank is fine.</p>
+          ${tip('Each one becomes a room you can file a leak or a smoke detector against. ' +
+            'Nothing more is assumed about it.')}` : ''}`;
+    },
+    take: () => { takeOther();
+      draft.spaces = [...document.querySelectorAll('.sp:checked')].map(e => e.value);
+      if (draft.openPlan && $('#mr-n')) draft.mainRoom = ($('#mr-n').value || '').trim() || 'Main room';
+      draft.rooms = {};
+      ROOMS.forEach(r => { const el = $('#rm-' + r[0]); if (!el) return;
+        const v = (el.value || '').trim(); if (!v) return;
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0 && n <= 40) draft.rooms[r[0]] = Math.floor(n); });
+      return true; } },
+
+  /* Everything about who is here, in one place. It was scattered: headcount sat
+     with the rooms because that is where I happened to put it, and animals were
+     only reachable from the home screen afterwards. Who lives here is one
+     question, and every part of it can be left blank and picked up later. */
+  { t:'Who is here with you?',
+    s: () => 'In ' + (draft.building || 'it') + '. All optional, and easy to come back to.',
+    skippable:true,
+    body: () => {
+      draft.household = draft.household || [];
+      draft.animals = draft.animals || [];
+      return `<label>How many live in ${esc(draft.building || 'it')}?</label>
+        <div class="counts">
+          <div class="count"><span>People, you included</span>
+            <input id="pl-n" inputmode="numeric" placeholder="0" value="${
+              draft.people == null ? '' : esc(String(draft.people))}"></div>
+          <div class="count"><span>Children among them</span>
+            <select id="pl-k">${[['','—'],['yes','yes'],['no','no'],['not_sure_yet','varies']]
+              .map(([v, l]) => `<option value="${v}"${draft.kids === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          </div></div>
+        ${tip('This building, not the whole place — because what it is for is wear, and the washer ' +
+          'in the house is worn by the people in the house, not by anybody out in the guest cabin. ' +
+          'Add another building later and it gets its own count.<br><br>' +
+          'Wear is mostly people. A filter rated for six months was rated for a household, not for ' +
+          'yours, so the app will <i>offer</i> a shorter interval on the things that take the ' +
+          'beating — the washer, the dishwasher — and say why. It never quietly changes one: a number ' +
+          'scaled by a load factor nobody measured is an invented number wearing a ' +
+          'manufacturer&rsquo;s badge. Children are asked apart from the headcount because they also ' +
+          'bring safety suggestions — detectors, water temperature, gates. Never an age or a name.',
+          'Which “here”?')}
+
+        <label style="margin-top:1.3rem">Anybody you want on the log?</label>
+        ${draft.household.map((h, i) => `<div class="card"><span class="title">${esc(h)}</span>
+          <button class="ghost" onclick="dropPerson(${i})">Remove</button></div>`).join('')}
+        <input id="hh-n" placeholder="a name — you can invite them properly later">
+        <div class="actions" style="margin-top:.6rem">
+          <button class="ghost" onclick="addPerson()">Add them</button></div>
+        ${tip('This only puts their name on the list so an entry can say who did it. It does not ' +
+          'give them the app — that is an invite, and it is a separate decision you make later.',
+          'This is not an invite')}
+
+        <label style="margin-top:1.3rem">Animals?</label>
+        ${draft.animals.map((a, i) => `<div class="card"><span class="title">${esc(a.name || a.type)}</span>
+          <p class="meta">${esc(a.type)}</p>
+          <button class="ghost" onclick="dropAnimal(${i})">Remove</button></div>`).join('')}
+        <input id="j-an" placeholder="name — blank is fine for a hen">
+        <select id="j-at">${['dog','cat','bird','chicken','duck','goat','sheep','pig','cow','horse']
+          .map(t => `<option value="${t}">${t}</option>`).join('')}</select>
+        <div class="actions" style="margin-top:.6rem">
+          <button class="ghost" onclick="addAnimal()">Add it</button></div>
+        ${tip('Feed runs out, papers expire and a vet charges by the trip — all the same machinery ' +
+          'as a propane tank, pointed at something with a pulse.', 'Why animals are here')}`;
+    },
+    take: () => { const v = (($('#pl-n') || {}).value || '').trim(), n = Number(v);
+      draft.people = v && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+      draft.kids = (($('#pl-k') || {}).value) || '';
+      return true; } },
+
+  { t:'What else is in there?',
+    s: () => 'In ' + (draft.building || 'it') + '. How many of each.',
+    skippable:true,
+    body: () => {
+      draft.things = draft.things || {};
+      const g = flowGroup();
+      const groups = g === 'land' ? ['Safety'] : ['Appliances','Safety'];
+      return groups.map(cat => `<label style="margin-top:1.1rem">${esc(cat)}</label>
+        <div class="counts">${STARTER[cat].map(([n]) => `<div class="count">
+          <span>${esc(n)}</span>
+          <input id="th-${esc(n).replace(/\W/g,'')}" data-n="${esc(n)}" class="th"
+            inputmode="numeric" placeholder="0" value="${
+              draft.things[n] == null ? '' : esc(String(draft.things[n]))}">
+        </div>`).join('')}</div>`).join('')
+        + otherBox('asset.type', 'Something in there we did not list?')
+        + tip('A count rather than a tick, because three fridges is an ordinary number of fridges ' +
+           'and one row for all three would lose two of them. Each gets its own check-ups, and every ' +
+           'interval says where it came from — the manual, the code, or our estimate.');
+    },
+    take: () => { takeOther(); draft.things = {};
+      document.querySelectorAll('.th').forEach(e => {
+        const v = (e.value || '').trim(); if (!v) return;
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0 && n <= 40) draft.things[e.dataset.n] = Math.floor(n);
+      });
+      return true; } },
+
+  { t:'Any other buildings?',
+    s: () => 'Besides ' + (draft.building || 'that one') + '. Sheds, barns, decks, the garage — or leave it.',
+    skippable:true,
+    body: () => {
+      draft.more = draft.more || [];
+      const rows = draft.more.map((b, i) => `<div class="card">
+        <span class="title">${esc(b.name)}</span>
+        <p class="meta">${esc((b.kind || '').replace(/_/g,' '))}${
+          b.attached ? ' · attached to ' + esc(draft.building) : ''}${
+          b.theirs ? ' · somebody else&rsquo;s' : ''}</p>
+        <button class="ghost" onclick="dropBuilding(${i})">Remove</button></div>`).join('');
+      // The main building got its kind from the place kind rather than from a
+      // question, so arriving here at a "what kind?" dropdown reads as a
+      // question you were never asked about the house. Same form, already
+      // filled in — and changeable, which is the part that was missing.
+      return `${draft.editMain ? `<div class="card">
+          <label for="mh-n">The main building</label>
+          <input id="mh-n" value="${esc(draft.building)}">
+          <label for="mh-k">What kind?</label>
+          <select id="mh-k">${kindOptions(draft.bkind || 'house')}</select>
+          <div class="actions" style="margin-top:.6rem">
+            <button class="ghost" onclick="saveMain()">Save</button>
+            <button class="ghost" onclick="draft.editMain=false;drawFirst()">Cancel</button>
+          </div></div>`
+        : `<div class="card"><span class="title">${esc(draft.building)}</span>
+          <p class="meta">${esc(kindLabel(draft.bkind))} · the one you started with</p>
+          <button class="ghost" onclick="draft.editMain=true;drawFirst()">Change</button></div>`}
+        ${rows}
+        <label for="mb-n" style="margin-top:1.2rem">Call it
+          <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+        <input id="mb-n" placeholder="leave it and we will use what it is">
+        <label>What kind?</label>
+        <div class="pick">${[['shed','Shed'],['barn','Barn'],['detached_garage','Garage'],
+          ['workshop','Workshop'],['greenhouse','Greenhouse'],['coop','Coop'],
+          ['deck','Deck'],['studio','Studio'],['pool_house','Pool house'],
+          ['pump_house','Pump house']].map(([v, l]) => `<button type="button"
+          aria-pressed="${(draft.mbKind || 'shed') === v}" onclick="draft.mbKind='${v}';drawFirst()">
+          ${icon(v, 30)}<span class="cap">${esc(l)}</span></button>`).join('')}</div>
+        <details class="tip"><summary>Something else</summary>
+          <select id="mb-k2" onchange="draft.mbKind=this.value">${kindOptions(draft.mbKind || 'shed')}</select>
+        </details>
+        <label class="tick"><input type="checkbox" id="mb-a"> It is attached to ${esc(draft.building)}</label>
+        <label class="tick"><input type="checkbox" id="mb-o"> It belongs to somebody else</label>
+        ${tip('A tiny house parked on your land is theirs, not yours. Ticking this means you will see ' +
+          'that it is here, what it is hooked up to, where its shutoffs are and that somebody sleeps ' +
+          'in it — and none of their things, schedules, issues or costs. They decide whether to share ' +
+          'more when they join.<br><br>The rule in one line: <b>the connection crosses, the contents ' +
+          'do not.</b>', 'Somebody else&rsquo;s building')}
+        <div class="actions" style="margin-top:.8rem">
+          <button class="ghost" onclick="addBuilding()">Add this one</button>
+        </div>
+        ${tip('Attached still means its own building. A wrap-around deck gets sealed and a ' +
+          'greenhouse gets glazing, and neither belongs on the house&rsquo;s list.')}`;
+    },
+    take: () => true },
+
+  { t:'What’s bugging you today?', s:'Or nothing. Plenty of people set this up on a day when nothing is wrong.',
+    skippable:true,
+    body: () => {
+      // It used to open on the whole catalogue — every fridge and furnace in
+      // the app — when she had just finished saying what she owns. Her things
+      // first, short. The full list is still there, one tap away, for the thing
+      // she has not added yet.
+      const mine = madeSoFar();
+      const types = Object.entries(STARTER).flatMap(([c, l]) => l.map(([n]) => [c, n]));
+      const isNew = String(draft.pick || '').startsWith('new:');
+      return `<label for="f-t">Which one?</label>
+        <select id="f-t" onchange="pickedThing(this)">
+          <option value=""${draft.pick ? '' : ' selected'}>— nothing right now —</option>
+          ${mine.map(m => `<option value="have:${esc(m.key)}"${
+            draft.pick === 'have:' + m.key ? ' selected' : ''}>${esc(m.label)}</option>`).join('')}
+          ${draft.showAll || isNew
+            ? `<optgroup label="Something you have not added yet">${types.map(([c, n]) =>
+                `<option value="new:${esc(n)}"${draft.pick === 'new:' + n ? ' selected' : ''}
+                  >${esc(n)} — ${esc(c)}</option>`).join('')}</optgroup>`
+            : ''}
+        </select>
+        ${draft.showAll || isNew ? '' :
+          `<button class="ghost" onclick="draft.showAll=true;drawFirst()">It is something else</button>`}
+        <div id="f-new" ${isNew ? '' : 'hidden'}>
+          <label for="f-tn">Call it <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+          <input id="f-tn" placeholder="leave it and we will use the type" value="${esc(draft.thingName || '')}">
+        </div>
+        <label for="f-st">What is it doing?</label>
+        <select id="f-st">
+          ${[['intermittent','It works sometimes'],
+             ['degraded','It works, badly'],
+             ['unusable','It does not work at all'],
+             ['works','It works — I just want it tracked']]
+            .map(([v, l]) => `<option value="${v}"${draft.state === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+        </select>
+        ${tip('<i>It works sometimes</i> is its own answer, and the hardest kind to live with — ' +
+          'a thing that fails on a Tuesday and behaves on a Wednesday never gets fixed, because it ' +
+          'never quite earns the call.')}`;
+    },
+    take: () => { draft.pick = $('#f-t').value || null;
+      draft.state = $('#f-st').value;
+      // Nothing has to be named. "Dryer" is a perfectly good name for the dryer.
+      draft.thingName = String(draft.pick || '').startsWith('new:')
+        ? (($('#f-tn').value || '').trim() || draft.pick.slice(4)) : '';
+      return true; } }
+];
+/* Somebody who moved in last month genuinely does not know whether the pipes
+   freeze, and a guess entered now is worse than a recorded unknown — it
+   silently switches off every winterising prompt with nobody aware of it.
+   So: take nothing, set a date, and ask once when they have actually been
+   through a season here. */
+/* Redraws on this screen have to keep the two text fields, same as everywhere
+   else. Changing the region reguesses the climate, and reguessing redraws. */
+/* Redrawing from inside the field's own change event replaces the element the
+   browser is still dispatching to, and the next tap anywhere gets swallowed
+   putting the focus right. So: take the value now, redraw on the next tick. */
+/* No re-render. Typing a region reguesses the climate, and rebuilding the
+   screen under somebody's fingers flashes, loses focus, and — as it turned out
+   — queues a redraw that fires after they have already tapped Done. Tick the
+   boxes in place instead: same result, nothing moves. */
+function regionChanged() {
+  const was = draft.region;
+  keepHere();
+  if (draft.region === was) return;
+  const set = (cls, vals) => document.querySelectorAll('.' + cls).forEach(el => {
+    el.checked = vals.includes(el.value);
+  });
+  set('cl', draft.climate || []);
+  set('hz', draft.hazards || []);
+  set('tr', draft.terrain || []);
+  const f = $('#f-freeze'); if (f) f.value = draft.freezes || 'not_sure_yet';
+  const why = $('#why'); if (why) why.textContent = guessProfile(draft.region, draft.country).why;
+}
+function keepHere() {
+  const c = $('#f-city'), r = $('#f-region');
+  if (c) draft.city = (c.value || '').trim();
+  if (r) draft.region = (r.value || '').trim();
+  // A new region means the old guess was about somewhere else.
+  if (r && draft.guessedFor !== draft.region) {
+    const g = guessProfile(draft.region, draft.country);
+    if (!draft.profileTouched) {
+      draft.climate = g.climate.slice(); draft.hazards = g.hazards.slice();
+      draft.terrain = (g.terrain || []).slice(); draft.freezes = g.freezes;
+    }
+    draft.guessedFor = draft.region;
+  }
+}
+function newHere() {
+  draft.climate = []; draft.hazards = []; draft.terrain = [];
+  draft.freezes = 'not_sure_yet'; draft.askLater = true;
+  fs++; drawFirst();
+  say('Nothing assumed. The app will ask again once you have had a season here.');
+}
+
+const JOIN = [
+  { t:'Paste the invite', s:'The code they sent you.',
+    field:'#j-code',
+    body: () => `<label for="j-code">Invite code</label>
+      <input id="j-code" placeholder="six letters and numbers" style="letter-spacing:.1em"
+        value="${esc(draft.code || '')}">
+      <p class="hint">Case does not matter.</p>
+      ${tip('An invite is for one place and one person. The next screen says exactly what you would ' +
+        'get before you agree to anything.')}`,
+    take: () => { const c = ($('#j-code').value || '').trim().toUpperCase();
+      if (!c) return 'Paste the code they sent you.';
+      // The whole point of a shared sheet: the invite is a row both of you can see.
+      const inv = (lookupInvite(c) || {});
+      if (!inv.id) return 'No invite with that code. Check it with whoever sent it.';
+      if (inv.state === 'revoked') return 'That invite was revoked.';
+      if (inv.state === 'accepted') return 'That code has already been used.';
+      if (inv.expires_on && inv.expires_on < today()) return 'That invite has expired.';
+      draft.code = c; draft.invite = inv; return true; } },
+
+  { t:'Here is what you would get', s:'Read it before you accept.',
+    body: () => {
+      const i = draft.invite || {};
+      const place = (DB.property || []).find(p => p.id === i.property_id) || {};
+      const only = (DB.structure || []).find(st => st.id === i.scope_structure_id);
+      const can = { view:['See what is due'],
+                    log:['See what is due','Say you did it','Raise a problem'],
+                    manage:['See what is due','Say you did it','Raise a problem','Change schedules'],
+                    owner:['Everything'] }[i.access] || [];
+      const cannot = [];
+      if (i.access !== 'owner') cannot.push('Invite anybody');
+      if (i.access === 'view' || i.access === 'log') cannot.push('Change their schedules');
+      if (i.can_see_costs !== 'TRUE') cannot.push('See what anything costs');
+      return `<div class="card"><span class="title">${esc(place.name || 'Their place')}</span>
+          <p class="meta">${esc(place.city || '')}${only ? ' · ' + esc(only.name) + ' only' : ''}
+            · invited by ${esc(((DB.person || []).find(p => p.id === i.sent_by_id) || {}).name || 'them')}</p></div>
+        <div class="card"><span class="title">You would be able to</span>
+          <p class="meta">${can.map(esc).join(' · ')}</p></div>
+        ${cannot.length ? `<div class="card"><span class="title">You would not be able to</span>
+          <p class="meta">${cannot.map(esc).join(' · ')}</p></div>` : ''}
+        <div class="card"><span class="title">They would see</span>
+          <p class="meta">Your name, and anything you log</p></div>
+        ${i.for_person_id ? `<div class="card"><span class="title">They already have you on the list</span>
+          <p class="meta">Jobs logged against ${esc(((DB.person || []).find(p =>
+            p.id === i.for_person_id) || {}).name || 'you')} stay yours.</p></div>` : ''}
+        ${tip('Accepting adds you to their place. It does not give them anything of yours — your own ' +
+          'places, if you have any, stay separate and they never see them.', 'What they get')}`;
+    },
+    take: () => true },
+
+  /* The half that matters. She parks on my land and uses my water, and none of
+     that makes her filter changes mine to read. So she is ASKED, on the way in,
+     and the default if she says nothing is closed. */
+  { t:'Your own building', s:'They have handed it to you. You decide what they see of it.',
+    when: () => !!((draft.invite || {}).their_structure_id),
+    body: () => {
+      const st = (DB.structure || []).find(x => x.id === draft.invite.their_structure_id) || {};
+      draft.share = draft.share || 'presence_only';
+      const opt = (v, t, d) => `<div class="card tap"><button onclick="draft.share='${v}';drawFirst()"
+        ${draft.share === v ? 'style="border-color:var(--accent)"' : ''}>
+        <span class="title">${draft.share === v ? '✓ ' : ''}${esc(t)}</span>
+        <p class="meta">${d}</p></button></div>`;
+      return `<div class="card"><span class="title">${esc(st.name)}</span>
+          <p class="meta">${esc((st.kind || '').replace(/_/g,' '))} · yours to look after</p></div>
+        ${opt('presence_only', 'Keep my list to myself',
+          'They see it is here, what it is hooked up to, where the shutoffs are, and that somebody ' +
+          'sleeps in it. Not your things, schedules, issues or costs.')}
+        ${opt('shared', 'Share it with them',
+          'It appears on their place like any other building. Useful if you want the help.')}
+        ${tip('You can change this whenever, and changing it to private later does not un-tell them ' +
+          'anything they already read. The connection always crosses — it is their well and their ' +
+          'septic, and the pump-out interval depends on how many people use it. The contents never ' +
+          'do unless you say so.', 'Why some of it crosses anyway')}`;
+    },
+    take: () => true },
+
+  { t:'Anything coming with you?', s:'An animal is yours wherever it sleeps.',
+    skippable:true,
+    body: () => {
+      const rows = (draft.animals || []).map((a, i) =>
+        `<div class="card"><span class="title">${esc(a.name || a.type)}</span>
+           <p class="meta">${esc(a.type)} · yours</p>
+           <button class="ghost" onclick="dropAnimal(${i})">Remove</button></div>`).join('');
+      return `${rows}
+        <label for="j-an" style="margin-top:${rows ? '1.2rem' : '0'}">Name</label>
+        <input id="j-an" placeholder="blank is fine for a hen">
+        <label for="j-at">What is it?</label>
+        <select id="j-at">${['dog','cat','bird','chicken','duck','goat','sheep','pig','cow','horse']
+          .map(t => `<option value="${t}">${t}</option>`).join('')}</select>
+        <div class="actions" style="margin-top:.8rem">
+          <button class="ghost" onclick="addAnimal()">Add this one</button>
+        </div>
+        ${tip('Whose it is and where it lives are kept apart on purpose. Move out and it moves with ' +
+          'you — the record follows the person, not the address.')}`;
+    },
+    take: () => true }
+];
+/* In this harness both people point at the same sheet, so an invite really is
+   just a row the other one can read. A hosted version would do the same lookup
+   on a server; the shape does not change. */
+function lookupInvite(code) {
+  return (DB.invite || []).find(i => String(i.code || '').toUpperCase() === code);
+}
+/* Anything that redraws a step mid-answer has to keep what is already on it.
+   Add a chicken and lose the headcount you typed two fields up is the kind of
+   bug that makes somebody stop trusting a form. take() invents nothing for a
+   blank field, so calling it early is always safe. */
+function syncStep() {
+  const step = STEPS()[fs];
+  if (step && step.take) { try { step.take(); } catch (e) {} }
+}
+function addPerson() {
+  syncStep();
+  const v = ($('#hh-n').value || '').trim();
+  if (!v) return say('A name, however you say it.');
+  draft.household = draft.household || []; draft.household.push(v);
+  drawFirst(); say(v + ' is on the list.');
+}
+function dropPerson(i) { syncStep(); draft.household.splice(i, 1); drawFirst(); }
+function addAnimal() {
+  syncStep();
+  const t = $('#j-at').value, n = ($('#j-an').value || '').trim();
+  draft.animals = draft.animals || [];
+  draft.animals.push({ name:n, type:t });
+  drawFirst();
+  say(n ? n + ' comes with you.' : 'One ' + t + ' comes with you.');
+}
+function dropAnimal(i) { syncStep(); draft.animals.splice(i, 1); drawFirst(); }
+const STEPS = () => (flow === 'join' ? JOIN : PLACE).filter(x => !x.when || x.when());
+
+
+/* ---- the hub ------------------------------------------------------------
+   The wizard is gone. After one tap on a picture, this is where you land, and
+   every tile is a door you may or may not walk through. Somebody who wants to
+   say nothing about the climate and go straight to the broken dryer can; the
+   old flow made them refuse six screens first. Each tile says what it has,
+   which is the only progress indicator that is honest — "not set" is a state,
+   not a failure. */
+const HUB = [
+  { id:'Any other buildings?', icon:'buildings', label:'Buildings',
+    state: () => (draft.more || []).length
+      ? (1 + draft.more.length) + ' buildings' : 'just ' + (draft.building || 'the one') },
+  { id:'Where is it?', icon:'location', label:'Where it is',
+    state: () => draft.place && (draft.city || draft.region)
+      ? [draft.city, draft.region].filter(Boolean).join(', ')
+      : (draft.climate || []).length ? 'climate set' : 'not set' },
+  { id:'What does it run on?', icon:'systems', label:'What it runs on',
+    state: () => { const n = Object.keys(draft.sys || {}).length;
+      return n ? n + ' answered' : 'not set'; } },
+  { id:'What is it made of?', icon:'rooms', label:'Rooms',
+    when: () => flowGroup() !== 'land',
+    state: () => { const r = Object.values(draft.rooms || {}).reduce((a, b) => a + b, 0)
+        + (draft.corners || []).length + (draft.spaces || []).length;
+      return r ? r + ' so far' : 'not set'; } },
+  { id:'Who is here with you?', icon:'people', label:'Who is here',
+    when: () => flowGroup() !== 'land',
+    state: () => { const bits = [];
+      if (draft.people) bits.push(draft.people + ' people');
+      if ((draft.household || []).length) bits.push(draft.household.length + ' named');
+      if ((draft.animals || []).length) bits.push(draft.animals.length + ' animals');
+      return bits.join(' · ') || 'not set'; } },
+  { id:'What else is in there?', icon:'things', label:'What is in it',
+    state: () => { const n = Object.values(draft.things || {}).reduce((a, b) => a + b, 0);
+      return n ? n + ' things' : 'nothing yet'; } },
+  { id:'Where are you parked?', icon:'location', label:'Where it is parked',
+    when: () => ['wheels','floating'].includes(flowGroup()),
+    state: () => draft.parkedAt || 'not set' },
+  { id:'What’s bugging you today?', icon:'wrong', label:'Something wrong?',
+    state: () => draft.pick ? 'one logged' : 'nothing yet' }
+];
+function drawHub() {
+  hubStep = null;
+
+  $('#tabs').hidden = true;
+  const tiles = HUB.filter(h => !h.when || h.when());
+  app.innerHTML = `<button class="back" onclick="draft.pkind=null;fs=0;drawFirst()"
+      >&lsaquo; Not that kind of place</button>
+    <p class="step">Setting up</p>
+    ${draft.renaming
+      ? `<label for="hub-n">Call it</label>
+         <input id="hub-n" value="${esc(draft.place || '')}" placeholder="what you call it">
+         <div class="actions" style="margin:.4rem 0 1rem">
+           <button class="ghost" onclick="saveRename()">Save</button>
+           <button class="ghost" onclick="draft.renaming=false;drawHub()">Cancel</button>
+         </div>`
+      : `<h1 id="hub-h">${esc(draft.place || 'Your place')}</h1>
+         <p class="sub">${esc(placeKindLabel(draft.pkind))} · <button class="skiplink"
+           onclick="renamePlace()">rename</button></p>`}
+    <div class="hub">${tiles.map((h, i) => `<button type="button" onclick="openTile(${i})">
+      ${icon(h.icon, 26)}<b>${esc(h.label)}</b>
+      <small class="${h.state() === 'not set' || h.state() === 'nothing yet' ? '' : 'done'}"
+        >${esc(h.state())}</small></button>`).join('')}</div>
+    <div class="actions" style="margin-top:1.2rem">
+      <button class="primary" onclick="finishFirst()">Take me in</button>
+    </div>
+    <p class="hint">Fill in as much or as little as you like — none of it is required, and every
+      one of these is here again inside.</p>`;
+}
+/* An explicit Save. Saving on blur is invisible — you cannot tell whether it
+   took, and tapping anything else while the box is open becomes a save you did
+   not ask for. */
+function renamePlace() {
+  draft.renaming = true; drawHub();
+}
+function saveRename() {
+  const el = $('#hub-n');
+  const typed = (el.value || '').trim();
+  draft.placeNamed = !!typed;
+  draft.place = typed || placeLabel(draft.pkind);
+  // On a ranch the house is not called "The Ranch". Only mirror the name when
+  // the place and the building are the same thing.
+  if (!draft.buildingNamed && !HOLDS_BUILDINGS.includes(draft.pkind) &&
+      !['land','lot'].includes(draft.pkind))
+    draft.building = draft.place;
+  draft.renaming = false; drawHub();
+}
+/* A tile opens its screen in hub mode: one button, Done, and it comes back.
+   Addressed by index rather than by title — a title in an onclick attribute is
+   a quoting accident waiting to happen, and "What's bugging you today?" has an
+   apostrophe in it. */
+function openTile(i) {
+  const tiles = HUB.filter(h => !h.when || h.when());
+  if (tiles[i]) openStep(tiles[i].id);
+}
+function openStep(id) {
+  const list = STEPS();
+  const i = list.findIndex(x => x.t === id);
+  if (i < 0) return say('That one is not here yet.');
+  hubStep = id; fs = i; drawFirst();
+}
+
+function drawFirst() {
+  const list = STEPS(), f = list[fs];
+  // "Step 7 of 8" reads as seven things you have to do. Only the first few are,
+  // and saying so is the difference between a setup and a form.
+  const need = list.filter(x => !x.skippable).length;
+  // The escape sits ABOVE the questions. Making somebody scroll past forty ticks
+  // to find out they did not have to answer them is the screen telling them the
+  // wrong thing for the whole time it takes to scroll.
+  const backTo = hubStep ? 'hubStep=null;drawHub()'
+    : fs ? 'fs--;drawFirst()'
+    : flow === 'place' ? 'drawWho()' : 'drawWho()';
+  app.innerHTML = `<button class="back" onclick="syncStep();${backTo}">&lsaquo; Back</button>
+    <p class="step">${hubStep ? esc(draft.place || 'Setting up') : f.skippable
+      ? `Optional <button class="skiplink" onclick="skipFirst()">${
+          fs === list.length - 1 ? 'skip and finish' : 'skip this'}</button>`
+      : FLOW_LABEL[flow] + (need > 1 ? ' · step ' + (fs + 1) + ' of ' + need : '')}</p>
+    <h1>${esc(f.t)}</h1><p class="sub">${esc(typeof f.s === 'function' ? f.s() : f.s)}</p>
+    ${f.topOut ? `<div class="actions" style="margin:0 0 1rem">${f.topOut}</div>` : ''}
+    ${f.body()}
+    <div class="actions">
+      ${hubStep ? `<button class="primary" onclick="doneStep()">Done</button>`
+      : f.noNext ? '' : `<button class="primary" onclick="nextFirst()">${
+        fs === list.length - 1 ? (flow === 'join' ? 'Accept' : 'Set it up') : 'Next'}</button>
+
+      ${f.skippable && fs < list.length - 1
+        ? '<button class="ghost" onclick="finishFirst()">Finish later</button>' : ''}
+      ${f.skippable && fs === list.length - 1
+        ? '<button class="ghost" onclick="skipFirst()">Skip and finish</button>' : ''}`}
+    </div>`;
+}
+/* What the earlier screens have already put on the list, one entry per unit. */
+function madeSoFar() {
+  const out = [];
+  Object.entries(draft.things || {}).forEach(([name, n]) => {
+    for (let i = 1; i <= n; i++) out.push({ key:name + '#' + i, name,
+      label: n > 1 ? name + ' ' + i : name });
+  });
+  SYSTEMS.forEach(q => {
+    const v = (draft.sys || {})[q.k]; if (!v) return;
+    (q.multi ? v : [v]).forEach(val => {
+      const o = q.o.find(x => x[0] === val); if (!o) return;
+      o[2].forEach(tn => out.push({ key:tn + '#1', name:tn, label:tn }));
+    });
+  });
+  return out;
+}
+function pickedThing(sel) {
+  const box = document.getElementById('f-new');
+  if (box) box.hidden = !sel.value.startsWith('new:');
+}
+/* The same three questions, asked at setup and asked again every time she
+   pulls up somewhere new. One definition so the two can never drift. */
+const STAY = [['staying_put','Parked here for the foreseeable'],
+              ['a_season','A season or so'],
+              ['few_weeks','A few weeks at a time'],
+              ['always_moving','Always on the move'],
+              ['not_sure_yet','Not sure yet']];
+const HERE = [
+  ['water', 'Water here', [['well','a well'],['city','city or municipal'],['shared','shared or community'],
+    ['spring','a spring or creek'],['hauled','hauled in'],['dockside','a dockside hookup'],
+    ['none','none'],['not_sure_yet','not sure']]],
+  ['waste', 'Waste here', [['septic','septic'],['sewer','sewer'],['holding_tank','a holding tank'],
+    ['pump_out','a pump-out'],['composting','composting'],['none','none'],['not_sure_yet','not sure']]],
+  ['power', 'Power here', [['grid','the grid'],['shore','shore power'],['solar','solar'],
+    ['generator','a generator'],['none','none'],['not_sure_yet','not sure']]]
+];
+function hereForm(v) {
+  v = v || {};
+  return HERE.map(([k, label, opts]) => `<label style="margin-top:1rem">${esc(label)}
+      <span style="font-weight:400;color:var(--muted)">— tick all that apply</span></label>
+    <div class="opts">${opts.map(([val, l]) =>
+      `<label class="tick"><input type="checkbox" class="hr-${k}" value="${val}"${
+        (v[k] || []).includes(val) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>`).join('');
+}
+function readHere() {
+  const out = {};
+  HERE.forEach(([k]) => { out[k] = [...document.querySelectorAll('.hr-' + k + ':checked')].map(e => e.value); });
+  return out;
+}
+function addCorner() {
+  syncStep();
+  const v = ($('#cn-n').value || '').trim();
+  if (!v) return say('Name it first — bed, kitchen, whatever you call that end.');
+  draft.corners = draft.corners || []; draft.corners.push(v);
+  drawFirst(); say(v + ' added.');
+}
+function dropCorner(i) { syncStep(); draft.corners.splice(i, 1); drawFirst(); }
+function saveMain() {
+  const typed = ($('#mh-n').value || '').trim();
+  draft.buildingNamed = !!typed;
+  draft.building = typed || kindLabel($('#mh-k').value);
+  draft.bkind = $('#mh-k').value;
+  draft.kindTouched = true;
+  draft.editMain = false;
+  drawFirst(); say(draft.building + ' · ' + kindLabel(draft.bkind));
+}
+function addBuilding() {
+  syncStep();
+  draft.more = draft.more || [];
+  const kind = draft.mbKind || 'shed';
+  const taken = [draft.building].concat(draft.more.map(x => x.name));
+  const name = uniqueName(($('#mb-n').value || '').trim() || kindLabel(kind), taken);
+  draft.more.push({ name, kind, attached:$('#mb-a').checked, theirs:$('#mb-o').checked });
+  drawFirst(); say(name + ' added.');
+}
+function dropBuilding(i) { syncStep(); draft.more.splice(i, 1); drawFirst(); }
+function showRest(btn) {
+  btn.parentElement.querySelectorAll('.extra').forEach(e => { e.hidden = false; });
+  btn.remove();
+}
+/* Skip records nothing rather than recording a default. A blank we know is
+   blank is worth more than a guess nobody made. On the last step it finishes
+   the setup — somebody who only wants in should not have to describe a thing
+   first. */
+function doneStep() {
+  const step = STEPS()[fs];
+  if (step && step.take) { const r = step.take(); if (typeof r === 'string') return say(r); }
+  hubStep = null; drawHub();
+}
+function skipFirst() {
+  // Filling a screen in and then tapping Skip should not silently bin it. These
+  // screens invent nothing for a blank field, so reading them is always safe —
+  // skipping an untouched one still records nothing.
+  const step = STEPS()[fs];
+  if (step && step.skippable) { try { step.take(); } catch (e) {} }
+  if (fs < STEPS().length - 1) { fs++; return drawFirst(); }
+  draft.type = null; draft.thingName = '';
+  return finishFirst();
+}
+async function nextFirst() {
+  document.querySelectorAll('.missing').forEach(e => e.classList.remove('missing'));
+  const list = STEPS(), r = list[fs].take();
+  if (r !== true && typeof r === 'string') {
+    // Name the field, mark it, put the cursor in it. "Give it a name" on a
+    // screen with three inputs is a riddle, not an error message.
+    const el = list[fs].field && $(list[fs].field);
+    if (el) { el.classList.add('missing'); el.focus(); }
+    return say(r);
+  }
+  if (fs < list.length - 1) { fs++; return drawFirst(); }
+  return finishFirst();
+}
+async function finishFirst() {
+  app.innerHTML = `<h1>Setting it up…</h1><p class="sub">Writing the first rows.</p>`;
+  try { await createEverything(); } catch (e) { return say('Could not save: ' + e.message); }
+  await boot();
+  const n = (DB.asset || []).length;
+  say(flow === 'join'
+    ? 'You are in. This is ' + (prop || {}).name + '.'
+    : n ? n + (n === 1 ? ' thing tracked' : ' things tracked') + ' — add the next one when you touch it.'
+        : 'Your place is set up. Add things as you touch them.');
+}
+
+/* Adding a second place later: the same PLACE steps, no person step, and it
+   lands you in the new property. */
+function addPlace() {
+  flow = 'place'; fs = 0;
+  draft = { name: me.name, existingPerson: me.id };
+  drawFirst();
+}
+
+/* Accepting spends the code, attaches the person, and brings whatever came
+   with them. If the inviter had already been logging jobs against their name,
+   they become THAT person rather than a second copy of them. */
+async function acceptInvite() {
+  const inv = draft.invite || {};
+  const live = lookupInvite(String(draft.code || '').toUpperCase());
+  // Re-checked at the moment of accepting, not only when it was typed. A code
+  // revoked while somebody was reading the preview has to fail here.
+  if (!live || live.state !== 'sent' || (live.expires_on && live.expires_on < today()))
+    throw new Error('that invite is no longer good — ask them for a new code');
+
+  const personId = inv.for_person_id || draft.existingPerson || uid();
+  const writes = [];
+  const existing = (DB.person || []).find(p => p.id === personId);
+  if (existing) {
+    // Keep their history; take the name they just gave us if it differs.
+    if (draft.name && draft.name !== existing.name)
+      writes.push({ op:'upsert', table:'person', record:{ ...existing, name:draft.name } });
+  } else {
+    writes.push({ op:'upsert', table:'person',
+      record:{ id:personId, name:draft.name, role:'resident' } });
+  }
+  writes.push({ op:'upsert', table:'membership', record:{ id:uid(),
+    property_id:inv.property_id, person_id:personId, access:inv.access || 'log',
+    scope_structure_id:inv.scope_structure_id || '' } });
+  // Land IN the place they were invited to, as themselves — not on whichever
+  // property happens to be first in the sheet, and not as its owner.
+  localStorage.setItem('dwellogs.me', personId);
+  localStorage.setItem('dwellogs.place', inv.property_id);
+  localStorage.setItem('dwellogs.new', inv.property_id);
+  writes.push({ op:'upsert', table:'invite', record:{ ...live, state:'accepted',
+    accepted_on:today(), accepted_by_id:personId } });
+  if (inv.their_structure_id) {
+    const st = (DB.structure || []).find(x => x.id === inv.their_structure_id);
+    if (st) writes.push({ op:'upsert', table:'structure', record:{ ...st,
+      responsible_id:personId, visibility:draft.share || 'presence_only' } });
+  }
+  (draft.animals || []).forEach(a => {
+    const animalId = uid();
+    writes.push({ op:'upsert', table:'animal', record:{ id:animalId, owner_id:personId,
+      property_id:inv.property_id, name:a.name, type:a.type, role:'pet',
+      cared_for_by_id:personId, acquired_on:'' } });
+    writes.push({ op:'upsert', table:'placement', record:{ id:uid(), animal_id:animalId,
+      property_id:inv.property_id, arrived_on:today(),
+      note:'Came with ' + (draft.name || 'them') } });
+  });
+  await DwelLogs.write(writes);
+}
+
+/* The whole point of starting empty: this is every table a new person touches,
+   and therefore the v1 core. Nine of them. */
+async function createEverything() {
+  // Joining is not setting up. It creates no place, no building and no
+  // check-ups — it attaches a person to somebody else's place and stops.
+  if (flow === 'join') return acceptInvite();
+  const personId = draft.existingPerson || uid(), propId = uid(), structId = uid();
+  const writes = [];
+  if (!draft.existingPerson)
+    writes.push({ op:'upsert', table:'person', record:{ id:personId, name:draft.name, role:'owner' } });
+  writes.push(
+    { op:'upsert', table:'property', record:{ id:propId, name:draft.place, kind:draft.kind,
+        city:draft.city, region:draft.region, country:draft.country || 'United States',
+        currency:'USD', units:'imperial', acquired_on:today(),
+        climate:(draft.climate || []).join(', '), freezes:draft.freezes || 'not_sure_yet',
+        hazards:(draft.hazards || []).join(', '),
+        terrain:(draft.terrain || []).join(', '),
+        elevation: draft.elevation == null ? '' : draft.elevation,
+        // Confirmed only when a person actually said so. Unknown gets a date
+        // to be asked again, not a blank that nags every time the app opens.
+        profile_confirmed_on: draft.freezes === 'not_sure_yet' ? '' : today(),
+        profile_review_on: draft.freezes === 'not_sure_yet' ? inMonths(4) : '' } },
+    { op:'upsert', table:'membership', record:{ id:uid(), property_id:propId,
+        person_id:personId, access:'owner' } });
+  // Nothing on it yet means no building row. An empty lot with a phantom
+  // "Main house" on it is a lie the app would then keep asking questions about.
+  const bare = ['land','lot'].includes(draft.pkind);
+  if (!bare)
+    writes.push({ op:'upsert', table:'structure', record:{ id:structId, property_id:propId,
+      name:draft.building,
+      kind: draft.bkind === '__other' ? 'other' : draft.bkind,
+      kind_other: draft.bkindOther || '' } });
+
+  (draft.more || []).forEach(b => {
+    writes.push({ op:'upsert', table:'structure', record:{ id:uid(), property_id:propId,
+      name:b.name, kind: b.kind === '__other' ? 'other' : b.kind,
+      attached_to_id: b.attached ? structId : '',
+      // Opt-in, not opt-out. Somebody else's building starts closed and they
+      // open it, rather than starting open and hoping they notice.
+      visibility: b.theirs ? 'presence_only' : 'shared' } });
+  });
+
+  // Templates ship with the app, written once into this property's catalogue.
+  const catIds = {}, typeIds = {};
+  Object.entries(STARTER).forEach(([cat, list]) => {
+    const cid = catIds[cat] = uid();
+    writes.push({ op:'upsert', table:'category', record:{ id:cid, name:cat } });
+    list.forEach(([tname, checks]) => {
+      const tid = typeIds[tname] = uid();
+      writes.push({ op:'upsert', table:'asset_type',
+        record:{ id:tid, category_id:cid, name:tname, source:checks[0][3] } });
+    });
+  });
+
+  // The systems answers land in TWO places on purpose. The structure field is a
+  // fact about the building — "city water" is true and creates nothing to
+  // service. The asset is a thing with a maintenance life. Neither is derivable
+  // from the other, so both get written, and an unanswered question writes
+  // 'not_sure_yet' rather than a default nobody chose.
+  const sys = draft.sys || {};
+  const structRec = (writes.find(w => w.table === 'structure') || { record:{} }).record;
+  SYSTEMS.forEach(q => {
+    const v = sys[q.k];
+    structRec[q.k] = v == null ? 'not_sure_yet' : (q.multi ? v.join(', ') : v);
+  });
+  structRec.spaces = (draft.spaces || []).join(', ');
+  structRec.visibility = 'shared';   // the one you set up is your own
+  structRec.people_living = draft.people == null ? '' : draft.people;
+  structRec.children_here = draft.kids || '';
+  structRec.heated = (sys.heat || []).some(h => h !== 'none') ? 'TRUE' : '';
+
+  // Areas first, so a thing can land in one.
+  const areaIds = {};
+  (draft.spaces || []).forEach(k => {
+    const def = SPACES.find(x => x[0] === k);
+    if (!def || !def[2]) return;          // a slab is not a room you can stand in
+    const id = uid(); areaIds[k] = id;
+    writes.push({ op:'upsert', table:'area', record:{ id, structure_id:structId,
+      name:AREA_NAME[k] || k, kind:def[2] } });
+  });
+  // One room with corners inside it, not three rooms pretending to be separate.
+  if (draft.openPlan) {
+    const mainId = uid();
+    writes.push({ op:'upsert', table:'area', record:{ id:mainId, structure_id:structId,
+      name:draft.mainRoom || 'Main room' } });
+    (draft.corners || []).forEach(c => {
+      writes.push({ op:'upsert', table:'area', record:{ id:uid(), structure_id:structId,
+        name:c, parent_area_id:mainId } });
+    });
+  }
+  ROOMS.forEach(r => {
+    if (draft.openPlan && r[0] !== 'bathrooms') return;
+    const n = (draft.rooms || {})[r[0]] || 0;
+    for (let i = 1; i <= n; i++)
+      writes.push({ op:'upsert', table:'area', record:{ id:uid(), structure_id:structId,
+        name:r[1].replace(/s$/, '') + (n > 1 ? ' ' + i : ''), kind:r[2] } });
+  });
+
+  // One asset per thing, each carrying its template's check-ups.
+  const made = [];
+  function addThing(typeName, name, powered, allowMore) {
+    if (!typeIds[typeName]) return null;
+    // Ticking the dryer on one screen and naming it as the problem on the next
+    // is ONE dryer. If the second mention brought a better name, keep the name
+    // and drop the duplicate — never end the first run with two of a thing
+    // somebody owns one of.
+    if (!allowMore) {
+      const already = made.find(m => m.type === typeName);
+      if (already) { if (name) already.rec.name = name; return already.rec.id; }
+    }
+    const id = uid();
+    const rec = { id, property_id:propId, structure_id:structId,
+      asset_type_id:typeIds[typeName], name:name || typeName,
+      status:'active', power_source:powered || '' };
+    writes.push({ op:'upsert', table:'asset', record:rec });
+    Object.values(STARTER).flat().filter(x => x[0] === typeName)[0][1]
+      .forEach(([title, n, unit, src, whenSource]) => {
+        // An arrival check-up has no date. It is due when she pulls up somewhere
+        // new, and a made-up date would only make it look overdue in the meantime.
+        if (unit === 'arrival') {
+          writes.push({ op:'upsert', table:'schedule', record:{ id:uid(), asset_id:id,
+            title, kind:'on_arrival', responsibility:'owner', cost_source:'entered',
+            interval_source:src, applies_when_source:(whenSource || []).join(', ') } });
+          return;
+        }
+        const due = new Date();
+        if (unit === 'month') due.setMonth(due.getMonth() + n); else due.setFullYear(due.getFullYear() + n);
+        writes.push({ op:'upsert', table:'schedule', record:{ id:uid(), asset_id:id,
+          title, kind:'interval', every_n:n, every_unit:unit, responsibility:'owner',
+          cost_source:'entered', next_due_on:due.toISOString().slice(0, 10),
+          interval_source:src, applies_when_source:(whenSource || []).join(', ') } });
+      });
+    made.push({ type:typeName, rec });
+    return id;
+  }
+  SYSTEMS.forEach(q => {
+    const v = sys[q.k]; if (!v) return;
+    const picked = q.multi ? v : [v];
+    picked.forEach(val => {
+      const o = q.o.find(x => x[0] === val); if (!o) return;
+      o[2].forEach(tn => addThing(tn, null, q.k === 'heat' ? val : ''));
+    });
+  });
+  if (draft.parkedAt || draft.stayKind || Object.values(draft.here || {}).some(v => v.length))
+    writes.push({ op:'upsert', table:'placement', record:{ id:uid(), structure_id:structId,
+      property_id:propId, address:draft.parkedAt || '', arrived_on:today(),
+      stay_kind:draft.stayKind || 'not_sure_yet',
+      water:(draft.here.water || []).join(', '), waste:(draft.here.waste || []).join(', '),
+      power:(draft.here.power || []).join(', ') } });
+
+  (draft.household || []).forEach(name =>
+    writes.push({ op:'upsert', table:'person', record:{ id:uid(), name, role:'resident' } }));
+  (draft.animals || []).forEach(a => {
+    const animalId = uid();
+    writes.push({ op:'upsert', table:'animal', record:{ id:animalId, property_id:propId,
+      name:a.name, type:a.type, role:'pet', acquired_on:'' } });
+    writes.push({ op:'upsert', table:'placement', record:{ id:uid(), animal_id:animalId,
+      property_id:propId, arrived_on:today() } });
+  });
+
+  // Counts, so three fridges are three rows. Each gets its own check-ups,
+  // because the one in the garage and the one in the kitchen do not share a
+  // filter change.
+  const units = {};
+  Object.entries(draft.things || {}).forEach(([tn, n]) => {
+    for (let i = 1; i <= n; i++) {
+      const id = addThing(tn, n > 1 ? tn + ' ' + i : tn, '', true);
+      if (id) units[tn + '#' + i] = id;
+    }
+  });
+  made.forEach(m => { if (!units[m.type + '#1']) units[m.type + '#1'] = m.rec.id; });
+
+  // The thing bugging them is an ISSUE against a thing, not a second thing.
+  const pick = draft.pick || '';
+  let hurtId = null;
+  if (pick.startsWith('have:')) hurtId = units[pick.slice(5)] || null;
+  else if (pick.startsWith('new:')) hurtId = addThing(pick.slice(4), draft.thingName, '', true);
+  if (hurtId && draft.state && draft.state !== 'works')
+    writes.push({ op:'upsert', table:'issue', record:{ id:uid(), asset_id:hurtId,
+      structure_id:structId,
+      // An issue called "Needs a look" tells nobody anything. Name it after the
+      // thing when they picked one they already own.
+      title: draft.thingName || (made.find(m => m.rec.id === hurtId) || {}).rec?.name || 'Needs a look',
+      first_seen_on:today(), state:draft.state } });
+
+  // What nothing on our lists could say. One row per word, counted, and never
+  // promoted without a person reading it.
+  // Each typing carries WHERE it was typed, because that is the part that cannot
+  // be reconstructed later and the part that decides the answer. "Forty people
+  // asked for a cistern" and "thirty-eight of them are on boats" are different
+  // findings, and only the second says where to put it. The tally across rows
+  // is the server's job; the client only ever reports its own one.
+  const ctxKind = draft.bkind === '__other' ? (draft.bkindOther || 'other') : draft.bkind;
+  const ctxGroup = kgroup(draft.bkind);
+  const suggest = (obj, field, typed) => writes.push({ op:'upsert', table:'suggestion',
+    record:{ id:uid(), object:obj, field, typed, normalised:typed.toLowerCase().trim(),
+      property_id:propId, count:1, context_kind:ctxKind, context_group:ctxGroup,
+      by_kind:ctxKind + ':1', first_seen_on:today(), last_seen_on:today(), status:'new' } });
+  Object.entries(draft.other || {}).forEach(([k, typed]) => {
+    const [obj, field] = k.split('.'); suggest(obj, field, typed);
+  });
+  if (draft.bkindOther) suggest('structure', 'kind', draft.bkindOther);
+
+  await DwelLogs.write(writes);
+}
+
+// ---- the app ------------------------------------------------------------
+const byId = t => Object.fromEntries((DB[t] || []).map(r => [r.id, r]));
+function schedules() {
+  const A = byId('asset');
+  return (DB.schedule || []).filter(s => s.status !== 'archived').map(s => {
+    const d = daysTo(s.next_due_on);
+    return { ...s, thing:(A[s.asset_id] || {}).name || '—', d,
+      state: d == null ? 'ok' : d <= 0 ? 'attn' : d <= 14 ? 'soon' : 'ok' };
+  }).sort((a, b) => (a.d ?? 1e6) - (b.d ?? 1e6));
+}
+
+function show(s) {
+  screen = s;
+  $('#tabs').hidden = false;
+  $('#tabs').innerHTML = [['home','Home'],['add','Add'],['log','Log']]
+    .map(([k, l]) => `<button onclick="show('${k}')" aria-current="${k === s ? 'page' : 'false'}">${l}</button>`).join('');
+  ({ home: drawHome, add: drawAdd, log: drawLog })[s]();
+  window.scrollTo(0, 0);
+}
+
+
+/* ---- the pulse ----------------------------------------------------------
+   The line on the site is drawn by hand. This one is drawn by YOUR HOUSE: one
+   motif per thing you track, in the order you added them, with its height set
+   by how close that thing is to needing you. Two people never get the same
+   line, and yours changes as the place does — which is the whole idea, a pulse
+   being a reading rather than a decoration.
+
+   The motifs are the same visual language as the site: a baseline with events
+   on it, some borrowed from a heart trace and some from the thing itself. A
+   well gets a pump curve. A septic tank gets a square wave. Anything that
+   burns gets a flame spike. */
+const MOTIF = {
+  'Water & well':   (x, w, a) => `L${x} 0 C${x + w * .25} ${-a} ${x + w * .75} ${-a} ${x + w} 0`,
+  'Septic & sewer': (x, w, a) => `L${x} 0 L${x} ${-a * .7} L${x + w * .5} ${-a * .7} L${x + w * .5} 0 L${x + w} 0`,
+  'Heating & fuel': (x, w, a) => `L${x + w * .2} 0 L${x + w * .35} ${-a} L${x + w * .5} ${a * .35} L${x + w * .65} ${-a * .6} L${x + w * .8} 0 L${x + w} 0`,
+  'Power':          (x, w, a) => `L${x + w * .25} 0 L${x + w * .45} ${-a} L${x + w * .4} ${-a * .3} L${x + w * .6} ${-a * .3} L${x + w * .55} ${a * .4} L${x + w * .75} 0 L${x + w} 0`,
+  'Cooling':        (x, w, a) => `L${x} 0 Q${x + w * .25} ${-a} ${x + w * .5} 0 Q${x + w * .75} ${a * .5} ${x + w} 0`,
+  'Appliances':     (x, w, a) => `L${x + w * .2} 0 L${x + w * .2} ${-a * .6} L${x + w * .45} ${-a * .6} L${x + w * .45} 0 L${x + w * .6} 0 L${x + w * .6} ${-a * .35} L${x + w * .8} ${-a * .35} L${x + w * .8} 0 L${x + w} 0`,
+  'Safety':         (x, w, a) => `L${x + w * .4} 0 L${x + w * .5} ${-a} L${x + w * .6} 0 L${x + w} 0`,
+  _default:         (x, w, a) => `L${x + w * .3} 0 L${x + w * .4} ${-a * .5} L${x + w * .5} ${a * .25} L${x + w * .6} 0 L${x + w} 0`
+};
+/* Height says how close it is to wanting you. Nothing overdue means a calm
+   line, which is a true reading and not a reward. */
+const AMP = { attn: 30, soon: 18, ok: 9 };
+
+function pulsePath(width) {
+  const things = (DB.asset || []).filter(a => a.status !== 'archived');
+  if (!things.length) {
+    // An empty place has a heartbeat, not a flat line. It is alive and there is
+    // simply nothing on it yet.
+    const m = width / 2;
+    return `M0 0 L${m - 14} 0 L${m - 8} -4 L${m - 2} 14 L${m + 4} -22 L${m + 10} 8 L${m + 16} 0 L${width} 0`;
+  }
+  const byType = Object.fromEntries((DB.asset_type || []).map(t => [t.id, t]));
+  const byCat  = Object.fromEntries((DB.category || []).map(c => [c.id, c.name]));
+  const worst = {};
+  schedules().forEach(s => {
+    const r = { attn: 3, soon: 2, ok: 1 }[s.state] || 1;
+    if (!worst[s.asset_id] || r > worst[s.asset_id]) worst[s.asset_id] = r;
+  });
+  const shown = things.slice(0, 9);
+  const w = width / shown.length;
+  let d = 'M0 0 ';
+  shown.forEach((a, i) => {
+    const t = byType[a.asset_type_id], cat = t ? byCat[t.category_id] : null;
+    const draw = MOTIF[cat] || MOTIF._default;
+    const state = { 3:'attn', 2:'soon', 1:'ok' }[worst[a.id] || 1];
+    d += draw(i * w, w, AMP[state]) + ' ';
+  });
+  return d + `L${width} 0`;
+}
+function pulseSvg() {
+  const W = 320;
+  return `<div class="pulse" aria-hidden="true"><svg viewBox="0 -34 ${W} 60"
+    preserveAspectRatio="none" role="presentation">
+    <path d="${pulsePath(W)}"/></svg></div>`;
+}
+
+function drawHome() {
+  const sch = schedules(), now = sch.filter(x => x.state === 'attn'), soon = sch.filter(x => x.state === 'soon');
+  const things = (DB.asset || []).filter(a => a.status !== 'archived');
+  const places = myPlaces(), fresh = localStorage.getItem('dwellogs.new');
+  app.innerHTML = `<button class="who" onclick="drawMe()">${icon('person', 18)}
+      <span>${esc(me.name)}</span></button>
+    ${places.length > 1 ? `<div class="pick" style="margin-bottom:.8rem">${places.map(p =>
+      `<button type="button" aria-pressed="${p.id === prop.id}" onclick="switchPlace('${p.id}')">
+        ${icon(p.kind, 26)}<span class="cap">${esc(p.name)}${
+          p.id === fresh ? '<br><span class="chip soon">new</span>' : ''}</span>
+      </button>`).join('')}</div>` : ''}
+    <h1>${esc(prop.name)}</h1>
+    ${pulseSvg()}
+    <p class="sub">${esc(prop.city || '')}${prop.city ? ' · ' : ''}${
+      things.length ? things.length + ' thing' + (things.length === 1 ? '' : 's') + ' tracked'
+                    : 'nothing tracked yet'}</p>
+    <span class="big">${now.length}</span>
+    <p class="title">${now.length === 1 ? 'thing needs you now' : 'things need you now'}</p>
+    ${now.concat(soon).map(card).join('') ||
+      `<div class="empty">Nothing due. That is a real state, not an empty one.</div>`}
+    ${sch.length ? `<h2>Everything else</h2>` +
+      sch.filter(x => x.state === 'ok').map(card).join('') : ''}
+    <p class="meta" style="margin-top:1.4rem">${DwelLogs.raw === null ? '' :
+      (localStorage.getItem('dwellogs.url') ? 'Saving to your sheet.' : 'Saving on this device only.')}
+      <button class="ghost" style="min-height:2rem;padding:.2rem .5rem" onclick="connect()">change</button></p>
+    ${behind ? `<div class="card"><span class="title">Your sheet is a version behind</span>
+      <p class="meta">Newer parts of the app need columns your sheet does not have yet.
+        Adding them takes a second and nothing already in there is touched.</p>
+      <button class="ghost" onclick="runMigrate()">Bring it up to date</button></div>` : ''}
+    ${todo().length ? `<div class="card"><span class="title">Still blank</span>
+      <p class="meta">Left for later, not forgotten. Nothing here is required.</p>
+      <div class="pick" style="margin-top:.6rem">${todo().map(t =>
+        `<button type="button" onclick="${t.go}">${icon(t.icon || 'things', 28)}
+          <span class="cap">${esc(t.label)}</span></button>`).join('')}</div></div>` : ''}
+    ${animalHint() ? `<div class="card"><span class="title">Anything living out there?</span>
+      <p class="meta">You have a ${esc(((DB.structure || []).find(st =>
+        ANIMAL_KINDS.includes(st.kind)) || {}).kind || '').replace(/_/g,' ')}. Animals get feed that
+        runs out, papers that expire and a vet who charges by the trip.</p>
+      <button class="ghost" onclick="drawAnimal()">Add one</button></div>` : ''}
+    <h2>Anything else</h2>
+    <div class="pick">${[
+      ['bell','When to tell me','drawTell()'],
+      ['camera','Add a photo','drawPhoto()'],
+      ['speech','Tell us something','drawFeedback()'],
+      ['invite','Invite somebody','drawInvite()'],
+      ['device','My other device','drawHandoff()'],
+      ['animal','Add an animal','drawAnimal()'],
+      ...(movers().length ? [['location','I&rsquo;ve moved','drawMoved()']] : []),
+      ['addplace','Another place','addPlace()'],
+      ['restart','Start over','startOver()']
+    ].map(([ic, l, go]) => `<button type="button" onclick="${go}">${icon(ic, 28)}
+      <span class="cap">${l}</span></button>`).join('')}</div>`;
+}
+/* Anything whose kind moves, or that already has a placement. */
+/* The order that decides what a screen is allowed to claim:
+     1. two completions here  -> the measured gap, and we say so
+     2. somebody set it       -> theirs
+     3. the book              -> the manual, the code, our estimate
+   The household never produces a NUMBER. When nothing has been measured yet and
+   there are more people here than the book assumed, it gets to say one sentence
+   and no more — and the first logged replacement retires it for good. */
+function intervalBasis(sched) {
+  const done = (DB.history || []).filter(h => h.schedule_id === sched.id && h.done_on)
+    .map(h => h.done_on).sort();
+  if (done.length >= 2) {
+    const a = new Date(done[done.length - 2]), b = new Date(done[done.length - 1]);
+    const days = Math.round((b - a) / 86400000);
+    return { source:'own_history', says:'Yours: about ' + days + ' days last time.' };
+  }
+  const st = (DB.structure || []).find(s => s.id === sched.structure_id) ||
+             (DB.structure || [])[0] || {};
+  const n = Number(st.people_living || 0);
+  const book = { manufacturer:'the manual', code:'code', our_estimate:'our estimate' }[sched.interval_source];
+  if (!done.length && n > 2 && book && sched.interval_source !== 'owner')
+    return { source:sched.interval_source, says:'This is ' + book + '\u2019s figure. ' + n +
+      ' people live here, so it may not last that long \u2014 the first time you replace it, ' +
+      'we will know instead of guessing.' };
+  return { source:sched.interval_source,
+           says:book ? 'From ' + book + '.' : 'You set this one.' };
+}
+/* Kinds that all but announce an animal. Ticking one of these is not proof —
+   an empty coop is a coop — so this OFFERS and nothing more. */
+const ANIMAL_KINDS = ['coop','stable','animal_pen','kennel','barn','pasture','pole_barn'];
+/* What the setup deliberately left blank. Not a nag and not a progress bar —
+   "not sure yet" is a real answer everywhere in this app, so this is a list of
+   doors, and it shrinks as they get used. */
+function todo() {
+  const st = (DB.structure || [])[0] || {}, out = [];
+  const unset = v => !v || v === 'not_sure_yet';
+  // Per building, so a ranch with a count on the house and none on the cabin
+  // still has something to fill in.
+  const homes = (DB.structure || []).filter(x => kgroup(x.kind) !== 'land');
+  const blank = homes.filter(x => !x.people_living);
+  if (blank.length) out.push({ icon:'people',
+    label: blank.length === homes.length || homes.length === 1
+      ? 'Who lives here' : 'Who lives in ' + blank[0].name,
+    go:'drawWhoElse()' });
+  if (unset(st.water) || unset(st.power) || unset(st.heat))
+    out.push({ icon:'systems', label:'What it runs on', go:"say('Coming next — the systems screen moves into the app.')" });
+  if (!(DB.asset || []).length) out.push({ icon:'things', label:"What's in it", go:"say('Coming next.')" });
+  if (!(DB.area || []).length) out.push({ icon:'rooms', label:'Rooms', go:"say('Coming next.')" });
+  if (!(DB.animal || []).length) out.push({ icon:'animal', label:'Animals', go:'drawAnimal()' });
+  if (!(DB.invite || []).length && (DB.membership || []).length < 2)
+    out.push({ icon:'invite', label:'Somebody else', go:'drawInvite()' });
+  return out;
+}
+/* The household half of "who is here", reachable after setup. */
+function drawWhoElse(stId) {
+  const homes = (DB.structure || []).filter(x => !['land'].includes(kgroup(x.kind)));
+  const st = (stId && homes.find(x => x.id === stId)) || (homes.length === 1 ? homes[0] : null);
+  $('#tabs').hidden = true;
+  if (!st) {
+    app.innerHTML = `<h1>Which building?</h1>
+      <p class="sub">Counted per building, because that is what wears the things in it.</p>
+      ${homes.map(x => `<div class="card tap"><button onclick="drawWhoElse('${x.id}')">
+        <span class="title">${esc(x.name)}</span>
+        <p class="meta">${x.people_living ? x.people_living + ' recorded' : 'nobody recorded yet'}</p>
+      </button></div>`).join('')}
+      <div class="actions"><button class="ghost" onclick="show('home')">Back</button></div>`;
+    return;
+  }
+  app.innerHTML = `<h1>Who lives in ${esc(st.name)}?</h1>
+    <p class="sub">Both optional. It changes what gets suggested, never what gets decided.</p>
+    <div class="counts">
+      <div class="count"><span>People, you included</span>
+        <input id="pl-n" inputmode="numeric" placeholder="0" value="${esc(st.people_living || '')}"></div>
+      <div class="count"><span>Children among them</span>
+        <select id="pl-k">${[['','—'],['yes','yes'],['no','no'],['not_sure_yet','varies']]
+          .map(([v, l]) => `<option value="${v}"${st.children_here === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      </div></div>
+    ${tip('This building, not the whole place. The washer in here is worn by the people in here, ' +
+      'not by anybody out in the guest cabin. The app will offer a shorter interval on the things ' +
+      'that take the beating and say why — it never quietly changes one.', 'Which “here”?')}
+    <div class="actions">
+      <button class="primary" onclick="saveWhoElse('${st.id}')">Save</button>
+      <button class="ghost" onclick="show('home')">Back</button>
+    </div>`;
+}
+async function saveWhoElse(stId) {
+  const st = (DB.structure || []).find(x => x.id === stId);
+  const v = ($('#pl-n').value || '').trim(), n = Number(v);
+  await DwelLogs.write([{ op:'upsert', table:'structure', record:{ ...st,
+    people_living: v && Number.isFinite(n) && n > 0 ? Math.floor(n) : '',
+    children_here: $('#pl-k').value || '' } }]);
+  await boot(); say('Noted.');
+}
+/* Offered, never forced, and never automatic. It is their spreadsheet: the app
+   does not get to restructure it because it happened to open. Everything it
+   does is additive, and it says exactly what it did. */
+async function runMigrate() {
+  say('Adding what is missing…');
+  let r;
+  try { r = await DwelLogs.migrate(); }
+  catch (e) { return say('Could not update the sheet: ' + e.message); }
+  const m = r.migrated || {};
+  await boot();
+  const bits = [];
+  if ((m.added_tables || []).length) bits.push(m.added_tables.length + ' new tabs');
+  if ((m.added_columns || []).length) bits.push(m.added_columns.length + ' new columns');
+  if ((m.renamed || []).length) bits.push(m.renamed.length + ' carried over');
+  say(bits.length ? 'Done — ' + bits.join(', ') + '. Nothing was removed.'
+                  : 'Nothing to add. Your sheet was already current.');
+}
+function animalHint() {
+  return (DB.structure || []).some(st => ANIMAL_KINDS.includes(st.kind))
+    && !(DB.animal || []).length;
+}
+function movers() {
+  const placed = new Set((DB.placement || []).map(p => p.structure_id));
+  return (DB.structure || []).filter(st =>
+    ['wheels','floating'].includes(kgroup(st.kind)) || placed.has(st.id));
+}
+const openStay = id => (DB.placement || [])
+  .filter(p => p.structure_id === id && !p.left_on).slice(-1)[0] || null;
+
+/* Whose it is and where it lives are two questions, and they have different
+   answers more often than you would think: the barn cat belongs to the place,
+   the dog belongs to a person and leaves when they do. Asked, not inferred. */
+/* Short, sayable over the phone, and not a word. */
+function inviteCode() {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no O/0, no I/1
+  return Array.from({length:6}, () => A[Math.floor(Math.random()*A.length)]).join('');
+}
+const liveInvites = () => (DB.invite || []).filter(i => i.state === 'sent');
+
+/* Her phone and her laptop are two devices and, to this app, two people —
+   because "who am I" is a key in one browser's storage. This link carries the
+   connection AND which person she is, so the other device opens as her rather
+   than as somebody new setting up a second ranch. */
+/* Nothing told anybody anything until now: the app spoke when you opened it,
+   which for a maintenance app is the problem it claims to solve. */
+/* Not an Issue. An Issue is something wrong with the HOUSE, and filing "the
+   back button is confusing" next to "the stove is leaking gas" would make both
+   lists useless. There is no server, so sending means their own mail client
+   with the text already written — and the row is kept either way, because a
+   report somebody decided not to send is still their note. */
+const FEEDBACK_TO = 'hello@dwellogs.com';
+function appContext() {
+  const n = t => (DB[t] || []).length;
+  return [
+    'Place: ' + ((prop && prop.kind) || 'none yet'),
+    'Tracking: ' + n('structure') + ' buildings, ' + n('asset') + ' things, ' + n('schedule') + ' check-ups',
+    'Saving: ' + (localStorage.getItem('dwellogs.url') ? 'to a sheet' : 'on this device only'),
+    'Screen: ' + screen
+  ].join('\n');
+}
+/* The strongest argument for photos is the one nobody plans for: the day you
+   move out and somebody asks whether that scuff was already there. A dated
+   picture settles it; a memory does not. So the screen asks WHY before it asks
+   anything else — four hundred photos is a folder, forty tagged move_in the
+   week you moved in is evidence. */
+const PHOTO_WHY = [
+  ['move_in','Moving in','how it was the day we got here'],
+  ['move_out','Moving out','how we left it'],
+  ['for_the_landlord','For the landlord','something reported, with a date on it'],
+  ['insurance','For insurance','what it was worth, or what happened to it'],
+  ['damage','Damage','what went wrong'],
+  ['before_work','Before the work','what it looked like first'],
+  ['after_work','After the work','what was actually done'],
+  ['how_it_goes_back_together','How it goes back together','before you take it apart'],
+  ['model_plate','The label','make, model, serial — so you never crawl behind it again'],
+  ['just_a_record','Just a record','']
+];
+function drawPhoto() {
+  $('#tabs').hidden = true;
+  draft.ph = draft.ph || { why:'move_in' };
+  const areas = (DB.area || []), things = (DB.asset || []).filter(a => a.status !== 'archived');
+  const onSheet = !!localStorage.getItem('dwellogs.url');
+  app.innerHTML = `<button class="back" onclick="show('home')">&lsaquo; Back</button>
+    <h1>Add a photo</h1>
+    <p class="sub">Dated, and filed where you will find it again.</p>
+
+    <label>Why are you taking it?</label>
+    <div class="pick">${PHOTO_WHY.map(([v, l]) => `<button type="button"
+      aria-pressed="${draft.ph.why === v}" onclick="draft.ph.why='${v}';drawPhoto()">
+      ${icon('camera', 24)}<span class="cap">${esc(l)}</span></button>`).join('')}</div>
+    <p class="hint">${esc((PHOTO_WHY.find(x => x[0] === draft.ph.why) || [])[2] || '')}</p>
+    ${tip('This is what makes it findable. Four hundred photos is a folder. Forty tagged ' +
+      '&ldquo;moving in&rdquo; the week you moved in is evidence — and the day somebody is arguing ' +
+      'about a deposit is exactly the day nobody can find one.', 'Why this comes first')}
+
+    <label for="ph-f" style="margin-top:1.2rem">The photo</label>
+    <input id="ph-f" type="file" accept="image/*" capture="environment" onchange="pickedPhoto(this)">
+    <div id="ph-prev"></div>
+
+    <label for="ph-n" style="margin-top:1rem">Call it</label>
+    <input id="ph-n" placeholder="leave it and we will name it after the reason">
+    ${areas.length ? `<label for="ph-a">Which room?</label>
+      <select id="ph-a"><option value="">The place generally</option>
+        ${areas.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select>` : ''}
+    ${things.length ? `<label for="ph-t">Or a thing?</label>
+      <select id="ph-t"><option value="">Not a thing</option>
+        ${things.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>` : ''}
+    <label for="ph-d">Taken on</label>
+    <input id="ph-d" type="date" value="${today()}">
+    <label for="ph-note">Note <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+    <textarea id="ph-note" rows="2" placeholder="what it shows"></textarea>
+
+    ${onSheet
+      ? tip('It goes into a folder beside your sheet, in your own Drive. Never in the spreadsheet ' +
+          'itself, and never on a server of ours, because there is not one. Your file, your ' +
+          'storage, and it stays there if you stop using this.', 'Where it goes')
+      : `<div class="card"><span class="title">This device only</span>
+          <p class="meta">You have not connected a sheet, so the photo stays in this browser. That is
+            fine for a note to yourself and thin for evidence — if this is for a landlord or an
+            insurer, connect a sheet first so it lands in your Drive.</p></div>`}
+
+    <div class="actions">
+      <button class="primary" onclick="savePhoto()">Save it</button>
+    </div>`;
+}
+function pickedPhoto(el) {
+  const f = el.files && el.files[0];
+  const box = $('#ph-prev');
+  if (!f) { box.innerHTML = ''; return; }
+  const url = URL.createObjectURL(f);
+  box.innerHTML = `<img src="${url}" alt="" style="max-width:100%;border-radius:var(--r);
+    border:1px solid var(--line);margin-top:.6rem">
+    <p class="hint">${(f.size / 1048576).toFixed(1)} MB on your phone — it is shrunk before
+      it is sent.</p>`;
+}
+async function savePhoto() {
+  const el = $('#ph-f'), f = el.files && el.files[0];
+  if (!f) { el.classList.add('missing'); return say('Pick a photo first.'); }
+  const why = draft.ph.why;
+  const label = (PHOTO_WHY.find(x => x[0] === why) || [])[1] || 'Photo';
+  say('Shrinking and saving…');
+  let up;
+  try { up = await DwelLogs.photo(f, label + ' ' + today() + '.jpg'); }
+  catch (e) { return say('Could not save the photo: ' + e.message); }
+  const rec = { id:uid(), property_id:prop.id, kind:'photo', purpose:why,
+    name:($('#ph-n').value || '').trim() || (label + ' — ' + today()),
+    area_id:(($('#ph-a') || {}).value) || '', asset_id:(($('#ph-t') || {}).value) || '',
+    taken_on:$('#ph-d').value || today(), dated_on:today(),
+    by_person_id:me.id, note:($('#ph-note').value || '').trim(),
+    drive_id:up.drive_id || '', url:up.url || '',
+    width:up.width, height:up.height, bytes:up.bytes };
+  try { await DwelLogs.write([{ op:'upsert', table:'document', record:rec }]); }
+  catch (e) { return say('Photo saved but the record did not: ' + e.message); }
+  await boot();
+  say(up.local ? 'Saved on this device.' : 'Saved to your Drive and filed under ' + label + '.');
+}
+function drawFeedback() {
+  $('#tabs').hidden = true;
+  app.innerHTML = `<button class="back" onclick="show('home')">&lsaquo; Back</button>
+    <h1>Tell us something</h1>
+    <p class="sub">About the app, not about the house. Anything that broke, confused you, or is
+      missing.</p>
+    <label>What kind</label>
+    <div class="pick">${[['broken','Something broke'],['confusing','This confused me'],
+      ['missing','I could not do a thing'],['idea','I have an idea'],['praise','Something worked']]
+      .map(([v, l]) => `<button type="button" aria-pressed="${(draft.fbKind || 'confusing') === v}"
+        onclick="draft.fbKind='${v}';drawFeedback()">${icon(
+          { broken:'wrong', confusing:'speech', missing:'things', idea:'bell', praise:'ok' }[v]
+            || 'speech', 26)}<span class="cap">${esc(l)}</span></button>`).join('')}</div>
+    <label for="fb-w" style="margin-top:1.1rem">What happened</label>
+    <textarea id="fb-w" rows="4" placeholder="in your own words"></textarea>
+    <label for="fb-e">What you expected <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+    <textarea id="fb-e" rows="3" placeholder="what you thought it would do"></textarea>
+    ${tip('The gap between those two is the whole finding. &ldquo;It did X&rdquo; is a report; ' +
+      '&ldquo;I thought it would do Y&rdquo; is a design note, and the second one is the useful half.',
+      'Why both')}
+
+    <label style="margin-top:1.2rem">Sent with it</label>
+    <pre class="ctx">${esc(appContext())}</pre>
+    <p class="hint">That is the whole of it. No names, no addresses, nothing you have written down.</p>
+    ${tip('Shown in full because a quiet payload attached to a complaint is how people stop ' +
+      'complaining. There is no server here — the button opens your own mail app with this already ' +
+      'written, and you send it or you do not.', 'Where it goes')}
+    <div class="actions">
+      <button class="primary" onclick="sendFeedback()">Write the email</button>
+      <button class="ghost" onclick="keepFeedback()">Just keep it</button>
+    </div>`;
+}
+function readFeedback() {
+  const w = ($('#fb-w').value || '').trim();
+  if (!w) { $('#fb-w').classList.add('missing'); $('#fb-w').focus(); return null; }
+  return { id:uid(), person_id:(me || {}).id || '', kind:draft.fbKind || 'confusing',
+    what:w, expected:($('#fb-e').value || '').trim(), screen:screen,
+    context:appContext(), raised_on:today(), status:'new' };
+}
+async function keepFeedback() {
+  const rec = readFeedback();
+  if (!rec) return say('Say what happened, even roughly.');
+  try { await DwelLogs.write([{ op:'upsert', table:'feedback', record:rec }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await boot(); say('Kept. It is in your log if you want to send it later.');
+}
+async function sendFeedback() {
+  const rec = readFeedback();
+  if (!rec) return say('Say what happened, even roughly.');
+  const body = [rec.what, '', rec.expected ? 'I expected: ' + rec.expected : '', '',
+    '---', rec.context].filter(x => x !== '').join('\n');
+  rec.sent = 'TRUE';
+  try { await DwelLogs.write([{ op:'upsert', table:'feedback', record:rec }]); } catch (e) {}
+  location.href = 'mailto:' + FEEDBACK_TO +
+    '?subject=' + encodeURIComponent('DwelLogs: ' + rec.kind) +
+    '&body=' + encodeURIComponent(body);
+  await boot();
+  say('Your mail app should be opening. Nothing is sent until you send it.');
+}
+function drawTell() {
+  $('#tabs').hidden = true;
+  const p = (DB.reminder_pref || []).find(x => x.person_id === me.id) || {};
+  const pick = (id, opts, cur) => `<select id="${id}">${opts.map(([v, l]) =>
+    `<option value="${v}"${cur === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  const on = k => String((p.what || '')).includes(k);
+  app.innerHTML = `<button class="back" onclick="show('home')">&lsaquo; Back</button>
+    <h1>When should we tell you?</h1>
+    <p class="sub">Silence is the right answer most weeks. This decides the rest.</p>
+
+    <label for="t-ch">How</label>
+    ${pick('t-ch', [['none','Not at all — I will open the app'],
+                    ['email','Email me a digest'],
+                    ['calendar','Put them in my calendar']], p.channel || 'none')}
+    ${tip('A calendar feed hands the job to the calendar you already look at, with the alert style ' +
+      'you already chose — better than us inventing one and hoping it suits. The digest is an email ' +
+      'the sheet sends itself on a schedule.<br><br>Phone notifications need an installed app and ' +
+      'something to send them, so they are not built yet.', 'What these do')}
+
+    <label style="margin-top:1.2rem">About</label>
+    <div class="opts">${[['due_soon','things coming up'],['overdue','things already late'],
+      ['new_issues','new problems'],['low_supplies','running low on something'],
+      ['someone_waiting','somebody waiting on me']].map(([v, l]) =>
+      `<label class="tick"><input type="checkbox" class="t-w" value="${v}"${
+        on(v) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>
+
+    <label for="t-lead" style="margin-top:1.2rem">How far ahead</label>
+    <input id="t-lead" inputmode="numeric" placeholder="7" value="${esc(p.lead_days || '')}">
+    <p class="hint">Days. A filter wants a week; a septic pump-out wants a month, because you have
+      to book it.</p>
+
+    <label for="t-cad" style="margin-top:1.2rem">How often at most</label>
+    ${pick('t-cad', [['only_when_it_changes','Only when something changes'],
+                     ['weekly','Once a week'],['daily','Daily'],['monthly','Monthly']],
+           p.cadence || 'only_when_it_changes')}
+    <label for="t-cap">Never more than</label>
+    <input id="t-cap" inputmode="numeric" placeholder="2" value="${esc(p.max_per_week || '')}">
+    <p class="hint">Messages a week. Past that the rest waits.</p>
+    ${tip('An app that can send twice will eventually send five times, and then it gets muted ' +
+      'forever. This is the cap you set, and it is honoured before anything else.', 'Why a cap')}
+
+    <label class="tick" style="margin-top:1.2rem"><input type="checkbox" id="t-mine"${
+      String(p.only_mine).toUpperCase() === 'TRUE' ? ' checked' : ''}> Only things that are mine</label>
+    <label class="tick"><input type="checkbox" id="t-unk"${
+      String(p.never_about_unknowns).toUpperCase() !== 'FALSE' ? ' checked' : ''}>
+      Leave the unknowns alone</label>
+    ${tip('On by default, and it is the rule this whole app runs on: a thing whose answer is ' +
+      '&ldquo;not sure yet&rdquo; produces no reminder. Somebody who moved in during June does not ' +
+      'get chased about winterising they have no way to judge — they get asked once, later.',
+      'The unknowns rule')}
+
+    <div class="actions">
+      <button class="primary" onclick="saveTell('${p.id || ''}')">Save</button>
+    </div>`;
+}
+async function saveTell(id) {
+  const what = [...document.querySelectorAll('.t-w:checked')].map(e => e.value);
+  const num = v => { const n = Number((v || '').trim()); return Number.isFinite(n) && n > 0 ? n : ''; };
+  const rec = { id: id || uid(), person_id: me.id,
+    channel: $('#t-ch').value,
+    what: what.join(', ') || 'nothing',
+    lead_days: num($('#t-lead').value),
+    cadence: $('#t-cad').value,
+    max_per_week: num($('#t-cap').value),
+    only_mine: $('#t-mine').checked ? 'TRUE' : '',
+    never_about_unknowns: $('#t-unk').checked ? 'TRUE' : 'FALSE' };
+  if (rec.channel === 'calendar' && !rec.feed_key) rec.feed_key = uid() + uid();
+  try { await DwelLogs.write([{ op:'upsert', table:'reminder_pref', record:rec }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await boot();
+  say(rec.channel === 'none' ? 'Nothing will be sent.'
+    : rec.channel === 'calendar' ? 'Saved. Subscribe to the feed from your sheet.'
+    : 'Saved. You will hear from us only when there is something.');
+}
+/* The level above a property. She asked for it early — "I cannot zoom out of
+   this property, I cannot see me as a person, my info, my properties" — and
+   until now the only thing at this level was a name in grey text. */
+function drawMe() {
+  $('#tabs').hidden = true;
+  const places = myPlaces();
+  const accessOf = id => ((DB.membership || []).find(m =>
+    m.person_id === me.id && m.property_id === id) || {}).access || 'owner';
+  const ACC = { owner:'yours', manage:'you can change things', log:'you can log what you do',
+                view:'you can look' };
+  app.innerHTML = `<button class="back" onclick="show('home')">&lsaquo; Back</button>
+    <h1>${esc(me.name)}</h1>
+    <p class="sub">You, and the places you are on.</p>
+
+    <label for="me-n">Your name</label>
+    <input id="me-n" value="${esc(me.name || '')}">
+    <p class="hint">What the log says next to anything you do.</p>
+    <label for="me-e">Email <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+    <input id="me-e" inputmode="email" placeholder="only if you want a digest"
+      value="${esc(me.email || '')}">
+    ${tip('Only used to send you the digest you asked for, from your own sheet. Nothing else has ' +
+      'it, and leaving it blank costs you nothing unless you turned reminders on.', 'What this is for')}
+    <div class="actions" style="margin:.6rem 0 1.4rem">
+      <button class="ghost" onclick="saveMe()">Save</button>
+    </div>
+
+    <h2>Your places</h2>
+    <div class="rows">${places.map(p => {
+      const a = accessOf(p.id), mine = a === 'owner';
+      const st = (DB.structure || []).filter(x => x.property_id === p.id).length;
+      return `<div class="row">${icon(p.kind, 26)}
+        <button class="grow" style="background:none;border:0;padding:0;text-align:left;font:inherit;color:inherit;cursor:pointer"
+          onclick="switchPlace('${p.id}')">
+          <b>${esc(p.name)}${p.id === prop.id ? ' &middot; open now' : ''}</b>
+          <small>${esc(ACC[a] || a)}${st ? ' &middot; ' + st + ' building' + (st === 1 ? '' : 's') : ''}</small>
+        </button>
+        ${mine ? '' : `<button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+          onclick="leavePlace('${p.id}')">Leave</button>`}</div>`;
+    }).join('') || '<p class="hint">None yet.</p>'}</div>
+    ${places.some(p => accessOf(p.id) === 'owner')
+      ? tip('A place you own has no Leave, because leaving would strand it. Hand it to somebody ' +
+          'else first, or start over from the home screen if you want it gone.', 'Why some have no Leave')
+      : ''}
+
+    <div class="pick" style="margin-top:1.1rem">
+      <button type="button" onclick="addPlace()">${icon('addplace', 28)}
+        <span class="cap">Add another place</span></button>
+      <button type="button" onclick="drawFirst_join()">${icon('invite', 28)}
+        <span class="cap">Join with a code</span></button>
+      <button type="button" onclick="drawHandoff()">${icon('device', 28)}
+        <span class="cap">My other device</span></button>
+      <button type="button" onclick="drawTell()">${icon('bell', 28)}
+        <span class="cap">When to tell me</span></button>
+    </div>`;
+}
+async function saveMe() {
+  const n = ($('#me-n').value || '').trim();
+  if (!n) { $('#me-n').classList.add('missing'); return say('We need something to put on the log.'); }
+  try { await DwelLogs.write([{ op:'upsert', table:'person',
+    record:{ ...me, name:n, email:($('#me-e').value || '').trim() } }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await boot(); drawMe(); say('Saved.');
+}
+/* Leaving is not deleting. The place carries on without you and everything you
+   logged stays theirs — it is their record of their house. */
+function leavePlace(id) {
+  const p = (DB.property || []).find(x => x.id === id) || {};
+  $('#tabs').hidden = true;
+  app.innerHTML = `<h1>Leave ${esc(p.name)}?</h1>
+    <p class="sub">It carries on without you.</p>
+    <div class="card"><span class="title">What happens</span>
+      <p class="meta">You stop seeing it. Anything you logged stays with the place, because it is
+        their record of their house — not yours to take away.</p></div>
+    <div class="card"><span class="title">What you keep</span>
+      <p class="meta">Your own places, and everything in them. Ask them for a new invite any time.</p></div>
+    <div class="actions">
+      <button class="primary" onclick="doLeave('${id}')">Leave it</button>
+      <button class="ghost" onclick="drawMe()">Stay</button>
+    </div>`;
+}
+async function doLeave(id) {
+  const m = (DB.membership || []).find(x => x.person_id === me.id && x.property_id === id);
+  if (m) { try { await DwelLogs.write([{ op:'archive', table:'membership', id:m.id }]); }
+           catch (e) { return say('Could not save: ' + e.message); } }
+  localStorage.removeItem('dwellogs.place');
+  await boot();
+  say('Left. It is off your list.');
+}
+/* Joining another place with a code, from inside the app rather than at first run. */
+function drawFirst_join() {
+  flow = 'join'; fs = 0; hubStep = null;
+  draft = { name: me.name, existingPerson: me.id };
+  $('#tabs').hidden = true;
+  drawFirst();
+}
+function drawHandoff() {
+  $('#tabs').hidden = true;
+  const link = handoffLink({ p:me.id });
+  app.innerHTML = `<h1>Open this on your other device</h1>
+    <p class="sub">Same places, same lists, logged as you.</p>
+    <div class="card"><span class="title" style="word-break:break-all;font-weight:400">${esc(link)}</span>
+      <div class="actions" style="margin-top:.6rem">
+        <button class="ghost" onclick="copyLink(${JSON.stringify(link).replace(/"/g,'&quot;')})">Copy the link</button>
+      </div></div>
+    ${tip('Mail it to yourself, message it to yourself, whatever is easiest. Opening it on the other ' +
+      'device connects it and signs you in as you.<br><br>It carries the key to your sheet and says ' +
+      'which person you are, so anyone who opens it is you. Send it to yourself and nobody else.',
+      'What is in the link')}
+    <div class="actions"><button class="primary" onclick="show('home')">Done</button></div>`;
+}
+function drawInvite() {
+  $('#tabs').hidden = true;
+  const pend = liveInvites();
+  // Anybody already in the data who is not yet a member — your husband, who
+  // exists because the log needed to say who did what.
+  const inHouse = new Set((DB.membership || []).map(m => m.person_id));
+  const known = (DB.person || []).filter(p => !inHouse.has(p.id) && p.role !== 'provider');
+  app.innerHTML = `<h1>Invite somebody</h1>
+    <p class="sub">They see what is due and can say they did it. Nothing else, unless you say so.</p>
+    ${pend.length ? `<label>Waiting to be accepted</label>
+      ${pend.map(i => `<div class="card"><span class="title">${esc(i.label)} &middot; ${esc(i.code)}</span>
+        <p class="meta">${esc(i.access)}${i.can_see_costs === 'TRUE' ? ' · sees costs' : ''}
+          · expires ${esc(i.expires_on)}</p>
+        <button class="ghost" onclick="revoke('${i.id}')">Revoke</button></div>`).join('')}` : ''}
+    <label for="iv-l" style="margin-top:1.1rem">Who is it for?</label>
+    <input id="iv-l" placeholder="their name, however you say it">
+    ${known.length ? `<label for="iv-p">Are they already in here?</label>
+      <select id="iv-p"><option value="">No — this is somebody new</option>
+        ${known.map(p => `<option value="${p.id}">${esc(p.name)} — already in your log</option>`).join('')}
+      </select>
+      ${tip('If you have been logging jobs against their name, point the invite at that record and ' +
+        'everything they already did stays theirs. A second copy of the same person is the obvious ' +
+        'way this goes wrong.', 'Why this is asked')}` : ''}
+    <label for="iv-a">What can they do?</label>
+    <select id="iv-a">
+      <option value="log">See what is due, and log it done</option>
+      <option value="view">Look, and nothing else</option>
+      <option value="manage">Change schedules too</option>
+    </select>
+    <label class="tick"><input type="checkbox" id="iv-c"> They can see costs</label>
+    ${tip('Off by default and on its own switch. Somebody helping with the list does not need to ' +
+      'know what the roof quote came in at — and a helper who sees the numbers starts weighing ' +
+      'whether a job is worth doing, which is not the job.<br><br>' +
+      '<b>What this does is hide costs on their screen.</b> It is not a lock: there are no accounts ' +
+      'yet, so anyone you give access to can open the spreadsheet behind this and read everything ' +
+      'in it. Invite people you would hand the spreadsheet to.', 'About costs')}
+    ${(DB.structure || []).filter(st => st.visibility === 'presence_only').length
+      ? `<label for="iv-t">Is one of these theirs?</label>
+         <select id="iv-t"><option value="">No</option>
+           ${(DB.structure || []).filter(st => st.visibility === 'presence_only').map(st =>
+             `<option value="${st.id}">${esc(st.name)} — hand it to them</option>`).join('')}
+         </select>
+         ${tip('Handing it over makes them responsible for it and lets them decide what you see of ' +
+           'it. Until they choose, you see that it is here, what it is hooked up to and where its ' +
+           'shutoffs are — nothing inside.', 'What handing it over does')}` : ''}
+    ${(DB.structure || []).length > 1 ? `<label for="iv-s">Everything, or one building?</label>
+      <select id="iv-s"><option value="">The whole place</option>
+        ${(DB.structure || []).map(st => `<option value="${st.id}">${esc(st.name)} only</option>`).join('')}
+      </select>` : ''}
+    <label for="iv-d">Good until</label>
+    <input id="iv-d" type="date" value="${inDays(30)}">
+    ${tip('A code is a key: whoever holds it can accept, so it is single-use and it runs out. An ' +
+      'invite with no end is a key under the mat.', 'Why it expires')}
+    <div class="actions">
+      <button class="primary" onclick="makeInvite()">Make the code</button>
+      <button class="ghost" onclick="show('home')">Back</button>
+    </div>`;
+}
+async function makeInvite() {
+  const label = ($('#iv-l').value || '').trim();
+  if (!label) return say('Who is it for?');
+  const code = inviteCode();
+  await DwelLogs.write([{ op:'upsert', table:'invite', record:{ id:uid(), property_id:prop.id,
+    label, for_person_id:($('#iv-p') || {}).value || '', access:$('#iv-a').value,
+    their_structure_id:(($('#iv-t') || {}).value) || '',
+    can_see_costs:$('#iv-c').checked ? 'TRUE' : '',
+    scope_structure_id:($('#iv-s') || {}).value || '',
+    code, single_use:'TRUE', expires_on:$('#iv-d').value || inDays(30),
+    sent_by_id:me.id, sent_on:today(), state:'sent' } }]);
+  await boot();
+  $('#tabs').hidden = true;
+  const link = handoffLink({ c:code });
+  app.innerHTML = `<h1>Send them this</h1>
+    <p class="sub">For ${esc(label)}. One tap and they are in — nothing to set up on their end.</p>
+    <div class="card"><span class="title" style="word-break:break-all;font-weight:400">${esc(link)}</span>
+      <div class="actions" style="margin-top:.6rem">
+        <button class="ghost" onclick="copyLink(${JSON.stringify(link).replace(/"/g,'&quot;')})">Copy the link</button>
+      </div></div>
+    ${tip('The link carries the connection as well as the invite, which is the whole point: they tap ' +
+      'it and the app is already pointed at the right place with their invite waiting. No address to ' +
+      'paste, no code to type, nothing to get wrong.<br><br>It also means <b>the link is the key.</b> ' +
+      'Anyone who opens it is in. Send it the way you would send a house key — a message to them, not ' +
+      'a post anywhere. Revoke it from the invite screen if it goes astray.', 'What is in the link')}
+    <div class="card"><span class="title">Or read it out</span>
+      <p class="meta">Code <b style="letter-spacing:.12em">${esc(code)}</b> — they can type this in
+        instead, but they will need the sheet details from you too.</p></div>
+    <div class="actions"><button class="primary" onclick="show('home')">Done</button></div>`;
+}
+async function copyLink(t) {
+  try { await navigator.clipboard.writeText(t); say('Copied. Send it to them.'); }
+  catch (e) { say('Could not copy — press and hold the link to copy it.'); }
+}
+async function revoke(id) {
+  const inv = (DB.invite || []).find(i => i.id === id);
+  await DwelLogs.write([{ op:'upsert', table:'invite', record:{ ...inv, state:'revoked' } }]);
+  await boot(); drawInvite(); say('Revoked. That code opens nothing now.');
+}
+function inDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); }
+
+function drawAnimal() {
+  $('#tabs').hidden = true;
+  const people = (DB.person || []);
+  app.innerHTML = `<h1>Add an animal</h1>
+    <p class="sub">Pet or livestock — the difference is what it is kept for, not how much you like it.</p>
+    <label for="an-n">Name <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+    <input id="an-n" placeholder="a laying hen may not have one">
+    <label for="an-t">What is it?</label>
+    <select id="an-t">${['dog','cat','bird','chicken','duck','goat','sheep','pig','cow','horse']
+      .map(t => `<option value="${t}">${t}</option>`).join('')}</select>
+    <label for="an-r">Kept as</label>
+    <select id="an-r">${[['pet','a pet'],['laying','laying'],['meat','meat'],['dairy','dairy'],
+        ['breeding','breeding'],['working','working'],['guard','guarding']]
+      .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select>
+    <label for="an-o">Whose is it?</label>
+    <select id="an-o">
+      <option value="">It belongs to the place</option>
+      ${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+    </select>
+    ${tip('The barn cat belongs to the place and stays when you go. A dog belongs to a person and ' +
+      'leaves with them. Both are ordinary, so it is asked rather than worked out — and whoever it ' +
+      'belongs to, where it lives right now is a separate fact that changes when it moves.',
+      'Why both are offered')}
+    <div class="actions">
+      <button class="primary" onclick="saveAnimal()">Add it</button>
+      <button class="ghost" onclick="show('home')">Cancel</button>
+    </div>`;
+}
+async function saveAnimal() {
+  const id = uid(), owner = $('#an-o').value;
+  const named = ($('#an-n').value || '').trim(), kind = $('#an-t').value;
+  const writes = [{ op:'upsert', table:'animal', record:{ id, property_id:prop.id,
+    owner_id:owner || '', name:named, type:kind, role:$('#an-r').value,
+    cared_for_by_id:owner || '', acquired_on:today() } },
+  { op:'upsert', table:'placement', record:{ id:uid(), animal_id:id, property_id:prop.id,
+    arrived_on:today() } }];
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await boot();
+  say((named || ('The ' + kind)) + ' is on the list.');
+}
+function drawMoved(stId) {
+  const list = movers();
+  const st = stId ? list.find(x => x.id === stId) : (list.length === 1 ? list[0] : null);
+  $('#tabs').hidden = true;
+  if (!st) {
+    app.innerHTML = `<h1>Which one moved?</h1>
+      ${list.map(x => `<div class="card tap"><button onclick="drawMoved('${x.id}')">
+        <span class="title">${esc(x.name)}</span>
+        <p class="meta">${esc((openStay(x.id) || {}).address || 'no location recorded')}</p>
+      </button></div>`).join('')}
+      <div class="actions"><button class="ghost" onclick="show('home')">Back</button></div>`;
+    return;
+  }
+  const was = openStay(st.id);
+  app.innerHTML = `<h1>Where is it now?</h1>
+    <p class="sub">${esc(st.name)}${was && was.address ? ' · was at ' + esc(was.address) : ''}</p>
+    <label for="pk-a">Where is it now?</label>
+    <input id="pk-a" placeholder="a lot, a park, an address, a marina">
+    <label for="pk-d">When did you get there?</label>
+    <input id="pk-d" type="date" value="${today()}">
+    <label for="pk-s">How long are you here?</label>
+    <select id="pk-s">${STAY.map(([v, l]) =>
+      `<option value="${v}"${(was || {}).stay_kind === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>
+    ${hereForm({})}
+    ${tip('The old stay is closed on the day you left and kept. Where it has been is its own history — ' +
+      'the year on the well is not erased by moving onto city water.', 'What happens to the last one')}
+    <div class="actions">
+      <button class="primary" onclick="saveMove('${st.id}')">Save it</button>
+      <button class="ghost" onclick="show('home')">Cancel</button>
+    </div>`;
+}
+async function saveMove(stId) {
+  const where = ($('#pk-a').value || '').trim();
+  if (!where) return say('Say where it is, even roughly.');
+  const when = $('#pk-d').value || today(), here = readHere(), was = openStay(stId);
+  // A stay cannot end before it started. Left unchecked, moving in on a future
+  // date and then moving again today writes a stay that ran backwards, and
+  // every span measured off it afterwards is nonsense.
+  if (was && was.arrived_on && when < was.arrived_on)
+    return say('That is before you arrived at ' + (was.address || 'the last spot') +
+      ' on ' + was.arrived_on + '. Check the date.');
+  const writes = [];
+  if (was) writes.push({ op:'upsert', table:'placement', record:{ ...was, left_on:when } });
+  writes.push({ op:'upsert', table:'placement', record:{ id:uid(), structure_id:stId,
+    property_id:(was || {}).property_id || prop.id, address:where, arrived_on:when,
+    stay_kind:$('#pk-s').value,
+    water:here.water.join(', '), waste:here.waste.join(', '), power:here.power.join(', ') } });
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await boot();
+  // The whole reason the source is kept per-stay: say what it just turned on.
+  const due = arrivalChecks(stId, here.water);
+  say(due.length
+    ? 'Moved. On this water: ' + due.map(d => d.title).join(', ') + '.'
+    : 'Moved. Nothing extra to do on this water.');
+}
+/* Arrival check-ups whose source condition matches what is here now. */
+function arrivalChecks(stId, water) {
+  const mine = new Set((DB.asset || []).filter(a => a.structure_id === stId).map(a => a.id));
+  return (DB.schedule || []).filter(s =>
+    s.kind === 'on_arrival' && mine.has(s.asset_id) &&
+    (!s.applies_when_source ||
+      s.applies_when_source.split(',').map(x => x.trim()).some(x => (water || []).includes(x))));
+}
+/* Walking the intake again is the whole job while this thing is being built,
+   and "open devtools and clear localStorage" is not a feature. Two taps, and
+   the first one says exactly what goes — counted from the rows that exist, not
+   described in the abstract. */
+function startOver() {
+  const n = t => (DB[t] || []).filter(r => r.status !== 'archived').length;
+  const sheet = !!localStorage.getItem('dwellogs.url');
+  $('#tabs').hidden = true;
+  app.innerHTML = `<h1>Start over?</h1>
+    <p class="sub">This clears what is on this device and takes you back to the first screen.</p>
+    <div class="card"><span class="title">What goes</span>
+      <p class="meta">${[['property','place'],['structure','building'],['area','area'],
+        ['asset','thing'],['schedule','check-up'],['issue','issue'],['animal','animal']]
+        .map(([t, l]) => n(t) + ' ' + l + (n(t) === 1 ? '' : 's'))
+        .filter(x => !x.startsWith('0 ')).join(' · ') || 'nothing yet'}</p></div>
+    ${sheet ? `<div class="card"><span class="title">Your sheet is not touched</span>
+        <p class="meta">This only clears this device and disconnects it. The rows stay in your
+          spreadsheet — delete them there if you want them gone.</p></div>`
+      : `<div class="card"><span class="title">There is no copy</span>
+        <p class="meta">This device is the only place these rows exist. Gone is gone.</p></div>`}
+    <div class="actions">
+      <button class="primary" onclick="wipe()">Yes, start over</button>
+      <button class="ghost" onclick="show('home')">Keep it</button>
+    </div>`;
+}
+function wipe() {
+  // Every key, not just the ones I happened to remember: a stale "which place
+  // was I in" pointing at a property that no longer exists is worse than none.
+  ['dwellogs.local.v1','dwellogs.cache.v1','dwellogs.url','dwellogs.token',
+   'dwellogs.me','dwellogs.place','dwellogs.new']
+    .forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  DB = null; me = null; prop = null;
+  boot();
+}
+const card = s => `<div class="card tap"><button onclick="openSched('${s.id}')">
+  <span class="title">${esc(s.title)}</span>
+  <p class="meta">${esc(s.thing)} · ${s.d == null ? 'no date yet'
+    : s.d < 0 ? Math.abs(s.d) + ' days late' : s.d === 0 ? 'today' : 'in ' + s.d + ' days'}
+    <span class="chip ${s.state}">${{ attn:'needs you', soon:'due soon', ok:'fine' }[s.state]}</span></p>
+</button></div>`;
+
+function openSched(id) {
+  const s = schedules().filter(x => x.id === id)[0];
+  $('#tabs').hidden = false;
+  const basis = intervalBasis(s);
+  app.innerHTML = `<button class="ghost" onclick="show('home')">&lsaquo; Back</button>
+    <h1>${esc(s.title)}</h1><p class="sub">${esc(s.thing)} · every ${s.every_n} ${esc(s.every_unit)}${s.every_n > 1 ? 's' : ''}</p>
+    <p class="hint">${esc(basis.says)}</p>
+    <label for="l-when">When was it done?</label><input id="l-when" type="date" value="${today()}">
+    <label for="l-cost">What did it cost? <span style="font-weight:400">(optional)</span></label>
+    <input id="l-cost" inputmode="decimal" placeholder="">
+    <p class="hint">Blank means you do not know — it is not counted as zero.</p>
+    <div class="actions"><button class="primary" onclick="logDone('${s.id}')">Log it done</button></div>`;
+}
+async function logDone(id) {
+  const s = (DB.schedule || []).filter(x => x.id === id)[0];
+  const when = $('#l-when').value || today(), cost = ($('#l-cost').value || '').trim();
+  const next = new Date(when);
+  if (s.every_unit === 'month') next.setMonth(next.getMonth() + Number(s.every_n));
+  else next.setFullYear(next.getFullYear() + Number(s.every_n));
+  try {
+    await DwelLogs.write([
+      { op:'upsert', table:'completion', record:{ id:uid(), schedule_id:s.id, asset_id:s.asset_id,
+          done_on:when, what:s.title, by_person_id:me.id, origin:'planned',
+          cost: cost === '' ? '' : cost } },
+      { op:'upsert', table:'schedule', record:{ id:s.id, next_due_on:next.toISOString().slice(0,10) } }
+    ]);
+  } catch (e) { return say('Could not save: ' + e.message); }
+  DB = (await DwelLogs.load()).db;
+  show('home');
+  say('Logged. Next one due ' + next.toISOString().slice(0, 10) + '.');
+}
+
+function drawAdd() {
+  const types = Object.entries(STARTER).flatMap(([c, l]) => l.map(([n]) => [c, n]));
+  const structs = (DB.structure || []).filter(s => s.status !== 'archived');
+  app.innerHTML = `<h1>Add a thing</h1>
+    <p class="sub">Add it the day you touch it. There is no finish line here.</p>
+    <label for="a-s">Which building?</label>
+    <select id="a-s">${structs.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}
+      <option value="__new">+ A new building</option></select>
+    <div id="a-newb" hidden><label for="a-bn">Call it
+        <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+      <input id="a-bn" placeholder="leave it and we will use what it is">
+      <label for="a-bk">What kind?</label>
+      <select id="a-bk" onchange="otherKind(this)">${kindOptions('shed')}</select>
+      <div id="a-bk-other" hidden><label for="a-bko">What is it?</label>
+        <input id="a-bko" placeholder="in your own words"></div></div>
+    <label for="a-t">What kind of thing?</label>
+    <select id="a-t">${types.map(([c, n]) =>
+      `<option value="${esc(n)}">${esc(n)} — ${esc(c)}</option>`).join('')}</select>
+    <label for="a-n">Call it <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+    <input id="a-n" placeholder="leave it and we will use what it is">
+    <div class="actions"><button class="primary" onclick="addThing()">Add it</button></div>`;
+  $('#a-s').onchange = e => { $('#a-newb').hidden = e.target.value !== '__new'; };
+}
+async function addThing() {
+  const type = $('#a-t').value;
+  // "Dishwasher" is a perfectly good name for the dishwasher. A second one
+  // becomes Dishwasher 2 and can be renamed later, if it ever matters.
+  const name = ($('#a-n').value || '').trim() ||
+    uniqueName(type, (DB.asset || []).map(a => a.name));
+  let structId = $('#a-s').value;
+  const writes = [];
+  if (structId === '__new') {
+    structId = uid();
+    const bk = $('#a-bk').value;
+    const bn = ($('#a-bn').value || '').trim() ||
+      uniqueName(bk === '__other' ? (($('#a-bko').value || '').trim() || 'Building') : kindLabel(bk),
+                 (DB.structure || []).map(x => x.name));
+    writes.push({ op:'upsert', table:'structure', record:{ id:structId, property_id:prop.id,
+      name:bn, kind: bk === '__other' ? 'other' : bk,
+      kind_other: bk === '__other' ? ($('#a-bko').value || '').trim() : '' } });
+  }
+  const t = (DB.asset_type || []).filter(x => x.name === type)[0];
+  const assetId = uid();
+  writes.push({ op:'upsert', table:'asset', record:{ id:assetId, property_id:prop.id,
+    structure_id:structId, asset_type_id:(t || {}).id, name, status:'active', installed_on:today() } });
+  const tmpl = Object.values(STARTER).flat().filter(x => x[0] === type)[0];
+  tmpl[1].forEach(([title, n, unit]) => {
+    const due = new Date();
+    if (unit === 'month') due.setMonth(due.getMonth() + n); else due.setFullYear(due.getFullYear() + n);
+    writes.push({ op:'upsert', table:'schedule', record:{ id:uid(), asset_id:assetId, title,
+      kind:'interval', every_n:n, every_unit:unit, responsibility:'owner', cost_source:'entered',
+      next_due_on:due.toISOString().slice(0, 10) } });
+  });
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  DB = (await DwelLogs.load()).db;
+  show('home');
+  say(name + ' added, with ' + tmpl[1].length + ' check-up' + (tmpl[1].length === 1 ? '' : 's') + '.');
+}
+
+function drawLog() {
+  const A = byId('asset'), P = byId('person');
+  const rows = (DB.completion || []).slice().reverse();
+  app.innerHTML = `<h1>Log</h1>
+    <p class="sub">Everything done, newest first. Entries are permanent.</p>
+    ${rows.map(c => `<div class="card"><span class="title">${esc(c.what)}</span>
+      <p class="meta">${esc((A[c.asset_id] || {}).name || '')} · ${esc(c.done_on)} ·
+        ${esc((P[c.by_person_id] || {}).name || '')}${c.cost ? ' · ' + esc(c.cost) : ''}</p></div>`).join('')
+      || `<div class="empty">Nothing logged yet. The first entry is the useful one.</div>`}`;
+}
+
+boot();
+</script>
+</body>
+</html>

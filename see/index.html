@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DwelLogs — what it looks like</title>
+  <meta name="description" content="A walk through DwelLogs: pick your place, fill in as much or as little as you like, and keep a pulse on it. Houses, ranches, rentals, tiny houses and boats.">
+  <meta name="theme-color" content="#eef3f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1726" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="icon" href="/favicon.ico?v=2" sizes="32x32">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://dwellogs.com/see/">
+  <meta property="og:title" content="DwelLogs — what it looks like">
+  <meta property="og:description" content="Pick your place from a picture, then fill in as much or as little as you like.">
+  <meta property="og:image" content="https://dwellogs.com/og-image.png?v=2">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preload" href="/fonts/SpaceGrotesk.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/tokens.css">
+<style>
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:17px; line-height:1.55; -webkit-font-smoothing:antialiased }
+  .wrap { max-width:62rem; margin:0 auto; padding:2.5rem 1.25rem 5rem }
+  .wordmark { display:flex; align-items:center; gap:.5rem; margin:0 0 2rem;
+    font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif; font-size:1.15rem }
+  .wordmark img { width:1.6rem; height:1.6rem }
+  .wordmark b { font-weight:700 } .wordmark span { color:var(--accent) }
+  h1 { font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+    font-size:clamp(2rem,6vw,3rem); line-height:1.08; letter-spacing:-.025em; margin:.2rem 0 .7rem }
+  .lede { font-size:1.12rem; color:var(--muted); max-width:34rem; margin:0 0 .6rem }
+  .trace { width:100%; height:3.4rem; display:block; margin:1.6rem 0 2.6rem; overflow:visible }
+  .trace path { fill:none; stroke:var(--trace); stroke-width:2;
+    stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke }
+  section { display:grid; gap:1.6rem 2.5rem; align-items:center;
+    grid-template-columns:1fr; padding:2.6rem 0; border-top:1px solid var(--line) }
+  @media (min-width:56rem) {
+    section { grid-template-columns:minmax(0,1fr) 20rem }
+    section.flip > .shot { order:-1 }
+  }
+  h2 { font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+    font-size:1.5rem; line-height:1.2; letter-spacing:-.015em; margin:0 0 .5rem }
+  section p { margin:0 0 .7rem; color:var(--ink) }
+  section p.note { color:var(--muted); font-size:.97rem }
+  .shot { margin:0; justify-self:center; width:100% ; max-width:20rem }
+  .shot img { display:block; width:100%; height:auto; border-radius:1.1rem;
+    border:1px solid var(--line); background:var(--card) }
+  .shot figcaption { margin-top:.55rem; color:var(--muted); font-size:.88rem; text-align:center }
+  .end { border-top:1px solid var(--line); padding-top:2.6rem; margin-top:1rem }
+  .end h2 { margin-bottom:.4rem }
+  footer { color:var(--muted); font-size:.92rem; margin-top:3rem;
+    border-top:1px solid var(--line); padding-top:1.4rem }
+  a { color:var(--accent) }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="wordmark"><img src="/favicon.svg?v=2" alt=""><b>Dwel<span>Logs</span></b></p>
+
+  <h1>What it looks like.</h1>
+  <p class="lede">A walk through the whole thing, from an empty screen to a place that tells you
+    what it needs. Nothing here is a mock-up &mdash; every screen is the app.</p>
+
+  <svg class="trace" viewBox="0 0 1200 60" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 40 H150 l8-14 l8 26 l8-12 H300 C340 40 360 8 400 40 H470 V22 H484 V30 L520 12
+             L560 26 V40 H620 l10 0 l8-16 l10 30 l10-26 l10 22 l8-10 H760 V18 H830 V40
+             H900 q30 -26 60 0 q30 26 60 0 H1200"/>
+  </svg>
+
+  <section>
+    <div>
+      <h2>Start by pointing at it</h2>
+      <p>A house, a ranch, a farm, a cabin, a tiny house, a boat, or a patch of land with nothing
+        on it yet. One tap and you are in &mdash; no form to fill in first.</p>
+      <p class="note">What you pick changes what you get asked later. A boat is never asked about
+        a basement; a pasture is asked about power and nothing else.</p>
+    </div>
+    <figure class="shot"><img src="01-pick.png" alt="A grid of line drawings: house, townhouse, condo, cabin, tiny house, boat, ranch, farm, homestead, smallholding, estate, land." loading="lazy" width="390" height="1200">
+      <figcaption>Fifteen kinds of place, in three groups</figcaption></figure>
+  </section>
+
+  <section class="flip">
+    <div>
+      <h2>Then fill in as much or as little as you like</h2>
+      <p>No wizard. Every tile is a door, and each one tells you what it already has.
+        <strong>Take me in</strong> is there from the first second.</p>
+      <p class="note">&ldquo;Not set&rdquo; is a state, not a failure. If you want to say nothing about
+        the weather and go straight to the broken dryer, do that.</p>
+    </div>
+    <figure class="shot"><img src="02-hub.png" alt="Six tiles: buildings, where it is, what it runs on, rooms, who is here, what is in it. Each shows its current state." loading="lazy" width="390" height="950">
+      <figcaption>Come back to any of it whenever</figcaption></figure>
+  </section>
+
+  <section>
+    <div>
+      <h2>Where it is, and what that costs you</h2>
+      <p>The climate is guessed from your region and corrected by you. <em>Where it sits</em> is a
+        separate question, because two houses at the same height in the same county need different
+        work: a valley floor frosts when the hill above it does not, trees mean gutters, salt air
+        eats metal.</p>
+      <p class="note">Elevation is a number rather than a tick called &ldquo;high altitude&rdquo;,
+        because nobody knows whether they are it. Below about 2,000 ft it changes nothing.</p>
+    </div>
+    <figure class="shot"><img src="03-where.png" alt="Climate tick boxes, a where-it-sits list, and an elevation field." loading="lazy" width="390" height="1100">
+      <figcaption>Guessed, then corrected &mdash; never assumed</figcaption></figure>
+  </section>
+
+  <section class="flip">
+    <div>
+      <h2>What it actually runs on</h2>
+      <p>Well or city water. Septic or sewer. Wood <em>and</em> propane <em>and</em> kerosene, because
+        one house often runs all three. Each answer brings its own check-ups with it.</p>
+      <p class="note"><strong>Not sure yet</strong> is a real answer and stays one. Nothing you have
+        not answered will ever chase you about it.</p>
+    </div>
+    <figure class="shot"><img src="04-runs-on.png" alt="Questions about water, waste, power, heating, cooling and hot water, each with tick boxes." loading="lazy" width="390" height="1200">
+      <figcaption>Six questions, all of them skippable</figcaption></figure>
+  </section>
+
+  <section>
+    <div>
+      <h2>Who is here, and what lives with you</h2>
+      <p>How many people, whether there are children among them, anyone you want on the log, and the
+        animals. Feed runs out and papers expire exactly like anything else.</p>
+      <p class="note">People affect wear, so the app will <em>offer</em> a shorter interval on the
+        things that take the beating and say why. It never quietly changes one.</p>
+    </div>
+    <figure class="shot"><img src="05-who.png" alt="People and children counts, a list of named people, and an animal being added." loading="lazy" width="390" height="1200">
+      <figcaption>Adding somebody here is not the same as inviting them</figcaption></figure>
+  </section>
+
+  <section class="flip">
+    <div>
+      <h2>Three fridges is an ordinary number of fridges</h2>
+      <p>Counts rather than ticks, because one row for all three would lose two of them. Each gets
+        its own check-ups, and every interval says where it came from &mdash; the manual, the code,
+        or our estimate.</p>
+      <p class="note">Nothing needs a name. Leave it blank and it is called what it is; a second
+        shed becomes Shed&nbsp;2.</p>
+    </div>
+    <figure class="shot"><img src="06-things.png" alt="Appliance and safety counts: refrigerator 3, dryer 1, smoke detector 4." loading="lazy" width="390" height="950">
+      <figcaption>And a box for anything we did not list</figcaption></figure>
+  </section>
+
+  <section>
+    <div>
+      <h2>The barn, the coop, the wrap-around deck</h2>
+      <p>A place can hold as many buildings as it has. Attached still counts as its own building
+        &mdash; a deck gets sealed and a greenhouse gets glazing, and neither belongs on the
+        house&rsquo;s list.</p>
+      <p class="note">One of them can belong to somebody else. A tiny house parked on your land is
+        theirs: you see that it is here and what it is hooked up to, and they decide whether you see
+        anything more.</p>
+    </div>
+    <figure class="shot"><img src="07-buildings.png" alt="A list of buildings with picture buttons for shed, barn, garage, workshop, greenhouse and coop." loading="lazy" width="390" height="1100">
+      <figcaption>Name them or do not</figcaption></figure>
+  </section>
+
+  <section class="flip">
+    <div>
+      <h2>What is bugging you</h2>
+      <p>It offers the things you just said you own, not a catalogue. And it asks what the thing is
+        actually doing.</p>
+      <p class="note"><strong>It works sometimes</strong> is its own answer, and the hardest kind to
+        live with &mdash; a thing that fails on a Tuesday and behaves on a Wednesday never gets
+        fixed, because it never quite earns the call.</p>
+    </div>
+    <figure class="shot"><img src="08-wrong.png" alt="A picker listing the things just added, and a question asking what it is doing." loading="lazy" width="390" height="800">
+      <figcaption>Or nothing. Plenty of people set this up on a good day</figcaption></figure>
+  </section>
+
+  <section>
+    <div>
+      <h2>Then it has a pulse</h2>
+      <p>Not a decoration. The line is drawn from your own things &mdash; one shape per thing you
+        track, in the order you added them, and its height is how close that thing is to needing
+        you. A well gets a pump curve, a septic tank a square wave, anything that burns a flame
+        spike.</p>
+      <p class="note">Two places never draw the same line, and yours changes as the place does.
+        A calm line is a true reading, not a reward.</p>
+    </div>
+    <figure class="shot"><img src="09-home.png" alt="A home screen with a hand-drawn-looking trace across the top, then what needs doing." loading="lazy" width="390" height="1100">
+      <figcaption>The tall shape on the left is a well that is overdue</figcaption></figure>
+  </section>
+
+  <section class="flip">
+    <div>
+      <h2>It speaks when you ask it to</h2>
+      <p>Off by default. Choose an email digest, or a feed your own calendar reads, and set a cap
+        it will not go past.</p>
+      <p class="note">Silence is a correct output &mdash; an empty digest is never sent. And a thing
+        whose answer is &ldquo;not sure yet&rdquo; produces no reminder at all: somebody who moved in
+        during June is not chased about winterising they cannot judge.</p>
+    </div>
+    <figure class="shot"><img src="10-tell.png" alt="Reminder settings: how, about what, how far ahead, how often at most." loading="lazy" width="390" height="1200">
+      <figcaption>Never more than you said</figcaption></figure>
+  </section>
+
+  <section>
+    <div>
+      <h2>And it is not all in one person&rsquo;s head</h2>
+      <p>Invite somebody and they get a link that carries everything &mdash; one tap and they are in,
+        with nothing to set up on their end. They see what is due and can say they did it.</p>
+      <p class="note">Costs are off by default and on their own switch. Somebody helping with the
+        list does not need to know what the roof quote came in at.</p>
+    </div>
+    <figure class="shot"><img src="11-invite.png" alt="An invite form: who it is for, what they can do, whether they can see costs, and when it expires." loading="lazy" width="390" height="1100">
+      <figcaption>Scope it to one building if that is all they help with</figcaption></figure>
+  </section>
+
+  <div class="end">
+    <h2>For wherever you dwell</h2>
+    <p class="lede">Houses, condos, rentals, ranches, farms, tiny houses on wheels and boats &mdash;
+      including what lives with you. Free, and yours to take with you.</p>
+    <p><span style="display:inline-block;margin-top:.6rem;padding:.4rem .8rem;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:.9rem">Coming soon</span></p>
+  </div>
+
+  <footer>&copy; 2026 DwelLogs. Built by a first-time homeowner who inherited three fridges, a well,
+    and a septic system &mdash; none of which came with a manual &mdash; and is doing something
+    about it.</footer>
+</div>
+</body>
+</html>

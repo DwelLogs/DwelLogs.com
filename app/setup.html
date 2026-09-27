@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DwelLogs — keeping it across devices</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#eef3f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1726" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
+<style>
+  :root {
+    color-scheme: light;
+    --bg:#eef3f7; --card:#fff; --ink:#15243a; --muted:#52627a; --line:#d6e0ea;
+    --accent:#1f5fa8; --trace:#e0893a;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    color-scheme: dark;
+    --bg:#0e1726; --card:#152236; --ink:#e9f0f8; --muted:#9fb0c6; --line:#233450;
+    --accent:#6aa8ee; --trace:#f0a257;
+  } }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink); font-size:17px; line-height:1.55;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:2rem 1rem 4rem }
+  main { max-width:38rem; margin:0 auto }
+  h1 { font-size:1.9rem; line-height:1.15; margin:.3rem 0 .6rem; letter-spacing:-.02em }
+  h2 { font-size:1.1rem; margin:2rem 0 .4rem }
+  p, li { color:var(--ink) }
+  .sub { color:var(--muted); margin:0 0 1.4rem }
+  ol { padding-left:1.2rem } ol li { margin:.5rem 0 }
+  code, pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.88em }
+  pre { background:var(--card); border:1px solid var(--line); border-radius:.6rem;
+    padding:.8rem; overflow:auto }
+  a { color:var(--accent) }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:.75rem;
+    padding:1rem 1.1rem; margin:1rem 0 }
+  .card p:last-child { margin-bottom:0 }
+  .muted { color:var(--muted); font-size:.93rem }
+  /* The same line as the front page, so the app's pages feel like the app. */
+  .trace { width:100%; height:3rem; display:block; margin:0 0 .4rem; overflow:visible }
+  .trace path { fill:none; stroke:var(--trace); stroke-width:2;
+    stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke }
+</style>
+</head>
+<body>
+<main>
+  <svg class="trace" viewBox="0 0 600 60" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 40 H90 l8-14 l8 26 l8-12 H180 L200 40 V22 H214 V30 L250 12 L292 26 V40
+             H330 l10 0 l8-16 l10 30 l10-26 l10 22 l8 -10 H420 V18 H470 V40 H600"/>
+  </svg>
+  <h1>Keeping it across devices</h1>
+  <p class="sub">You do not need any of this to try DwelLogs. This is only for keeping your
+    log on more than one device, or sharing it with somebody.</p>
+
+  <div class="card">
+    <p><strong>Try it first.</strong> Open <a href="/app/">the app</a> and, when it asks for a
+      sheet, leave both boxes blank. Everything saves on that device and nothing leaves it.</p>
+    <p class="muted">The only thing you give up is the second device. Come back here when
+      you want that.</p>
+  </div>
+
+  <h2>What this does</h2>
+  <p>Your log lives in a Google Sheet <em>you</em> own, in your Drive. DwelLogs is a page
+    that reads and writes it. Nobody else has a copy, there is no account, and if you ever
+    want out you already have the whole thing in a spreadsheet.</p>
+
+  <h2>Setting it up</h2>
+  <ol>
+    <li>Make a new Google Sheet. Call it whatever you like.</li>
+    <li><strong>Extensions → Apps Script.</strong></li>
+    <li>Paste in <code>Code.gs</code> and <code>Schema.gs</code> (ask Randi for these — they
+      are two files of code).</li>
+    <li>Run <code>setUpSheets</code> once. It builds a tab per kind of thing. Google will ask
+      for permission the first time; it is asking on your behalf, for your own sheet.</li>
+    <li><strong>Deploy → New deployment → Web app.</strong>
+      Set <em>Execute as</em> to <strong>Me</strong> and <em>Who has access</em> to
+      <strong>Anyone</strong>. Copy the URL it gives you.</li>
+    <li>Open <a href="/app/">the app</a>, paste that URL, and leave the token blank unless
+      you set one.</li>
+  </ol>
+
+  <div class="card">
+    <p><strong>Why “Execute as me”.</strong> The other option — “user accessing the web app” —
+      sounds safer and does not work: the browser gets a sign-in redirect instead of an answer,
+      and the request dies before it arrives. The script runs as you because it is your sheet.</p>
+  </div>
+
+  <h2>Adding somebody else</h2>
+  <p>From inside the app: <strong>Invite somebody</strong>. It gives you a link that carries
+    the connection as well as the invite, so they tap it and they are in — no address to paste
+    and no code to type.</p>
+  <p>That link is the key to the sheet. Send it to them the way you would send a house key:
+    a message to them, and nowhere else. You can revoke an invite from the same screen.</p>
+
+  <h2>Your own second device</h2>
+  <p>From inside the app: <strong>My other device</strong>. Same idea, and it carries which
+    person you are, so your phone opens as you rather than as somebody new.</p>
+
+  <h2>When the app asks to update your sheet</h2>
+  <p>DwelLogs grows, and new parts of it need columns your sheet does not have yet. When that
+    happens a card appears on the home screen and one tap adds them.</p>
+  <p>It only ever <em>adds</em>. Columns you added yourself are left exactly where they are,
+    nothing is reordered, and nothing is ever removed.</p>
+
+  <p class="muted" style="margin-top:2.5rem">This is an early test. Things will move.
+    Tell Randi what breaks.</p>
+</main>
+</body>
+</html>

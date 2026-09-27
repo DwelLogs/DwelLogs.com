@@ -42,6 +42,14 @@
      4.31:1 dark — still legible) AND italic, so it never reads as typed. */
   ::placeholder { color:var(--placeholder); opacity:1; font-style:italic; }
   input.missing, select.missing { border-color:var(--attn); border-width:2px; }
+  /* Two controls stacked with nothing between them had no gap at all — labels
+     carry the spacing everywhere else, and where two sit together there is no
+     label. The focus ring made it look broken rather than merely tight: 3px of
+     outline offset 2px draws five pixels OUTSIDE the box, straight over the top
+     of the control beneath. So leave it somewhere to land. */
+  input + input, input + select, input + textarea,
+  select + input, select + select, select + textarea,
+  textarea + input, textarea + select { margin-top:.6rem; }
   .tick { display:flex; gap:.6rem; align-items:center; font-weight:400; padding:.35rem 0;
           min-height:2.4rem; }
   .tick input { width:1.25rem; height:1.25rem; min-height:0; flex:none; }
@@ -1282,7 +1290,9 @@ const PLACE = [
         ${draft.animals.map((a, i) => `<div class="card"><span class="title">${esc(a.name || a.type)}</span>
           <p class="meta">${esc(a.type)}</p>
           <button class="ghost" onclick="dropAnimal(${i})">Remove</button></div>`).join('')}
-        <input id="j-an" placeholder="name — blank is fine for a hen">
+        <label for="j-an">Name <span style="font-weight:400;color:var(--muted)">— blank is fine for a hen</span></label>
+        <input id="j-an" placeholder="blank is fine for a hen">
+        <label for="j-at">What is it?</label>
         <select id="j-at">${['dog','cat','bird','chicken','duck','goat','sheep','pig','cow','horse']
           .map(t => `<option value="${t}">${t}</option>`).join('')}</select>
         <div class="actions" style="margin-top:.6rem">

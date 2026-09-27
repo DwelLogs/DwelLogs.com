@@ -133,6 +133,47 @@ const DwelLogs = (function () {
   }
   /* Local mode keeps the image in this browser and says so. It is a real
      answer for one device and a bad one for evidence, which the screen says. */
+  /* A document is not a photo and must not be treated like one. There is no
+     canvas trick for a PDF, so what goes up is what they picked, which means
+     the ceiling is real: the file becomes a base64 string a third larger than
+     itself, inside a JSON body, posted to Apps Script. Rather than discover
+     that at the end of a slow upload on a phone, say it before starting. */
+  const PAPER_MAX = 20 * 1024 * 1024;
+  const PAPER_SLOW = 5 * 1024 * 1024;
+
+  function readB64(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1]);
+      r.onerror = () => rej(new Error('Could not read that file.'));
+      r.readAsDataURL(file);
+    });
+  }
+
+  /* The device-only database, handed over whole. The app needs this at exactly
+     one moment: somebody who has been running on one phone connects a sheet,
+     and their work is sitting in here while the sheet is empty. Nothing else
+     in this API can see it once a URL is configured. */
+  function localSnapshot() { return localDb(); }
+
+  async function upload(file, name, bucket) {
+    if (file.size > PAPER_MAX)
+      throw new Error('That file is ' + Math.round(file.size / 1048576) + 'MB. Anything over 20MB '
+        + 'will not make it through to the sheet — link to it instead, or save a smaller scan.');
+    const b64 = await readB64(file);
+    const meta = { bytes: file.size, mime: file.type || 'application/octet-stream',
+                   slow: file.size > PAPER_SLOW };
+    if (!CFG.url) return Object.assign({ drive_id:'', url:'', local:true }, meta);
+    const r = await fetch(CFG.url, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token: CFG.token, op: 'file', b64,
+        filename: name || file.name || 'file', mime: meta.mime, bucket: bucket || 'papers' })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    return Object.assign({}, meta, j.data);
+  }
+
   async function photo(file, name) {
     const small = await shrink(file);
     if (!CFG.url) return Object.assign({ drive_id:'', url:'', local:true }, small);
@@ -232,6 +273,7 @@ const DwelLogs = (function () {
   /** Drop the view models onto window, so index.html renders unchanged. */
   function install(v) { Object.keys(v).forEach(k => { window[k] = v[k]; }); }
 
-  return { configure, load, save, archive, write, migrate, photo, shrink, view, install,
+  return { configure, load, save, archive, write, migrate, photo, upload, shrink, view, install,
+           localSnapshot,
            get raw() { return db; } };
 })();

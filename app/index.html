@@ -692,16 +692,26 @@ function takeHandoff() {
 
 async function boot() {
   const handoff = takeHandoff();
-  // An absent key means they have never chosen; an empty one means they chose
-  // this device. Those are different, and conflating them means a new person
-  // never gets offered the sheet.
-  if (localStorage.getItem('dwellogs.url') === null) return connect();
+  /* A brand-new person is NOT asked where their data should live. They came to
+     look at a home-maintenance app and the first screen used to be a question
+     about Apps Script deployments — which is our plumbing showing through, not
+     anything they wanted. So: start on the device, silently, and offer the
+     sheet from the person screen once there is something worth syncing.
+     An absent key still means "never chose"; we just answer it ourselves. */
+  if (localStorage.getItem('dwellogs.url') === null)
+    localStorage.setItem('dwellogs.url', '');
   const url = localStorage.getItem('dwellogs.url') || '';
   const tok = localStorage.getItem('dwellogs.token') || '';
   DwelLogs.configure(url, tok);
   let res;
   try { res = await DwelLogs.load(); }
-  catch (e) { return connect(connFail(e)); }
+  catch (e) {
+    // Show them the address that is failing. Blank boxes under an error about
+    // a sheet they cannot see is how somebody gets stuck on this screen every
+    // time they open the app, which is exactly what happened.
+    connDraft = { u:url, t:tok };
+    return connect(connFail(e));
+  }
   DB = res.db;
   // Who you are is remembered, because on a shared sheet the first owner row is
   // not necessarily you — and picking the wrong person silently signs somebody
@@ -732,7 +742,11 @@ let connDraft = { u:'', t:'' };
 
 function connect(msg) {
   $('#tabs').hidden = true;
-  app.innerHTML = `<h1>Where should this live?</h1>
+  // Reached from the person screen rather than from a failure: there is
+  // somewhere to go back to, so offer it. Landing here on a bad saved address
+  // is the other case, and then there is nothing behind us.
+  const back = me ? `<button class="back" onclick="drawMe()">&lsaquo; Back to you</button>` : '';
+  app.innerHTML = `${back}<h1>Where should this live?</h1>
     ${msg ? `<div class="banner">${esc(msg)}</div>` : ''}
     <div class="actions" style="margin:.4rem 0 .2rem">
       <button class="primary" onclick="saveConn(true)">Just on this device</button>
@@ -751,7 +765,20 @@ function connect(msg) {
     <input id="t" value="${esc(connDraft.t)}" placeholder="leave blank if you did not">
     <div class="actions">
       <button class="primary" onclick="saveConn()">Connect</button>
+      ${localStorage.getItem('dwellogs.url')
+        ? `<button class="ghost" onclick="forgetSheet()">Forget this sheet</button>` : ''}
     </div>`;
+}
+
+/* Without this there is no way off this screen. A wrong address saved once is
+   retried on every open, fails, and greets them with the same error forever —
+   with nothing on the page admitting a sheet is even saved. */
+function forgetSheet() {
+  localStorage.setItem('dwellogs.url', '');
+  localStorage.setItem('dwellogs.token', '');
+  connDraft = { u:'', t:'' };
+  boot();
+  say('Back to this device. Nothing you logged was touched.');
 }
 
 /* The sheet's own address is the obvious thing to paste and it can never work:
@@ -2678,6 +2705,9 @@ function drawMe() {
         <span class="cap">My other device</span></button>
       <button type="button" onclick="drawTell()">${icon('bell', 28)}
         <span class="cap">When to tell me</span></button>
+      <button type="button" onclick="connect()">${icon('systems', 28)}
+        <span class="cap">${localStorage.getItem('dwellogs.url')
+          ? 'Change the sheet' : 'Connect a sheet'}</span></button>
     </div>`;
 }
 async function saveMe() {

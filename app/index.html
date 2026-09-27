@@ -178,7 +178,11 @@
 <nav class="tabs" id="tabs" hidden></nav>
 <p id="say" role="status" aria-live="polite"></p>
 
-<script src="api.js"></script>
+<!-- ?v= bumped whenever api.js changes. The page and the script are cached
+     separately, so without this a browser can hold a new page and an old
+     script and call a function that is not there yet. Same rule the README
+     already states for the icons. -->
+<script src="api.js?v=2"></script>
 <script>
 /* DwelLogs — the sheet-backed app, starting from nothing.
    ------------------------------------------------------------------------
@@ -708,6 +712,26 @@ function takeHandoff() {
 }
 
 async function boot() {
+  /* Belt as well as braces. The ?v= on the script tag is the prevention; this is
+     what happens when somebody forgets to bump it. A page holding a stale api.js
+     fails at the first call into it — uploading a paper, or looking for a device
+     log — with a bare "not a function" and no clue that a reload would fix it. */
+  const NEEDS = ['configure','load','write','archive','migrate','photo','upload',
+                 'shrink','localSnapshot'];
+  const missing = NEEDS.filter(f => typeof DwelLogs[f] !== 'function');
+  if (missing.length) {
+    $('#tabs').hidden = true;
+    app.innerHTML = `<h1>Reload this page</h1>
+      <p class="sub">Part of the app is a version behind the rest — your browser has kept an
+        old copy of one file.</p>
+      <div class="card"><span class="title">Nothing is wrong with your log</span>
+        <p class="meta">This is a caching hiccup, not a data problem. Pull down to refresh, or
+          close the tab and open it again.</p></div>
+      <div class="actions">
+        <button class="primary" onclick="location.reload()">Reload</button>
+      </div>`;
+    return;
+  }
   const handoff = takeHandoff();
   /* A brand-new person is NOT asked where their data should live. They came to
      look at a home-maintenance app and the first screen used to be a question

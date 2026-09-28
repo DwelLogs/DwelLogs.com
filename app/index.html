@@ -214,7 +214,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=1898ca6522"></script>
+<script src="api.js?v=f91389817e"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -1010,6 +1010,9 @@ function startFlow(f) { flow = f; fs = 0; drawFirst(); }
    themes without a second copy. Simple on purpose — at 40px a detailed drawing
    is mud, and these have to read at a glance in a grid of twelve. */
 const ICON = {
+  /* The iOS share glyph: an arrow leaving a tray. Safari's button is unlabelled,
+     so the shape is the instruction. */
+  share: 'M12 3v11M12 3l-3.2 3.2M12 3l3.2 3.2M5 12.5V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5',
   house:        'M3 11 12 4l9 7M5 10v9h14v-9M10 19v-5h4v5',
   townhouse:    'M2 11 6.5 7 11 11M13 11l4.5-4L22 11M3.5 10v9h6v-9M14.5 10v9h6v-9M5.5 19v-4h2v4M16.5 19v-4h2v4',
   condo:        'M6 21V4h12v17M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10.5 21v-3h3v3',
@@ -1432,6 +1435,26 @@ const PLACE = [
     },
     take: () => { takeWhere(); return true; } },
 
+  { t:'What should it watch for you?',
+    s:'Already ticked. Untick anything you would rather not hear about.',
+    skippable:true,
+    when: () => plannedTypes().length > 0,
+    body: () => {
+      draft.picks = draft.picks || {};
+      return plannedTypes().map(g => `<label style="margin-top:1.1rem">${esc(g.name)}</label>
+        <div class="rows">${g.checks.map(([title, n, unit]) => `<div class="row">
+          <label class="tick" style="flex:1;min-width:0">
+            <input type="checkbox" class="pk" data-k="${esc(pickKey(g.name, title))}"
+              ${picked(g.name, title) ? 'checked' : ''}>
+            <span>${esc(title)}<small style="display:block;color:var(--muted)"
+              >${esc(everyWords(n, unit))}</small></span>
+          </label></div>`).join('')}</div>`).join('')
+        + tip('Nothing here is thrown away. Anything you untick is still set up, just kept ' +
+          'quiet -- so it is there if you change your mind, and it never turns into a ' +
+          'reminder you did not ask for.');
+    },
+    take: () => { takePicks(); return true; } },
+
   { t:'Any other buildings?',
     s: () => 'Besides ' + (draft.building || 'that one') + '. Sheds, barns, decks, the garage — or leave it.',
     skippable:true,
@@ -1766,6 +1789,43 @@ function takeWhere() {
   draft.where = draft.where || {};
   document.querySelectorAll('.wh').forEach(e => { draft.where[e.dataset.k] = e.value || ''; });
 }
+/* The check-ups a thing brings with it, looked up rather than created. They
+   used to be written silently the moment somebody ticked a count: a place with
+   a well, a furnace, a water heater and a generator got fifteen-odd schedules
+   nobody was ever shown. The list appearing is the best moment in the first
+   run and it is worth keeping -- but it should appear where a person can see
+   it, not behind them. */
+function suggestedFor(typeName) {
+  const row = Object.values(STARTER).flat().find(x => x[0] === typeName);
+  return row ? row[1] : [];
+}
+/* One entry per TYPE, not per unit. Two fire extinguishers do not need the
+   same check-up listed twice; ticking it covers both. */
+function plannedTypes() {
+  const seen = [], out = [];
+  madeSoFar().forEach(m => {
+    if (seen.indexOf(m.name) > -1) return;
+    seen.push(m.name);
+    const s = suggestedFor(m.name);
+    if (s.length) out.push({ name: m.name, checks: s });
+  });
+  return out;
+}
+function everyWords(n, unit) {
+  if (unit === 'arrival') return 'when you arrive';
+  return 'every ' + (n > 1 ? n + ' ' + unit + 's' : unit);
+}
+function pickKey(type, title) { return type + '|' + title; }
+/* Default on. Unticking is a decision, and it is remembered -- see addThing. */
+function picked(type, title) {
+  const p = (draft.picks || {})[pickKey(type, title)];
+  return p === undefined ? true : !!p;
+}
+function takePicks() {
+  draft.picks = draft.picks || {};
+  document.querySelectorAll('.pk').forEach(e => { draft.picks[e.dataset.k] = e.checked; });
+}
+
 const STEPS = () => (flow === 'join' ? JOIN : PLACE).filter(x => !x.when || x.when());
 
 
@@ -2201,14 +2261,19 @@ async function createEverything() {
         if (unit === 'arrival') {
           writes.push({ op:'upsert', table:'schedule', record:{ id:uid(), asset_id:id,
             title, kind:'on_arrival', responsibility:'owner', cost_source:'entered',
+            muted: picked(typeName, title) ? '' : 'TRUE',
             interval_source:src, applies_when_source:(whenSource || []).join(', ') } });
           return;
         }
         const due = new Date();
         if (unit === 'month') due.setMonth(due.getMonth() + n); else due.setFullYear(due.getFullYear() + n);
+        /* Unticked does not mean deleted. The rule is still written, muted, so it
+           can be turned back on without retyping and so the app never quietly
+           forgets what a water heater needs. */
         writes.push({ op:'upsert', table:'schedule', record:{ id:uid(), asset_id:id,
           title, kind:'interval', every_n:n, every_unit:unit, responsibility:'owner',
           cost_source:'entered', next_due_on:due.toISOString().slice(0, 10),
+          muted: picked(typeName, title) ? '' : 'TRUE',
           interval_source:src, applies_when_source:(whenSource || []).join(', ') } });
       });
     made.push({ type:typeName, rec });
@@ -2330,7 +2395,11 @@ async function createEverything() {
 const byId = t => Object.fromEntries((DB[t] || []).map(r => [r.id, r]));
 function schedules() {
   const A = byId('asset');
-  return (DB.schedule || []).filter(s => s.status !== 'archived').map(s => {
+  /* Code.gs already skips muted rules when it builds the digest; the home
+     screen was still listing them, which would have made unticking look like
+     it did nothing. */
+  const isMuted = s => s.muted === true || String(s.muted).toUpperCase() === 'TRUE';
+  return (DB.schedule || []).filter(s => s.status !== 'archived' && !isMuted(s)).map(s => {
     const d = daysTo(s.next_due_on);
     return { ...s, thing:(A[s.asset_id] || {}).name || '—', d,
       state: d == null ? 'ok' : d <= 0 ? 'attn' : d <= 14 ? 'soon' : 'ok' };
@@ -2405,6 +2474,22 @@ function pulseSvg() {
     <path d="${pulsePath(W)}"/></svg></div>`;
 }
 
+/* iOS only runs a service worker for a page added to the home screen; in plain
+   Safari the app has no offline copy at all. So this is not a nicety on iPhone,
+   it is how somebody gets the app that works in a basement. Asked once, and
+   never again once dismissed or once they have done it. */
+function wantsHomeScreen() {
+  if (localStorage.getItem('dwellogs.a2hs') === 'no') return false;
+  const standalone = window.navigator.standalone === true
+    || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (standalone) return false;
+  const ua = navigator.userAgent || '';
+  const ios = /iPad|iPhone|iPod/.test(ua)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return ios;
+}
+function noHomeScreen() { localStorage.setItem('dwellogs.a2hs', 'no'); drawHome(); }
+
 function drawHome() {
   const sch = schedules(), now = sch.filter(x => x.state === 'attn'), soon = sch.filter(x => x.state === 'soon');
   const things = (DB.asset || []).filter(a => a.status !== 'archived');
@@ -2463,6 +2548,11 @@ function drawHome() {
         ANIMAL_KINDS.includes(st.kind)) || {}).kind || '').replace(/_/g,' ')}. Animals get feed that
         runs out, papers that expire and a vet who charges by the trip.</p>
       <button class="ghost" onclick="drawAnimal()">Add one</button></div>` : ''}
+    ${wantsHomeScreen() ? `<div class="card"><span class="title">Put it on your home screen</span>
+      <p class="meta">Tap ${icon('share', 15)} Share, then <b>Add to Home Screen</b>.
+        It opens without a signal after that.</p>
+      <button class="ghost" onclick="noHomeScreen()">Not now</button></div>` : ''}
+
     <h2>Anything else</h2>
     <div class="pick">${[
       ['bell','When to tell me','drawTell()'],

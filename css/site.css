@@ -55,3 +55,22 @@ li span { color: var(--muted); font-size: .95rem; }
 }
 footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px 20px; }
 footer p { max-width: 36em; margin: 0 auto; }
+
+/* The way in. Both pages used to end in a "Coming soon" chip, which stopped
+   being true the day the app went up -- and nothing on either page linked to
+   it, so the only way to reach your log was a URL somebody handed you. */
+.go { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 8px; }
+.cta {
+  display: inline-block; border-radius: 999px; padding: 10px 20px;
+  font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1rem; font-weight: 600;
+  text-decoration: none; border: 1px solid var(--accent);
+  background: var(--accent); color: var(--bg);
+}
+.cta.quiet { background: var(--card); color: var(--accent); }
+.cta:hover { opacity: .9; }
+/* Somebody coming back for their log should not have to read the pitch again. */
+.wordmark .top {
+  margin-left: auto; font-family: system-ui, sans-serif; font-size: .95rem;
+  font-weight: 600; color: var(--accent); text-decoration: none;
+}
+.wordmark .top:hover { text-decoration: underline; }

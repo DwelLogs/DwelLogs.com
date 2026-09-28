@@ -62,8 +62,29 @@ if (location.search.indexOf('fresh=1') > -1) {
     border-radius:.6rem; border:1px solid var(--line); background:var(--card); padding:.6rem .8rem; }
   input, select, textarea { width:100%; }
   button { cursor:pointer; width:auto; }
+  /* Four weights, each meaning one thing. They used to mean five: .ghost carried
+     Save and Remove and Cancel and Add and Back at once, so it stopped saying
+     anything and people walked past the button they wanted. */
+
+  /* The one action that finishes the screen. */
   button.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:600; }
-  button.ghost { background:transparent; }
+
+  /* Adding another of something. Orange because it is the one colour in the
+     palette not already spoken for on a form, and because this is the button
+     that has to be seen -- somebody pressed Done without noticing it. */
+  button.add { background:transparent; border-color:var(--trace); color:var(--trace);
+    font-weight:600; }
+  button.add::before { content:'+'; margin-right:.4rem; font-weight:700; }
+  button.add:hover { background:color-mix(in srgb, var(--trace) 10%, transparent); }
+
+  /* A real choice that is not the main one. Looks like a button, because it is. */
+  button.ghost { background:var(--card); border-color:var(--line); color:var(--accent);
+    font-weight:500; }
+
+  /* Undo, dismiss, take away. Present, reachable, and not competing. */
+  button.quiet { background:transparent; border-color:transparent; color:var(--muted);
+    font-weight:400; }
+  button.quiet:hover { color:var(--ink); }
   :focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
   /* An example that looks like a filled-in value gets skipped, and then the
      form complains about a field the person believes they answered. Two
@@ -80,7 +101,13 @@ if (location.search.indexOf('fresh=1') > -1) {
      of the control beneath. So leave it somewhere to land. */
   input + input, input + select, input + textarea,
   select + input, select + select, select + textarea,
-  textarea + input, textarea + select { margin-top:.6rem; }
+  textarea + input, textarea + select,
+  /* A .sr label is invisible but it is still a sibling, so the adjacency above
+     silently stopped matching the moment the name boxes got proper labels.
+     Two controls with only a hidden label between them are still two controls
+     stacked with nothing between them. */
+  input + .sr + input, select + .sr + input, textarea + .sr + input,
+  input + .sr + select, select + .sr + select { margin-top:.6rem; }
   .tick { display:flex; gap:.6rem; align-items:center; font-weight:400; padding:.35rem 0;
           min-height:2.4rem; }
   .tick input { width:1.25rem; height:1.25rem; min-height:0; flex:none; }
@@ -214,7 +241,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=440ec54c59"></script>
+<script src="api.js?v=7e9325faf9"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -329,6 +356,9 @@ const HAZARD = [
    list: a count is evidence, a person decides. That last part is what keeps a
    thoughtful addition thoughtful and a joke out of the picklist. */
 /* Short line on the screen, the reason behind it. */
+/* The BODY is html and may carry markup and entities. The LABEL is escaped,
+   so an entity written there renders as its own source -- "Somebody else&rsquo;s
+   building" appeared on screen exactly like that. Write the character. */
 function tip(text, label) {
   return `<details class="tip"><summary>${esc(label || 'Why we ask')}</summary>
     <p>${text}</p></details>`;
@@ -492,7 +522,24 @@ const AREA_NAME = { basement:'Basement', crawlspace:'Crawl space', attic:'Attic'
 const ROOMS = [
   ['bedrooms','Bedrooms','bedroom',{no:['land','outbuilding']}],
   ['bathrooms','Bathrooms','bathroom',{no:['land']}],
-  ['kitchens','Kitchens','kitchen',{no:['land','outbuilding']}]
+  /* Counted apart because the work is different, not to be fussy: a full bath
+     has an extractor, grout, caulk and a shower valve; a half bath has a
+     toilet, a basin and a trap. It is also how people already say it -- two
+     and a half baths. */
+  ['half_baths','Half baths','half_bath',{no:['land']}],
+  ['kitchens','Kitchens','kitchen',{no:['land','outbuilding']}],
+  ['livings','Living rooms','living',{no:['land','outbuilding']}],
+  ['dinings','Dining rooms','dining',{no:['land','outbuilding']}],
+  /* Past here is behind "show the rest": real rooms people have, but not ones
+     worth making everybody scroll past to say they have three bedrooms. */
+  ['offices','Offices','office',{no:['land','outbuilding'],rest:true}],
+  ['laundries','Laundry rooms','laundry',{no:['land'],rest:true},'Laundry room'],
+  ['pantries','Pantries','pantry',{no:['land','outbuilding'],rest:true},'Pantry'],
+  ['utilities','Utility rooms','utility',{no:['land'],rest:true},'Utility room'],
+  ['garages','Garages','garage',{no:['land'],rest:true}],
+  ['shops','Workshops','shop',{no:['land'],rest:true},'Workshop'],
+  ['hallways','Hallways','hallway',{no:['land','outbuilding'],rest:true}],
+  ['closets','Closets','closet',{no:['land','outbuilding'],rest:true}]
 ];
 const allowed = (rules, g) =>
   g === 'unknown' ? true
@@ -952,7 +999,7 @@ function joinByLink(code) {
     <p class="sub">${inv ? 'First, what should we call you?'
       : 'It may have been used already, revoked, or run out. Ask them for a new link.'}</p>
     ${inv ? `<label for="f-name">Your name</label>
-      <input id="f-name" placeholder="your name">
+      <input id="f-name" >
       
       <div class="actions"><button class="primary" onclick="tookLinkName()">Next</button></div>`
     : `<div class="actions"><button class="ghost" onclick="firstRun()">Start fresh instead</button></div>`}`;
@@ -979,7 +1026,7 @@ function drawWho() {
     <h1>Start with your name.</h1>
     <p class="sub">Every entry says who made it. That is the whole of signing up.</p>
     <label for="f-name">What should we call you?</label>
-    <input id="f-name" placeholder="your name" value="${esc(draft.name || '')}">
+    <input id="f-name" value="${esc(draft.name || '')}">
     
     <label style="margin-top:1.4rem">And then?</label>
     <div class="card tap"><button onclick="tookWho('place')">
@@ -1137,7 +1184,7 @@ const PLACE = [
       const tick = (cls, v, on, label) =>
         `<label class="tick"><input type="checkbox" class="${cls}" value="${v}"${on ? ' checked' : ''}> ${label}</label>`;
       return `<label for="f-city">Town or city</label>
-        <input id="f-city" placeholder="town or city" value="${esc(draft.city || '')}">
+        <input id="f-city" value="${esc(draft.city || '')}">
         <label for="f-region">State or region</label>
         <input id="f-region" placeholder="two letters is fine" value="${esc(draft.region || '')}"
           onchange="regionChanged()">
@@ -1281,7 +1328,7 @@ const PLACE = [
       const rm = ROOMS.filter(r => allowed(r[3], g));
       // A bathroom is its own room even in a tiny house. Beds and kitchens are
       // not, when there is only one room.
-      const bathOnly = rm.filter(r => r[0] === 'bathrooms');
+      const bathOnly = rm.filter(r => r[0] === 'bathrooms' || r[0] === 'half_baths');
       const box = (x, hidden) => `<label class="tick${hidden ? ' extra' : ''}"${hidden ? ' hidden' : ''}>
         <input type="checkbox" class="sp" value="${x[0]}"${draft.spaces.includes(x[0]) ? ' checked' : ''}> ${esc(x[1])}</label>`;
       return `<label>Any of these?</label>
@@ -1298,10 +1345,10 @@ const PLACE = [
           <label style="margin-top:1rem">What is in it?</label>
           ${(draft.corners || []).map((c, i) => `<div class="card">
             <span class="title">${esc(c)}</span>
-            <button class="ghost" onclick="dropCorner(${i})">Remove</button></div>`).join('')}
+            <button class="quiet" onclick="dropCorner(${i})">Remove</button></div>`).join('')}
           <input id="cn-n" placeholder="bed, kitchen, eating area…">
           <div class="actions" style="margin-top:.6rem">
-            <button class="ghost" onclick="addCorner()">Add it</button></div>
+            <button class="add" onclick="addCorner()">Add</button></div>
           ${tip('One long room with a bed at one end and a kitchen at the other is one room, not ' +
             'three, and not a studio apartment with the walls missing. Each corner is kept inside ' +
             'the room rather than beside it, so a leak under the sink lands in the kitchen corner ' +
@@ -1313,12 +1360,30 @@ const PLACE = [
                 draft.rooms[r[0]] == null ? '' : esc(String(draft.rooms[r[0]]))}" placeholder="0">
             </div>`).join('')}</div>` : ''}
         ` : rm.length ? `<label style="margin-top:1.2rem">How many?</label>
-          <div class="counts">${rm.map(r => `<div class="count">
+          <div class="counts">${rm.filter(r => !r[3].rest).map(r => `<div class="count">
             <span>${esc(r[1])}</span>
             <input id="rm-${r[0]}" inputmode="numeric" value="${
               draft.rooms[r[0]] == null ? '' : esc(String(draft.rooms[r[0]]))}" placeholder="0">
           </div>`).join('')}</div>
+          ${rm.some(r => r[3].rest) ? `<div>
+            <div class="counts" style="margin-top:.6rem">
+              ${rm.filter(r => r[3].rest).map(r => `<div class="count extra" hidden>
+                <span>${esc(r[1])}</span>
+                <input id="rm-${r[0]}" inputmode="numeric" value="${
+                  draft.rooms[r[0]] == null ? '' : esc(String(draft.rooms[r[0]]))}" placeholder="0">
+              </div>`).join('')}</div>
+            <button class="ghost" style="margin-top:.6rem"
+              onclick="showRest(this)">Show the rest</button></div>` : ''}
           <p class="hint">Rough is fine. Blank is fine.</p>
+
+          <label style="margin-top:1.2rem">A room we did not list?</label>
+          ${(draft.namedRooms || []).map((r, i) => `<div class="card">
+            <span class="title">${esc(r)}</span>
+            <button class="quiet" onclick="dropNamedRoom(${i})">Remove</button></div>`).join('')}
+          <input id="nr-n" placeholder="craft room, sunroom, tack room"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addNamedRoom()}">
+          <div class="actions" style="margin-top:.6rem">
+            <button class="add" onclick="addNamedRoom()">Add room</button></div>
           ${tip('Each one becomes a room you can file a leak or a smoke detector against. ' +
             'Nothing more is assumed about it.')}` : ''}`;
     },
@@ -1364,10 +1429,10 @@ const PLACE = [
 
         <label style="margin-top:1.3rem">Anybody you want on the log?</label>
         ${draft.household.map((h, i) => `<div class="card"><span class="title">${esc(h)}</span>
-          <button class="ghost" onclick="dropPerson(${i})">Remove</button></div>`).join('')}
+          <button class="quiet" onclick="dropPerson(${i})">Remove</button></div>`).join('')}
         <input id="hh-n" placeholder="a name — you can invite them properly later">
         <div class="actions" style="margin-top:.6rem">
-          <button class="ghost" onclick="addPerson()">Add them</button></div>
+          <button class="add" onclick="addPerson()">Add person</button></div>
         ${tip('This only puts their name on the list so an entry can say who did it. It does not ' +
           'give them the app — that is an invite, and it is a separate decision you make later.',
           'This is not an invite')}
@@ -1375,10 +1440,10 @@ const PLACE = [
         <label style="margin-top:1.3rem">Animals?</label>
         ${draft.animals.map((a, i) => `<div class="card"><span class="title">${esc(a.name || a.type)}</span>
           <p class="meta">${esc(a.type)}</p>
-          <button class="ghost" onclick="dropAnimal(${i})">Remove</button></div>`).join('')}
+          <button class="quiet" onclick="dropAnimal(${i})">Remove</button></div>`).join('')}
         ${animalCore()}
         <div class="actions" style="margin-top:.6rem">
-          <button class="ghost" onclick="addAnimal()">Add it</button></div>
+          <button class="add" onclick="addAnimal()">Add animal</button></div>
         ${tip('Feed runs out, papers expire and a vet charges by the trip — all the same machinery ' +
           'as a propane tank, pointed at something with a pulse.', 'Why animals are here')}`;
     },
@@ -1463,7 +1528,7 @@ const PLACE = [
         <p class="meta">${esc((b.kind || '').replace(/_/g,' '))}${
           b.attached ? ' · attached to ' + esc(draft.building) : ''}${
           b.theirs ? ' · somebody else&rsquo;s' : ''}</p>
-        <button class="ghost" onclick="dropBuilding(${i})">Remove</button></div>`).join('');
+        <button class="quiet" onclick="dropBuilding(${i})">Remove</button></div>`).join('');
       // The main building got its kind from the place kind rather than from a
       // question, so arriving here at a "what kind?" dropdown reads as a
       // question you were never asked about the house. Same form, already
@@ -1475,7 +1540,7 @@ const PLACE = [
           <select id="mh-k">${kindOptions(draft.bkind || 'house')}</select>
           <div class="actions" style="margin-top:.6rem">
             <button class="ghost" onclick="saveMain()">Save</button>
-            <button class="ghost" onclick="draft.editMain=false;drawFirst()">Cancel</button>
+            <button class="quiet" onclick="draft.editMain=false;drawFirst()">Cancel</button>
           </div></div>`
         : `<div class="card"><span class="title">${esc(draft.building)}</span>
           <p class="meta">${esc(kindLabel(draft.bkind))} · the one you started with</p>
@@ -1500,9 +1565,9 @@ const PLACE = [
           'that it is here, what it is hooked up to, where its shutoffs are and that somebody sleeps ' +
           'in it — and none of their things, schedules, issues or costs. They decide whether to share ' +
           'more when they join.<br><br>The rule in one line: <b>the connection crosses, the contents ' +
-          'do not.</b>', 'Somebody else&rsquo;s building')}
+          'do not.</b>', 'Somebody else’s building')}
         <div class="actions" style="margin-top:.8rem">
-          <button class="ghost" onclick="addBuilding()">Add this one</button>
+          <button class="add" onclick="addBuilding()">Add</button>
         </div>
         ${tip('Attached still means its own building. A wrap-around deck gets sealed and a ' +
           'greenhouse gets glazing, and neither belongs on the house&rsquo;s list.')}`;
@@ -1530,16 +1595,16 @@ const PLACE = [
           <div class="grow"><b>${esc(j.title)}</b><small>${esc(jobWhenWords(j))}</small></div>
           <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
             onclick="editJob(${i})">Edit</button>
-          <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+          <button class="quiet" style="min-height:2rem;padding:.25rem .6rem"
             onclick="dropJob(${i})">Remove</button></div>`).join('')}</div>` : ''}
         ${draft.editing != null ? '<p class="step">Editing</p>' : ''}
         ${jobFields(draft.entry, false)}
         ${moreSection(draft.entry, optList)}
         <div class="actions" style="margin-top:.8rem">
           <button class="ghost" onclick="addJob()">${
-            draft.editing != null ? 'Update it' : 'Add it'}</button>
+            draft.editing != null ? 'Update' : 'Add'}</button>
           ${draft.editing != null
-            ? '<button class="ghost" onclick="cancelEditJob()">Cancel</button>' : ''}
+            ? '<button class="quiet" onclick="cancelEditJob()">Cancel</button>' : ''}
         </div>`;
     },
     /* A row half-typed when they tap Done or Skip still counts. Binning what
@@ -1685,11 +1750,11 @@ const JOIN = [
       const rows = (draft.animals || []).map((a, i) =>
         `<div class="card"><span class="title">${esc(a.name || a.type)}</span>
            <p class="meta">${esc(a.type)} · yours</p>
-           <button class="ghost" onclick="dropAnimal(${i})">Remove</button></div>`).join('');
+           <button class="quiet" onclick="dropAnimal(${i})">Remove</button></div>`).join('');
       return `${rows}
         ${animalCore()}
         <div class="actions" style="margin-top:.8rem">
-          <button class="ghost" onclick="addAnimal()">Add this one</button>
+          <button class="add" onclick="addAnimal()">Add animal</button>
         </div>
         ${tip('Whose it is and where it lives are kept apart on purpose. Move out and it moves with ' +
           'you — the record follows the person, not the address.')}`;
@@ -1770,8 +1835,9 @@ function roomsPlanned() {
   ROOMS.forEach(r => {
     if (draft.openPlan && r[0] !== 'bathrooms') return;
     const n = (draft.rooms || {})[r[0]] || 0;
-    for (let i = 1; i <= n; i++) out.push(r[1].replace(/s$/, '') + (n > 1 ? ' ' + i : ''));
+    for (let i = 1; i <= n; i++) out.push(roomName(r) + (n > 1 ? ' ' + i : ''));
   });
+  (draft.namedRooms || []).forEach(nm => out.push(nm));
   return out;
 }
 /* Only things there is more than one of. One dishwasher does not need a room to
@@ -1828,6 +1894,10 @@ function takePicks() {
   document.querySelectorAll('.pk').forEach(e => { draft.picks[e.dataset.k] = e.checked; });
 }
 
+/* "Pantries" does not singularise by dropping an s, so a room may carry its
+   own singular. Used by both the namer and the setup writer, because they
+   disagreeing is how "Pantrie 2" ends up on somebody's list. */
+function roomName(r) { return r[4] || r[1].replace(/s$/, ''); }
 const STEPS = () => (flow === 'join' ? JOIN : PLACE).filter(x => !x.when || x.when());
 
 
@@ -1881,10 +1951,10 @@ function drawHub() {
     <p class="step">Setting up</p>
     ${draft.renaming
       ? `<label for="hub-n">Call it</label>
-         <input id="hub-n" value="${esc(draft.place || '')}" placeholder="what you call it">
+         <input id="hub-n" value="${esc(draft.place || '')}" >
          <div class="actions" style="margin:.4rem 0 1rem">
            <button class="ghost" onclick="saveRename()">Save</button>
-           <button class="ghost" onclick="draft.renaming=false;drawHub()">Cancel</button>
+           <button class="quiet" onclick="draft.renaming=false;drawHub()">Cancel</button>
          </div>`
       : `<h1 id="hub-h">${esc(draft.place || 'Your place')}</h1>
          <p class="sub">${esc(placeKindLabel(draft.pkind))} · <button class="skiplink"
@@ -2017,6 +2087,19 @@ function addCorner() {
   draft.corners = draft.corners || []; draft.corners.push(v);
   drawFirst(); say(v + ' added.');
 }
+/* A list of room types cannot know about a tack room, a milk house or the
+   room somebody calls the snug. Typed rooms are made exactly as named, and the
+   word is also kept as a suggestion -- which is how the list gets better. */
+function addNamedRoom() {
+  syncStep();
+  const el = $('#nr-n'), t = (el.value || '').trim();
+  if (!t) return say('Say what the room is first.');
+  draft.namedRooms = draft.namedRooms || [];
+  draft.namedRooms.push(t);
+  drawFirst();
+  say(t + ' is on the list.');
+}
+function dropNamedRoom(i) { syncStep(); (draft.namedRooms || []).splice(i, 1); drawFirst(); }
 function dropCorner(i) { syncStep(); draft.corners.splice(i, 1); drawFirst(); }
 function saveMain() {
   const typed = ($('#mh-n').value || '').trim();
@@ -2231,12 +2314,17 @@ async function createEverything() {
         name:c, parent_area_id:mainId } });
     });
   }
+  /* A room somebody named themselves is made exactly as typed, with no kind
+     guessed for it. A wrong kind is worse than none. */
+  (draft.namedRooms || []).forEach(nm => {
+    writes.push({ op:'upsert', table:'area', record:{ id:uid(), structure_id:structId, name:nm } });
+  });
   ROOMS.forEach(r => {
     if (draft.openPlan && r[0] !== 'bathrooms') return;
     const n = (draft.rooms || {})[r[0]] || 0;
     for (let i = 1; i <= n; i++)
       writes.push({ op:'upsert', table:'area', record:{ id:uid(), structure_id:structId,
-        name:r[1].replace(/s$/, '') + (n > 1 ? ' ' + i : ''), kind:r[2] } });
+        name:roomName(r) + (n > 1 ? ' ' + i : ''), kind:r[2] } });
   });
 
   // One asset per thing, each carrying its template's check-ups.
@@ -2390,6 +2478,9 @@ async function createEverything() {
     const [obj, field] = k.split('.'); suggest(obj, field, typed);
   });
   if (draft.bkindOther) suggest('structure', 'kind', draft.bkindOther);
+  /* One row per room typed. draft.other keeps a single value per key, so
+     routing these through it meant the second room quietly erased the first. */
+  (draft.namedRooms || []).forEach(nm => suggest('area', 'kind', nm));
 
   await DwelLogs.write(writes);
 }
@@ -2550,11 +2641,11 @@ function drawHome() {
       <p class="meta">You have a ${esc(((DB.structure || []).find(st =>
         ANIMAL_KINDS.includes(st.kind)) || {}).kind || '').replace(/_/g,' ')}. Animals get feed that
         runs out, papers that expire and a vet who charges by the trip.</p>
-      <button class="ghost" onclick="drawAnimal()">Add one</button></div>` : ''}
+      <button class="add" onclick="drawAnimal()">Add an animal</button></div>` : ''}
     ${wantsHomeScreen() ? `<div class="card"><span class="title">Put it on your home screen</span>
       <p class="meta">Tap ${icon('share', 15)} Share, then <b>Add to Home Screen</b>.
         It opens without a signal after that.</p>
-      <button class="ghost" onclick="noHomeScreen()">Not now</button></div>` : ''}
+      <button class="quiet" onclick="noHomeScreen()">Not now</button></div>` : ''}
 
     <h2>Anything else</h2>
     <div class="pick">${[
@@ -2971,7 +3062,7 @@ function jobFields(j, live, id) {
 
   return `
     <label for="jb-t">Name</label>
-    <input id="jb-t" value="${esc(j.title || '')}" placeholder="what you would call it">
+    <input id="jb-t" value="${esc(j.title || '')}" >
     <label for="jb-k">What kind of thing is this?</label>
     <select id="jb-k" onchange="${kindGo}">${optList(kind, JOB_KIND.map(k => [k[0], k[1]]))}</select>
     <p class="hint">${esc((JOB_KIND.find(k => k[0] === kind) || [])[2] || '')}</p>
@@ -2986,12 +3077,12 @@ function jobFields(j, live, id) {
           onchange="${live ? `tickStep('${st.id}','${id}',this.checked)` : `tickStepDraft(${n},this.checked)`}">
         <span${isDone(st) ? ' style="text-decoration:line-through;color:var(--muted)"' : ''}>${esc(st.text)}</span>
       </label>
-      <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+      <button class="quiet" style="min-height:2rem;padding:.25rem .6rem"
         onclick="${live ? `dropStep('${st.id}','${id}')` : `dropStepDraft(${n})`}">Remove</button></div>`).join('')}</div>` : ''}
     <input id="jb-step" placeholder="add a step &mdash; borrow the ladder"
       onkeydown="if(event.key==='Enter'){event.preventDefault();${stepGo}}">
     <div class="actions" style="margin-top:.5rem">
-      <button class="ghost" onclick="${stepGo}">Add step</button></div>
+      <button class="add" onclick="${stepGo}">Add step</button></div>
 
     <h2>When</h2>
     <label for="jb-s">Start</label>
@@ -3545,7 +3636,7 @@ function drawFeedback() {
     <label for="fb-w" style="margin-top:1.1rem">What happened</label>
     <textarea id="fb-w" rows="4" placeholder="in your own words"></textarea>
     <label for="fb-e">What you expected <span style="font-weight:400;color:var(--muted)">— optional</span></label>
-    <textarea id="fb-e" rows="3" placeholder="what you thought it would do"></textarea>
+    <textarea id="fb-e" rows="3" ></textarea>
     ${tip('The gap between those two is the whole finding. &ldquo;It did X&rdquo; is a report; ' +
       '&ldquo;I thought it would do Y&rdquo; is a design note, and the second one is the useful half.',
       'Why both')}
@@ -3558,7 +3649,7 @@ function drawFeedback() {
       'written, and you send it or you do not.', 'Where it goes')}
     <div class="actions">
       <button class="primary" onclick="sendFeedback()">Write the email</button>
-      <button class="ghost" onclick="keepFeedback()">Just keep it</button>
+      <button class="quiet" onclick="keepFeedback()">Just keep it</button>
     </div>`;
 }
 function readFeedback() {
@@ -3850,7 +3941,7 @@ function leavePlace(id) {
       <p class="meta">Your own places, and everything in them. Ask them for a new invite any time.</p></div>
     <div class="actions">
       <button class="primary" onclick="doLeave('${id}')">Leave it</button>
-      <button class="ghost" onclick="drawMe()">Stay</button>
+      <button class="quiet" onclick="drawMe()">Stay</button>
     </div>`;
 }
 async function doLeave(id) {
@@ -3994,8 +4085,8 @@ function animalCore() {
   return `<div class="counts" style="grid-template-columns:2fr 1fr">
       <div class="count"><span>What is it?</span>
         <select id="an-t" onchange="anKind(this.value)">${ANIMAL_TYPES.map(t =>
-          `<option value="${t}"${a.type === t ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
-      <div class="count"><span>How many${a.type === 'bee' ? ' hives' : ''}?</span>
+          `<option value="${t}"${a.type === t ? ' selected' : ''}>${esc(typeLabel(t))}</option>`).join('')}</select></div>
+      <div class="count"><span>How many?</span>
         <input id="an-q" inputmode="numeric" value="${esc(String(a.n))}"
           oninput="anCount(this.value)" onchange="anCount(this.value)"></div>
     </div>
@@ -4043,8 +4134,8 @@ function drawAnimal() {
       'belongs to, where it lives right now is a separate fact that changes when it moves.',
       'Why both are offered')}
     <div class="actions">
-      <button class="primary" id="an-go" onclick="saveAnimal()">Add ${draft.an.n > 1 ? 'them' : 'it'}</button>
-      <button class="ghost" onclick="show('home')">Cancel</button>
+      <button class="primary" id="an-go" onclick="saveAnimal()">Add</button>
+      <button class="quiet" onclick="show('home')">Cancel</button>
     </div>`;
 }
 /* Only the name boxes are rebuilt when the count or the type changes. Redrawing
@@ -4054,6 +4145,11 @@ function drawAnimal() {
    unit a person actually manages, which is not always the animal. */
 const UNIT_NOUN = { bee: 'hive' };
 function unitNoun(type) { return UNIT_NOUN[type] || type; }
+/* You keep beehives. "bee" in the list with "How many?" beside it invites
+   somebody to count bees, or queens, or to give up and put 1. Naming the unit
+   in the list itself is better than explaining it underneath. */
+const TYPE_LABEL = { bee: 'beehive' };
+function typeLabel(t) { return TYPE_LABEL[t] || t; }
 function animalNames() {
   const a = draft.an, out = [];
   for (let i = 0; i < a.n; i++) {
@@ -4152,7 +4248,7 @@ function drawMoved(stId) {
       'the year on the well is not erased by moving onto city water.', 'What happens to the last one')}
     <div class="actions">
       <button class="primary" onclick="saveMove('${st.id}')">Save it</button>
-      <button class="ghost" onclick="show('home')">Cancel</button>
+      <button class="quiet" onclick="show('home')">Cancel</button>
     </div>`;
 }
 async function saveMove(stId) {
@@ -4209,7 +4305,7 @@ function startOver() {
         <p class="meta">This device is the only place these rows exist. Gone is gone.</p></div>`}
     <div class="actions">
       <button class="primary" onclick="wipe()">Yes, start over</button>
-      <button class="ghost" onclick="show('home')">Keep it</button>
+      <button class="quiet" onclick="show('home')">Keep it</button>
     </div>`;
 }
 function wipe() {
@@ -4266,7 +4362,7 @@ function openSchedOld(id) {
     <p class="hint">${esc(basis.says)}</p>
     <label for="l-when">When was it done?</label><input id="l-when" type="date" value="${today()}">
     <label for="l-cost">What did it cost? <span style="font-weight:400">(optional)</span></label>
-    <input id="l-cost" inputmode="decimal" placeholder="">
+    <input id="l-cost" inputmode="decimal">
     <p class="hint">Blank means you do not know — it is not counted as zero.</p>
     <div class="actions"><button class="primary" onclick="logDone('${s.id}')">Log it done</button></div>`;
 }
@@ -4309,7 +4405,7 @@ function drawAdd() {
       `<option value="${esc(n)}">${esc(n)} — ${esc(c)}</option>`).join('')}</select>
     <label for="a-n">Call it <span style="font-weight:400;color:var(--muted)">— optional</span></label>
     <input id="a-n" placeholder="leave it and we will use what it is">
-    <div class="actions"><button class="primary" onclick="addThing()">Add it</button></div>`;
+    <div class="actions"><button class="primary" onclick="addThing()">Add</button></div>`;
   $('#a-s').onchange = e => { $('#a-newb').hidden = e.target.value !== '__new'; };
 }
 async function addThing() {

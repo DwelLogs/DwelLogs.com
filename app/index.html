@@ -1373,6 +1373,25 @@ const PLACE = [
       });
       return true; } },
 
+  { t:'Where is each one?',
+    s:'Two of a thing look the same on a list until one of them is the kitchen one.',
+    skippable:true,
+    when: () => placeableUnits().length > 0 && roomsPlanned().length > 0,
+    body: () => {
+      draft.where = draft.where || {};
+      const rooms = roomsPlanned();
+      return placeableUnits().map(u => `<label for="wh-${u.slug}">${esc(u.label)}</label>
+        <select id="wh-${u.slug}" class="wh" data-k="${esc(u.key)}">
+          <option value="">Not sure yet</option>
+          ${rooms.map(r => `<option value="${esc(r)}"${
+            draft.where[u.key] === r ? ' selected' : ''}>${esc(r)}</option>`).join('')}
+        </select>`).join('')
+        + tip('A placed one is named after where it is, so the list says <i>kitchen fire ' +
+          'extinguisher</i> rather than <i>fire extinguisher 2</i> — and the check-up you ' +
+          'tick is the one you can point at. Leave any of them blank; you can place them later.');
+    },
+    take: () => { takeWhere(); return true; } },
+
   { t:'Any other buildings?',
     s: () => 'Besides ' + (draft.building || 'that one') + '. Sheds, barns, decks, the garage — or leave it.',
     skippable:true,
@@ -1668,6 +1687,45 @@ function addAnimal() {
   say(n ? n + ' comes with you.' : 'One ' + t + ' comes with you.');
 }
 function dropAnimal(i) { syncStep(); draft.animals.splice(i, 1); drawFirst(); }
+/* The rooms this setup is about to create, in the order createEverything
+   writes them. Kept here rather than inlined so the picker and the writer can
+   never disagree about what rooms exist -- a dropdown offering a room that is
+   never made would place things into nothing. */
+function roomsPlanned() {
+  const out = [];
+  (draft.spaces || []).forEach(k => {
+    const def = SPACES.find(x => x[0] === k);
+    if (!def || !def[2]) return;          // a slab is not a room you can stand in
+    out.push(AREA_NAME[k] || k);
+  });
+  if (draft.openPlan) {
+    out.push(draft.mainRoom || 'Main room');
+    (draft.corners || []).forEach(c => out.push(c));
+  }
+  ROOMS.forEach(r => {
+    if (draft.openPlan && r[0] !== 'bathrooms') return;
+    const n = (draft.rooms || {})[r[0]] || 0;
+    for (let i = 1; i <= n; i++) out.push(r[1].replace(/s$/, '') + (n > 1 ? ' ' + i : ''));
+  });
+  return out;
+}
+/* Only things there is more than one of. One dishwasher does not need a room to
+   tell it apart from anything; two fire extinguishers do, and "which one did I
+   already check" is the question this whole screen exists to answer. */
+function placeableUnits() {
+  const out = [];
+  Object.entries(draft.things || {}).forEach(([tn, n]) => {
+    if (!(n > 1)) return;
+    for (let i = 1; i <= n; i++)
+      out.push({ key: tn + '#' + i, type: tn, i, n,
+                 label: tn + ' ' + i, slug: (tn + i).replace(/\W/g, '') });
+  });
+  return out;
+}
+function takeWhere() {
+  draft.where = draft.where || {};
+  document.querySelectorAll('.wh').forEach(e => { draft.where[e.dataset.k] = e.value || ''; });
+}
 const STEPS = () => (flow === 'join' ? JOIN : PLACE).filter(x => !x.when || x.when());
 
 
@@ -2081,7 +2139,7 @@ async function createEverything() {
 
   // One asset per thing, each carrying its template's check-ups.
   const made = [];
-  function addThing(typeName, name, powered, allowMore) {
+  function addThing(typeName, name, powered, allowMore, areaId) {
     if (!typeIds[typeName]) return null;
     // Ticking the dryer on one screen and naming it as the problem on the next
     // is ONE dryer. If the second mention brought a better name, keep the name
@@ -2093,7 +2151,7 @@ async function createEverything() {
     }
     const id = uid();
     const rec = { id, property_id:propId, structure_id:structId,
-      asset_type_id:typeIds[typeName], name:name || typeName,
+      asset_type_id:typeIds[typeName], name:name || typeName, area_id: areaId || '',
       status:'active', power_source:powered || '' };
     writes.push({ op:'upsert', table:'asset', record:rec });
     Object.values(STARTER).flat().filter(x => x[0] === typeName)[0][1]
@@ -2144,10 +2202,23 @@ async function createEverything() {
   // Counts, so three fridges are three rows. Each gets its own check-ups,
   // because the one in the garage and the one in the kitchen do not share a
   // filter change.
-  const units = {};
+  /* Areas are already in `writes` by now, so their generated ids can be found
+     by the name the picker offered. Names are unique within a plan. */
+  const areaByName = {};
+  writes.forEach(w => { if (w.table === 'area') areaByName[w.record.name] = w.record.id; });
+
+  const units = {}, perRoom = {};
   Object.entries(draft.things || {}).forEach(([tn, n]) => {
     for (let i = 1; i <= n; i++) {
-      const id = addThing(tn, n > 1 ? tn + ' ' + i : tn, '', true);
+      const room = n > 1 ? ((draft.where || {})[tn + '#' + i] || '') : '';
+      let nm;
+      if (room) {
+        /* Named after where it is, which is how she says it out loud. Two in
+           the SAME room still need telling apart, so those keep a number. */
+        const c = perRoom[tn + '|' + room] = (perRoom[tn + '|' + room] || 0) + 1;
+        nm = room + ' ' + tn.toLowerCase() + (c > 1 ? ' ' + c : '');
+      } else nm = n > 1 ? tn + ' ' + i : tn;
+      const id = addThing(tn, nm, '', true, room ? (areaByName[room] || '') : '');
       if (id) units[tn + '#' + i] = id;
     }
   });

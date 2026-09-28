@@ -42,6 +42,8 @@
      4.31:1 dark — still legible) AND italic, so it never reads as typed. */
   ::placeholder { color:var(--placeholder); opacity:1; font-style:italic; }
   input.missing, select.missing { border-color:var(--attn); border-width:2px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden;
+    clip:rect(0 0 0 0); white-space:nowrap }
   /* Two controls stacked with nothing between them had no gap at all — labels
      carry the spacing everywhere else, and where two sit together there is no
      label. The focus ring made it look broken rather than merely tight: 3px of
@@ -171,6 +173,7 @@
   .rows .row b { display:block; font-size:.97rem }
   .rows .row small { color:var(--muted); font-size:.85rem }
   .rows .row .grow { flex:1; min-width:0 }
+  .rows details.row summary::-webkit-details-marker { display:none }
 </style>
 </head>
 <body>
@@ -805,16 +808,14 @@ function connect(msg) {
     <div class="actions" style="margin:.4rem 0 .2rem">
       <button class="primary" onclick="saveConn(true)">Just on this device</button>
     </div>
-    <p class="hint">Nothing to set up. It all saves here and none of it leaves this
-      device. You can connect a sheet later without losing any of it.</p>
+    <p class="hint">Saves here. Nothing leaves this device, and you can connect a sheet later.</p>
 
     <h2>Or connect a Google Sheet</h2>
     <p class="sub">Keeps it on your phone and your computer, and lets you share it with
       somebody. About five minutes, once. <a href="setup.html">How to do it</a></p>
     <label for="u">Script URL</label>
     <input id="u" value="${esc(connDraft.u)}" placeholder="https://script.google.com/…/exec">
-    <p class="hint">Ends in <code>/exec</code>. Not the sheet&rsquo;s own address — this is the
-      script published from inside it, by Deploy &rarr; New deployment.</p>
+    <p class="hint">Ends in <code>/exec</code>. Not the sheet&rsquo;s own address.</p>
     <label for="t">Password <span style="font-weight:400;color:var(--muted)">— only if you set one</span></label>
     <input id="t" value="${esc(connDraft.t)}" placeholder="leave blank if you did not">
     <div class="actions">
@@ -912,7 +913,7 @@ function joinByLink(code) {
       : 'It may have been used already, revoked, or run out. Ask them for a new link.'}</p>
     ${inv ? `<label for="f-name">Your name</label>
       <input id="f-name" placeholder="your name">
-      <p class="hint">So the log can say who did what. No password to forget.</p>
+      
       <div class="actions"><button class="primary" onclick="tookLinkName()">Next</button></div>`
     : `<div class="actions"><button class="ghost" onclick="firstRun()">Start fresh instead</button></div>`}`;
   if (inv) setTimeout(() => $('#f-name').focus(), 0);
@@ -939,7 +940,7 @@ function drawWho() {
     <p class="sub">Every entry says who made it. That is the whole of signing up.</p>
     <label for="f-name">What should we call you?</label>
     <input id="f-name" placeholder="your name" value="${esc(draft.name || '')}">
-    <p class="hint">No password to forget.</p>
+    
     <label style="margin-top:1.4rem">And then?</label>
     <div class="card tap"><button onclick="tookWho('place')">
       <span class="title">Set up a new place</span>
@@ -949,7 +950,7 @@ function drawWho() {
       <span class="title">Join one that already exists</span>
       <p class="meta">Somebody sent you an invite.</p>
     </button></div>
-    <p class="hint">Either one later — a person can run several places and be on other people's.</p>`;
+    `;
   setTimeout(() => $('#f-name').focus(), 0);
 }
 function tookWho(f) {
@@ -1117,7 +1118,7 @@ const PLACE = [
           style="font-weight:400;color:var(--muted)">— optional</span></label>
         <input id="f-elev" inputmode="numeric" placeholder="feet above sea level"
           value="${draft.elevation == null ? '' : esc(String(draft.elevation))}">
-        <p class="hint">Only matters above about 2,000 ft.</p>
+        
         ${tip('Up there gas appliances need a different orifice and sun chews through roofing and ' +
           'finishes faster. Below it, nothing changes — so leaving this blank costs you nothing. ' +
           'It starts blank because nobody has measured it and the app will not guess.')}
@@ -1522,7 +1523,7 @@ const JOIN = [
     body: () => `<label for="j-code">Invite code</label>
       <input id="j-code" placeholder="six letters and numbers" style="letter-spacing:.1em"
         value="${esc(draft.code || '')}">
-      <p class="hint">Case does not matter.</p>
+      
       ${tip('An invite is for one place and one person. The next screen says exactly what you would ' +
         'get before you agree to anything.')}`,
     take: () => { const c = ($('#j-code').value || '').trim().toUpperCase();
@@ -1739,8 +1740,7 @@ function drawHub() {
     <div class="actions" style="margin-top:1.2rem">
       <button class="primary" onclick="finishFirst()">Take me in</button>
     </div>
-    <p class="hint">Fill in as much or as little as you like — none of it is required, and every
-      one of these is here again inside.</p>`;
+    <p class="hint">None of it is required.</p>`;
 }
 /* An explicit Save. Saving on blur is invisible — you cannot tell whether it
    took, and tapping anything else while the box is open becomes a save you did
@@ -2157,22 +2157,21 @@ async function createEverything() {
   });
   made.forEach(m => { if (!units[m.type + '#1']) units[m.type + '#1'] = m.rec.id; });
 
-  /* Two tables, because a job and a fault are two different claims. "Clean the
-     gutters, this week" is something somebody means to do; "it works sometimes"
-     is the house doing something wrong. File a job as a fault and the dashboard
-     shows a problem where there is none — and nobody believes a dashboard twice.
+  /* ONE table now. "Clean the gutters this week" and "the dryer works sometimes"
+     are the same row with a different kind, which is the whole point of the
+     merge: they end up on the same board, opened by the same screen, and the
+     person can change their mind about which it is by editing one field.
      The asset is guessed from the words and never demanded. */
   const SLOTS = WHENS.map(w => w[0]);
   (draft.jobs || []).forEach(j => {
     const key = guessThing(j.what);
-    const aid = key ? (units[key] || null) : null;
-    if (SLOTS.indexOf(j.when) >= 0)
-      writes.push({ op:'upsert', table:'work_item', record:{ id:uid(), property_id:propId,
-        asset_id:aid, structure_id:structId, title:j.what, source:'ad_hoc',
-        status:'open', column:'todo', slot:j.when } });
-    else
-      writes.push({ op:'upsert', table:'issue', record:{ id:uid(), asset_id:aid,
-        structure_id:structId, title:j.what, first_seen_on:today(), state:j.when } });
+    const fault = SLOTS.indexOf(j.when) < 0;
+    writes.push({ op:'upsert', table:'job', record:{ id:uid(), property_id:propId,
+      kind: fault ? 'fault' : 'task', title:j.what, source:'owner', status:'open',
+      asset_id: key ? (units[key] || '') : '', structure_id:structId,
+      first_seen_on: fault ? today() : '',
+      state: fault ? j.when : '',
+      slot: fault ? '' : j.when, column: fault ? 'investigating' : 'todo' } });
   });
 
   // What nothing on our lists could say. One row per word, counted, and never
@@ -2295,6 +2294,23 @@ function drawHome() {
     <p class="title">${now.length === 1 ? 'thing needs you now' : 'things need you now'}</p>
     ${now.concat(soon).map(card).join('') ||
       `<div class="empty">Nothing due. That is a real state, not an empty one.</div>`}
+    ${(() => {
+      /* Jobs that are not a rule coming due \u2014 what somebody typed in, or a fault
+         they logged. Without this they are written and then invisible, which is
+         how the needs-doing screen has been quietly dropping things. */
+      const loose = (DB.job || []).filter(x => String(x.status) !== 'done'
+        && String(x.status) !== 'dropped' && !x.schedule_id);
+      if (!loose.length) return '';
+      const who = Object.fromEntries((DB.person || []).map(pp => [pp.id, pp.name]));
+      return `<h2>On your list</h2>` + loose.map(x => `<div class="card tap">
+        <button onclick="drawJob('${x.id}')">
+          <span class="title">${esc(x.title)}</span>
+          <p class="meta">${esc((JOB_KIND.find(k => k[0] === x.kind) || [])[1] || 'Job')}${
+            x.due_on ? ' &middot; due ' + esc(x.due_on) : x.slot
+              ? ' &middot; ' + esc((WHENS.find(w => w[0] === x.slot) || [])[1] || x.slot) : ''}${
+            x.claimed_by_id ? ' &middot; ' + esc(who[x.claimed_by_id] || 'taken') + ' has it' : ''}
+          </p></button></div>`).join('');
+    })()}
     ${(() => { const p = papers().filter(x => x.state !== 'ok');
       return p.length ? `<h2>Papers running out</h2>` + p.map(paperCard).join('') : ''; })()}
     ${sch.length ? `<h2>Everything else</h2>` +
@@ -2321,6 +2337,7 @@ function drawHome() {
       ['bell','When to tell me','drawTell()'],
       ['camera','Add a photo','drawPhoto()'],
       ['paper','Add a paper','drawDoc()'],
+      ['todo','Add a job','newJob()'],
       ['speech','Tell us something','drawFeedback()'],
       ['invite','Invite somebody','drawInvite()'],
       ['device','My other device','drawHandoff()'],
@@ -2523,6 +2540,394 @@ const PHOTO_WHY = [
   ['model_plate','The label','make, model, serial — so you never crawl behind it again'],
   ['just_a_record','Just a record','']
 ];
+/* ---- the job screen ------------------------------------------------------
+   One screen for a chore, a fault, something you want different, and a whole
+   project, because after the merge they are one row with a kind. The shape
+   changes with the kind; the bones never do.
+
+   Two rules learned the hard way on the first-run screens: show the few things
+   almost everybody needs, and fold the rest away rather than making a wall. A
+   tester's mother-in-law opens this to write "wash the bathroom walls" — she
+   should not have to walk past a safety picklist to do it. */
+const JOB_KIND = [
+  ['task','Something to do','the gutters, the walls, the filter'],
+  ['fault','Something is wrong','it broke, it leaks, it only half works'],
+  ['improvement','Want it different','nothing is broken, you just want better'],
+  ['project','A project','several things that have to happen together'],
+];
+const JOB_STATE = [['works','It works'],['intermittent','It works sometimes'],
+  ['degraded','It works, badly'],['unusable','It does not work at all']];
+const SAFETY = [['none','Nothing special'],['gas','Gas'],['fire','Fire'],
+  ['carbon_monoxide','Carbon monoxide'],['electrical','Electrical'],['water','Water'],
+  ['structural','Structural'],['fall','Working at height']];
+const EVERY_UNIT = [['day','days'],['week','weeks'],['month','months'],['year','years']];
+
+function jobById(id) { return (DB.job || []).find(j => j.id === id); }
+function stepsOf(id) {
+  return (DB.step || []).filter(x => x.job_id === id && x.status !== 'archived')
+    .sort((a, b) => (+a.position || 0) - (+b.position || 0));
+}
+/* What it is about, in words, whichever of the five it hangs off. */
+function jobAbout(j) {
+  const n = t => ((DB[t] || []).find(r => r.id === j[t.replace('structure','structure')
+    .replace(/^(\w+)$/, '$1') + '_id']) || {});
+  const look = (t, k) => ((DB[t] || []).find(r => r.id === j[k]) || {}).name;
+  return look('asset','asset_id') || look('area','area_id') || look('structure','structure_id')
+      || look('animal','animal_id') || (prop || {}).name || '';
+}
+
+function drawJob(id) {
+  const j = jobById(id); if (!j) return show('home');
+  $('#tabs').hidden = true;
+  const steps = stepsOf(id), done = steps.filter(x => String(x.done).toUpperCase() === 'TRUE').length;
+  const sched = (DB.schedule || []).find(x => x.id === j.schedule_id);
+  const claimer = ((DB.person || []).find(p => p.id === j.claimed_by_id) || {}).name;
+  const sel = (v, list) => list.map(([k, l]) =>
+    `<option value="${k}"${v === k ? ' selected' : ''}>${esc(l)}</option>`).join('');
+
+  app.innerHTML = `<button class="back" onclick="show('home')">&lsaquo; Back</button>
+    <p class="step">${esc((JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'Job')}</p>
+    <h1>${esc(j.title || 'A new job')}</h1>
+    <p class="sub">${esc(jobAbout(j))}${sched ? ' &middot; from a rule' : ''}</p>
+
+    <label for="jb-t">Name</label>
+    <input id="jb-t" value="${esc(j.title || '')}" placeholder="what you would call it">
+    <label for="jb-k">What kind of thing is this?</label>
+    <select id="jb-k" onchange="reKind('${id}', this.value)">${sel(j.kind, JOB_KIND.map(k => [k[0], k[1]]))}</select>
+    <p class="hint">${esc((JOB_KIND.find(k => k[0] === j.kind) || [])[2] || '')}</p>
+
+    <label for="jb-n">Notes</label>
+    <textarea id="jb-n" rows="3" placeholder="anything worth remembering next time">${esc(j.notes || '')}</textarea>
+
+    <h2>Steps${steps.length ? ` <span class="chip ${done === steps.length ? 'ok' : 'soon'}">${done} of ${steps.length}</span>` : ''}</h2>
+    ${steps.length ? `<div class="rows">${steps.map(st => `<div class="row">
+      <label class="tick" style="flex:1;min-width:0">
+        <input type="checkbox" ${String(st.done).toUpperCase() === 'TRUE' ? 'checked' : ''}
+          onchange="tickStep('${st.id}','${id}',this.checked)">
+        <span${String(st.done).toUpperCase() === 'TRUE'
+          ? ' style="text-decoration:line-through;color:var(--muted)"' : ''}>${esc(st.text)}</span>
+      </label>
+      <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+        onclick="dropStep('${st.id}','${id}')">Remove</button></div>`).join('')}</div>` : ''}
+    <input id="jb-step" placeholder="add a step — borrow the ladder"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();addStep('${id}')}">
+    <div class="actions" style="margin-top:.5rem">
+      <button class="ghost" onclick="addStep('${id}')">Add step</button></div>
+
+    <h2>When</h2>
+    <label for="jb-s">Start</label>
+    <input id="jb-s" type="date" value="${esc(j.start_on || '')}">
+    <label for="jb-d">Due</label>
+    <input id="jb-d" type="date" value="${esc(j.due_on || '')}">
+    <label for="jb-r">Does it come round again?</label>
+    <select id="jb-r" onchange="draft.rep = this.value; drawJob('${id}')">
+      <option value=""${!repOn(j) ? ' selected' : ''}>No — just this once</option>
+      <option value="yes"${repOn(j) ? ' selected' : ''}>Yes, on a repeat</option>
+    </select>
+    ${repOn(j) ? `<div class="counts">
+      <label for="jb-en">Every</label>
+      <input id="jb-en" inputmode="numeric" value="${esc((sched || {}).every_n || '6')}" style="max-width:6rem">
+      <label for="jb-eu" class="sr">unit</label>
+      <select id="jb-eu">${sel((sched || {}).every_unit || 'month', EVERY_UNIT)}</select>
+    </div>
+    ` : ''}
+
+    ${(() => {
+      const mine = j.claimed_by_id === me.id, since = sinceWords(j.claimed_at);
+      if (!claimer) {
+        /* Assigned but not picked up is its own state and the one worth seeing:
+           a job quietly waiting on somebody who has not agreed to it. It still
+           sits in the pool \u2014 being assigned does not stop anybody else taking
+           it, it only says who it was meant for. */
+        const forWhom = ((DB.person || []).find(p => p.id === j.owner_id) || {}).name;
+        return `<h2>${forWhom ? 'Meant for ' + esc(forWhom) + ', not picked up'
+                              : 'Nobody has this'}</h2>
+        <div class="actions" style="margin-top:.2rem">
+          <button class="ghost" onclick="claimJob('${id}', true)">I will do it</button></div>
+        <p class="hint">Nobody has taken it yet.</p>`;
+      }
+      if (mine) return `<h2>You have this${since ? ' &middot; ' + esc(since) : ''}</h2>
+        <div class="actions" style="margin-top:.2rem">
+          <button class="ghost" onclick="claimJob('${id}', false)">Put it back</button></div>
+        <p class="hint">Yours until you put it back.</p>`;
+      return `<h2>${esc(claimer)} has this${since ? ' &middot; ' + esc(since) : ''}</h2>
+        <p class="hint">Theirs until they put it back.</p>`;
+    })()}
+
+    ${moreSection(j, sel)}
+
+    ${(() => { const H = historyOf(j); if (!H.length) return '';
+      /* Date on the face of it. The card underneath opens on a deliberate tap,
+         and only there does a name appear. See docs/no-scorekeeping.md. */
+      return `<h2>History</h2><div class="rows">${H.map(r => `<details class="row"
+          style="display:block">
+        <summary style="cursor:pointer;list-style:none"><b>${esc(r.done)}</b></summary>
+        ${jobCardRead(r)}
+      </details>`).join('')}</div>`;
+    })()}
+
+    <div class="actions" style="margin-top:1.4rem">
+      <button class="primary" onclick="saveJob('${id}')">Save</button>
+      ${String(j.status) === 'done' ? '' :
+        `<button class="ghost" onclick="finishJob('${id}')">Mark it done</button>`}
+    </div>`;
+}
+
+/* WHEN it was last done, and deliberately not BY WHOM.
+
+   An earlier draft of this said "Last done by Dave \u2014 and the 3 before that",
+   and Randi cut it: "we dont want the data to cause rifts or fact checks or
+   resentment... people can see the history logs under an item and see that for
+   themselves if they care to check."
+
+   She is right, and the line to hold is worth stating once: a run of somebody's
+   name is not a fact, it is a scoreboard, and a scoreboard in a shared
+   household has one use. The maintenance question \u2014 when was this last done,
+   is it due \u2014 needs no person in it at all. The record of who did it is kept,
+   in the log, where somebody goes to look on purpose. The app does not put it
+   in front of anybody, and it never counts. */
+/* History is the FINISHED CARDS, not a list of receipts. A repeating job makes
+   a new row each time round and the finished one keeps everything that was on
+   it \u2014 title, notes, ticked steps, what it was estimated at \u2014 so the record of
+   "what did this look like last March" already exists and needs no snapshot.
+   The completion beside it carries what it actually cost and who did it. */
+function historyOf(j) {
+  const past = (DB.job || []).filter(x => x.id !== j.id && String(x.status) === 'done'
+    && ((j.schedule_id && x.schedule_id === j.schedule_id) || x.parent_job_id === j.id));
+  const comp = Object.fromEntries((DB.completion || []).map(c => [c.job_id, c]));
+  return past
+    .map(x => ({ job:x, done: x.done_on || (comp[x.id] || {}).done_on || '', c: comp[x.id] || {} }))
+    .filter(r => r.done)
+    .sort((x, y) => String(y.done).localeCompare(String(x.done)));
+}
+
+/* The same card, frozen. Same order, same headings, no inputs \u2014 so opening a
+   past one feels like looking at the job rather than reading a report about it.
+   Randi: "id expect the history card to look just like the card to be done when
+   clicked but no inputs." */
+function jobCardRead(r) {
+  const j = r.job, c = r.c;
+  const who = ((DB.person || []).find(p => p.id === c.by_person_id) || {}).name;
+  const steps = (DB.step || []).filter(x => x.job_id === j.id)
+    .sort((a, b) => (+a.position || 0) - (+b.position || 0));
+  const kind = (JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'Job';
+  const row = (label, val) => val ? `<p class="meta"><b>${esc(label)}</b> ${esc(val)}</p>` : '';
+  return `<p class="step" style="margin-top:.6rem">${esc(kind)}</p>
+    <p class="title">${esc(j.title || '')}</p>
+    ${j.notes ? `<p class="meta">${esc(j.notes)}</p>` : ''}
+    ${steps.length ? `<p class="meta" style="margin-top:.6rem"><b>Steps</b></p>
+      ${steps.map(st => `<p class="meta" style="margin:.1rem 0">${
+        String(st.done).toUpperCase() === 'TRUE' ? '&#10003;' : '&#9744;'} ${esc(st.text)}</p>`).join('')}` : ''}
+    <p class="meta" style="margin-top:.6rem"><b>When</b></p>
+    ${row('Started', j.start_on)}${row('Was due', j.due_on)}${row('Done', r.done)}
+    <p class="meta" style="margin-top:.6rem"><b>What it took</b></p>
+    ${row('Estimated', j.est_minutes ? j.est_minutes + ' minutes' : '')}
+    ${row('Cost', c.cost || j.est_cost || '')}
+    ${row('Needed', j.prerequisites)}
+    ${j.safety && j.safety !== 'none' ? row('Careful of', j.safety.replace(/_/g, ' ')) : ''}
+    ${who ? `<p class="meta" style="margin-top:.6rem"><b>Done by</b> ${esc(who)}</p>` : ''}
+    ${c.what ? `<p class="meta">${esc(c.what)}</p>` : ''}`;
+}
+
+
+/* A job claimed three weeks ago and untouched is a different fact from one
+   claimed this morning. The board should be able to say so without anybody
+   doing arithmetic. */
+function sinceWords(at) {
+  if (!at) return '';
+  const d = Math.round((Date.now() - new Date(at)) / 864e5);
+  if (isNaN(d)) return '';
+  if (d <= 0) return 'since today';
+  if (d === 1) return 'since yesterday';
+  if (d < 7) return 'for ' + d + ' days';
+  if (d < 14) return 'for a week';
+  if (d < 60) return 'for ' + Math.round(d / 7) + ' weeks';
+  return 'for ' + Math.round(d / 30) + ' months';
+}
+
+function repOn(j) {
+  if (draft.rep !== undefined) return draft.rep === 'yes';
+  const sc = (DB.schedule || []).find(x => x.id === j.schedule_id);
+  return !!(sc && sc.every_n && sc.kind !== 'once');
+}
+
+/* Nothing is folded. An earlier draft hid time, cost and what-you-need behind a
+   drawer to keep the screen short, and Randi called it: "if they want to fill it
+   all out its there vs making them go back in later to add more to it." She is
+   right, and it is the opposite of the first-run lesson rather than a
+   contradiction of it. First run is a stranger being asked for things before
+   they have seen anything; this is somebody who has ALREADY decided to open one
+   job and tell it what they know. Making them hunt for a second click to say
+   "this needs a ladder" is how that detail never gets written down. */
+function moreSection(j, sel) {
+  const fault = j.kind === 'fault', imp = j.kind === 'improvement';
+  return `<h2>What it takes</h2>
+    <label for="jb-m">How long</label>
+    <div class="counts">
+      <input id="jb-m" inputmode="numeric" value="${esc(j.est_minutes || '')}" placeholder="20"
+        style="max-width:7rem">
+      <span class="meta">minutes${j.est_minutes >= 60
+        ? ' &middot; about ' + hoursWords(j.est_minutes) : ''}</span>
+    </div>
+    
+    <label for="jb-c">Roughly what it costs</label>
+    <input id="jb-c" inputmode="decimal" value="${esc(j.est_cost || '')}" placeholder="0.00">
+    <label for="jb-p">You need</label>
+    <textarea id="jb-p" rows="2" placeholder="a ladder, and somebody to foot it">${esc(j.prerequisites || '')}</textarea>
+    <label for="jb-sf">Anything to be careful of?</label>
+    <select id="jb-sf">${sel(j.safety || 'none', SAFETY)}</select>
+    
+
+    ${fault ? `<h2>What it is doing</h2>
+      <label for="jb-st">How is it?</label>
+      <select id="jb-st">${sel(j.state || 'degraded', JOB_STATE)}</select>
+      <label for="jb-wa">Workaround</label>
+      <textarea id="jb-wa" rows="2" placeholder="how you are getting by meanwhile">${esc(j.workaround || '')}</textarea>
+      <label for="jb-ro">Told somebody on</label>
+      <input id="jb-ro" type="date" value="${esc(j.reported_on || '')}">
+      <p class="hint">A date here is what a deposit argument turns on.</p>
+      <label for="jb-rp">What they said</label>
+      <textarea id="jb-rp" rows="2" placeholder="&ldquo;will look at it next week&rdquo;">${esc(j.reply || '')}</textarea>` : ''}
+
+    ${imp ? `<h2>How it is, and how you want it</h2>
+      <label for="jb-now">How it is now</label>
+      <textarea id="jb-now" rows="2" placeholder="the ensuite was never built — used as a closet">${esc(j.now || '')}</textarea>
+      <label for="jb-want">How you want it</label>
+      <textarea id="jb-want" rows="2" placeholder="split it: bathroom one side, office the other">${esc(j.want || '')}</textarea>` : ''}`;
+}
+
+/* 90 minutes is a number; "an hour and a half" is a plan. Stored in minutes
+   because one unit everywhere is what made the board possible — shown in
+   whatever a person would actually say. */
+function hoursWords(m) {
+  const n = Number(m) || 0, h = Math.floor(n / 60), r = n % 60;
+  if (n >= 480) return (n / 480).toFixed(n % 480 ? 1 : 0).replace('.0','') + ' day' + (n >= 960 ? 's' : '') + ' of work';
+  if (!r) return h + ' hour' + (h === 1 ? '' : 's');
+  return h + 'h ' + r + 'm';
+}
+
+function reKind(id, k) {
+  const j = jobById(id); if (j) j.kind = k;   // redraw only; saved on Save
+  drawJob(id);
+}
+
+async function addStep(id) {
+  const el = $('#jb-step'), t = (el.value || '').trim();
+  if (!t) return say('Type the step first.');
+  const n = stepsOf(id).length;
+  await DwelLogs.write([{ op:'upsert', table:'step',
+    record:{ id:uid(), job_id:id, text:t, position:n + 1, done:'' } }]);
+  await reload(); drawJob(id);
+}
+async function tickStep(stepId, jobId, on) {
+  const st = (DB.step || []).find(x => x.id === stepId); if (!st) return;
+  await DwelLogs.write([{ op:'upsert', table:'step', record:{ ...st,
+    done: on ? 'TRUE' : '', done_on: on ? today() : '', done_by_id: on ? me.id : '' } }]);
+  await reload(); drawJob(jobId);
+}
+async function dropStep(stepId, jobId) {
+  await DwelLogs.write([{ op:'archive', table:'step', id:stepId }]);
+  await reload(); drawJob(jobId);
+}
+
+async function claimJob(id, take) {
+  const j = jobById(id); if (!j) return;
+  await DwelLogs.write([{ op:'upsert', table:'job', record:{ ...j,
+    claimed_by_id: take ? me.id : '', claimed_at: take ? new Date().toISOString() : '',
+    status: take ? 'claimed' : 'open' } }]);
+  await reload(); drawJob(id);
+  say(take ? 'Yours.' : 'Back on the pile.');
+}
+
+async function saveJob(id) {
+  const j = jobById(id); if (!j) return;
+  const v = k => { const el = $(k); return el ? (el.value || '').trim() : undefined; };
+  const num = x => { const n = Number(x); return Number.isFinite(n) && n > 0 ? n : ''; };
+  const rec = { ...j, kind: v('#jb-k') || j.kind, title: v('#jb-t') || j.title,
+    notes: v('#jb-n'), start_on: v('#jb-s'), due_on: v('#jb-d'),
+    est_minutes: num(v('#jb-m')), est_cost: num(v('#jb-c')),
+    prerequisites: v('#jb-p'), safety: v('#jb-sf') };
+  if (rec.kind === 'fault') Object.assign(rec, { state: v('#jb-st'), workaround: v('#jb-wa'),
+    reported_on: v('#jb-ro'), reply: v('#jb-rp') });
+  if (rec.kind === 'improvement') Object.assign(rec, { now: v('#jb-now'), want: v('#jb-want') });
+
+  const writes = [{ op:'upsert', table:'job', record:rec }];
+
+  /* A repeat is a RULE, and the rule is a schedule row — the job is one
+     occurrence of it. Turning the repeat on here makes the rule if there is
+     not one; turning it off makes the rule a 'once', which the schedule kind
+     picklist has always had a value for. */
+  const wantsRep = $('#jb-r') && $('#jb-r').value === 'yes';
+  const sc = (DB.schedule || []).find(x => x.id === j.schedule_id);
+  if (wantsRep) {
+    const rule = { id: (sc || {}).id || uid(), asset_id:j.asset_id || '', structure_id:j.structure_id || '',
+      area_id:j.area_id || '', animal_id:j.animal_id || '', title: rec.title, kind:'interval',
+      every_n: num(v('#jb-en')) || 6, every_unit: v('#jb-eu') || 'month',
+      next_due_on: rec.due_on || today() };
+    writes.push({ op:'upsert', table:'schedule', record:rule });
+    rec.schedule_id = rule.id;
+  } else if (sc) {
+    writes.push({ op:'upsert', table:'schedule', record:{ ...sc, kind:'once' } });
+  }
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  draft.rep = undefined;
+  await reload(); drawJob(id);
+  say('Saved.');
+}
+
+/* Finishing writes a completion — append-only history — and, when there is a
+   rule behind it, moves the rule on. That is the loop the whole app is for. */
+async function finishJob(id) {
+  const j = jobById(id); if (!j) return;
+  const cid = uid();
+  const writes = [{ op:'upsert', table:'completion',
+      record:{ id:cid, job_id:id, asset_id:j.asset_id || '', schedule_id:j.schedule_id || '',
+               done_on:today(), by_person_id:me.id } },
+    /* Randi, 2026-09-27: "when a job gets completed, if un owned it could be
+       assigned to who finished it." That is assignment used as a RECORD OF FACT
+       rather than a directive \u2014 the only honest way to write this field by
+       machine. Nobody is being told to do anything; the job simply turned out
+       to be somebody's, and now the history says whose. If it was already
+       assigned, that stands: the person it was meant for keeps the credit or
+       the blame, and who actually did it is on the completion either way. The
+       claim is left alone too \u2014 Dave taking it and Randi finishing it is a real
+       and interesting fact, and overwriting it would hide that. */
+    { op:'upsert', table:'job', record:{ ...j, status:'done', done_on:today(),
+        owner_id: j.owner_id || me.id, completion_id:cid } }];
+  const sc = (DB.schedule || []).find(x => x.id === j.schedule_id);
+  if (sc && sc.every_n && sc.kind !== 'once') {
+    const d = new Date(), n = Number(sc.every_n) || 1;
+    ({ day:() => d.setDate(d.getDate() + n), week:() => d.setDate(d.getDate() + n * 7),
+       month:() => d.setMonth(d.getMonth() + n), year:() => d.setFullYear(d.getFullYear() + n)
+     }[sc.every_unit] || (() => d.setMonth(d.getMonth() + n)))();
+    const next = d.toISOString().slice(0, 10);
+    writes.push({ op:'upsert', table:'schedule', record:{ ...sc, next_due_on: next } });
+    writes.push({ op:'upsert', table:'job', record:{ id:uid(), property_id:prop.id, kind:j.kind,
+      title:j.title, source:'schedule', schedule_id:sc.id, asset_id:j.asset_id || '',
+      structure_id:j.structure_id || '', area_id:j.area_id || '', animal_id:j.animal_id || '',
+      notes:j.notes || '', est_minutes:j.est_minutes || '', est_cost:j.est_cost || '',
+      prerequisites:j.prerequisites || '', safety:j.safety || '', status:'open', due_on: next } });
+  }
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await reload();
+  show('home');
+  say(sc && sc.kind !== 'once' ? 'Done. The next one is on the list.' : 'Done.');
+}
+
+/* Somewhere to put a thing that is not a check-up and not broken \u2014 which is
+   most of what anybody actually wants to write down. Straight into the job
+   screen so the notes, the checklist and the dates are all right there. */
+async function newJob() {
+  const j = { id:uid(), property_id:prop.id, kind:'task', title:'', source:'owner',
+    status:'open', column:'todo' };
+  await DwelLogs.write([{ op:'upsert', table:'job', record:j }]);
+  await reload();
+  drawJob(j.id);
+  say('Give it a name and it is on the list.');
+}
+
+async function reload() { const r = await DwelLogs.load(); DB = r.db; }
+
 /* ---- papers -------------------------------------------------------------
    Photos answer "what did it look like". Papers answer "what am I entitled to,
    and until when". The second question is the one with a deadline in it, which
@@ -2584,8 +2989,7 @@ function drawDoc() {
     : `
       <label for="dc-u">Link</label>
       <input id="dc-u" type="url" placeholder="https://…" value="${esc(draft.dc.url || '')}">
-      <p class="hint">Right for a manufacturer&rsquo;s manual: it stays where it is, kept up to
-        date by them, and we keep the address. Wrong for anything only you have a copy of.</p>`}
+      <p class="hint">Good for a manual that lives on their website.</p>`}
 
     <label for="dc-w">What is it about?</label>
     <select id="dc-w"><option value="">${esc(prop.name)} — the place itself</option>
@@ -2599,9 +3003,7 @@ function drawDoc() {
 
     <label for="dc-g">Good until <span style="font-weight:400;color:var(--muted)">— optional</span></label>
     <input id="dc-g" type="date">
-    <p class="hint">${k[3]
-      ? esc(k[3]) + ' Put it in and it turns up on your home screen a month before.'
-      : 'Most of these never run out. Leave it blank.'}</p>
+    <p class="hint">${k[3] ? esc(k[3]) : "Most never run out."}</p>
 
     <label for="dc-note">Note <span style="font-weight:400;color:var(--muted)">— optional</span></label>
     <textarea id="dc-note" rows="2" placeholder="what it says, in your words"></textarea>
@@ -2758,8 +3160,7 @@ function pickedPhoto(el) {
   const url = URL.createObjectURL(f);
   box.innerHTML = `<img src="${url}" alt="" style="max-width:100%;border-radius:var(--r);
     border:1px solid var(--line);margin-top:.6rem">
-    <p class="hint">${(f.size / 1048576).toFixed(1)} MB on your phone — it is shrunk before
-      it is sent.</p>`;
+    <p class="hint">${(f.size / 1048576).toFixed(1)} MB</p>`;
 }
 async function savePhoto() {
   const el = $('#ph-f'), f = el.files && el.files[0];
@@ -2871,8 +3272,7 @@ function drawTell() {
 
     <label for="t-lead" style="margin-top:1.2rem">How far ahead</label>
     <input id="t-lead" inputmode="numeric" placeholder="7" value="${esc(p.lead_days || '')}">
-    <p class="hint">Days. A filter wants a week; a septic pump-out wants a month, because you have
-      to book it.</p>
+    <p class="hint">Days.</p>
 
     <label for="t-cad" style="margin-top:1.2rem">How often at most</label>
     ${pick('t-cad', [['only_when_it_changes','Only when something changes'],
@@ -2880,7 +3280,7 @@ function drawTell() {
            p.cadence || 'only_when_it_changes')}
     <label for="t-cap">Never more than</label>
     <input id="t-cap" inputmode="numeric" placeholder="2" value="${esc(p.max_per_week || '')}">
-    <p class="hint">Messages a week. Past that the rest waits.</p>
+    <p class="hint">Messages a week.</p>
     ${tip('An app that can send twice will eventually send five times, and then it gets muted ' +
       'forever. This is the cap you set, and it is honoured before anything else.', 'Why a cap')}
 
@@ -3036,7 +3436,7 @@ function drawMe() {
 
     <label for="me-n">Your name</label>
     <input id="me-n" value="${esc(me.name || '')}">
-    <p class="hint">What the log says next to anything you do.</p>
+    
     <label for="me-e">Email <span style="font-weight:400;color:var(--muted)">— optional</span></label>
     <input id="me-e" inputmode="email" placeholder="only if you want a digest"
       value="${esc(me.email || '')}">
@@ -3058,7 +3458,7 @@ function drawMe() {
         </button>
         ${mine ? '' : `<button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
           onclick="leavePlace('${p.id}')">Leave</button>`}</div>`;
-    }).join('') || '<p class="hint">None yet.</p>'}</div>
+    }).join('') || ''}</div>
     ${places.some(p => accessOf(p.id) === 'owner')
       ? tip('A place you own has no Leave, because leaving would strand it. Hand it to somebody ' +
           'else first, or start over from the home screen if you want it gone.', 'Why some have no Leave')
@@ -3382,7 +3782,27 @@ const card = s => `<div class="card tap"><button onclick="openSched('${s.id}')">
     <span class="chip ${s.state}">${{ attn:'needs you', soon:'due soon', ok:'fine' }[s.state]}</span></p>
 </button></div>`;
 
-function openSched(id) {
+/* A rule is not a thing you do \u2014 the job is. Tapping a due check now finds
+   the open job for that rule, or makes one, and opens the job screen. Which
+   means a check-up, a fault and "wash the bathroom walls" are all the same
+   screen with the same notes, checklist and history. */
+async function openSched(id) {
+  const rule = (DB.schedule || []).find(x => x.id === id);
+  if (rule) {
+    let j = (DB.job || []).find(x => x.schedule_id === id && String(x.status) !== 'done');
+    if (!j) {
+      j = { id:uid(), property_id:prop.id, kind:'task', title:rule.title || 'Check',
+        source:'schedule', schedule_id:id, status:'open', due_on:rule.next_due_on || '',
+        asset_id:rule.asset_id || '', structure_id:rule.structure_id || '',
+        area_id:rule.area_id || '', animal_id:rule.animal_id || '' };
+      await DwelLogs.write([{ op:'upsert', table:'job', record:j }]);
+      await reload();
+    }
+    return drawJob(j.id);
+  }
+  return openSchedOld(id);
+}
+function openSchedOld(id) {
   const s = schedules().filter(x => x.id === id)[0];
   $('#tabs').hidden = false;
   const basis = intervalBasis(s);

@@ -16,13 +16,16 @@
 
 /* Generated list would be better; this is the harness's hand-kept copy and a
    table missing here is simply an empty array in local mode. */
-const TABLE_NAMES = { property:1, structure:1, area:1, hookup:1, shutoff:1, category:1,
-  asset_type:1, asset:1, supply_link:1, schedule:1, completion:1, reading:1, work_item:1,
-  issue:1, issue_trail:1, supply:1, document:1, person:1, membership:1,
-  placement:1, animal:1, invite:1, suggestion:1, reminder_pref:1, coverage:1, service:1,
-  visit:1, improvement:1, project:1, comment:1, tag:1, tagging:1, notify:1, intention:1,
-  emergency_plan:1, plan_action:1, budget:1, candidate:1, fit_record:1,
-  reminder_pref:1, feedback:1 };
+/* Generated from schema.json by hand-sync. A table missing here is simply an
+   empty array in local mode — which is how a whole merged object can vanish
+   without a single error. Regenerate this list whenever the schema changes. */
+const TABLE_NAMES = {
+  property:1, structure:1, placement:1, area:1, hookup:1, shutoff:1, emergency_plan:1,
+  plan_action:1, category:1, asset_type:1, asset:1, supply_link:1, fit_record:1,
+  feedback:1, suggestion:1, animal:1, budget:1, schedule:1, completion:1, reading:1, job:1,
+  step:1, job_supply:1, notify:1, comment:1, intention:1, tag:1, tagging:1, trail:1,
+  candidate:1, visit:1, supply:1, coverage:1, document:1, service:1, person:1,
+  reminder_pref:1, invite:1, membership:1 };
 
 const DwelLogs = (function () {
   const CFG = { url: '', token: '', property: null };   // set by configure()

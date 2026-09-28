@@ -241,7 +241,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=7e9325faf9"></script>
+<script src="api.js?v=74f78efc2e"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -1500,7 +1500,12 @@ const PLACE = [
 
   { t:'What should it watch for you?',
     s:'Already ticked. Untick anything you would rather not hear about.',
-    skippable:true,
+    /* Not skippable, and it is the only step in the flow that is not.
+       Everywhere else, skipping records nothing -- a blank field invents
+       nothing. Here the boxes arrive ticked, so skipping recorded yes to every
+       check-up on the place and somebody landed on a home screen full of work
+       they had never agreed to. A screen with consequences is a screen you go
+       through. It costs one tap, because it is already answered. */
     when: () => plannedTypes().length > 0,
     body: () => {
       draft.picks = draft.picks || {};
@@ -2005,6 +2010,9 @@ function drawFirst() {
   const list = STEPS(), f = list[fs];
   // "Step 7 of 8" reads as seven things you have to do. Only the first few are,
   // and saying so is the difference between a setup and a form.
+  /* The count is of REQUIRED steps, so the position has to be counted the same
+     way. Mixing the absolute index with that total read "step 7 of 2" the
+     moment a required step sat behind some optional ones. */
   const need = list.filter(x => !x.skippable).length;
   // The escape sits ABOVE the questions. Making somebody scroll past forty ticks
   // to find out they did not have to answer them is the screen telling them the
@@ -2016,7 +2024,7 @@ function drawFirst() {
     <p class="step">${hubStep ? esc(draft.place || 'Setting up') : f.skippable
       ? `Optional <button class="skiplink" onclick="skipFirst()">${
           fs === list.length - 1 ? 'skip and finish' : 'skip this'}</button>`
-      : FLOW_LABEL[flow] + (need > 1 ? ' · step ' + (fs + 1) + ' of ' + need : '')}</p>
+      : FLOW_LABEL[flow] + (need > 1 ? ' · step ' + list.slice(0, fs + 1).filter(x => !x.skippable).length + ' of ' + need : '')}</p>
     <h1>${esc(f.t)}</h1><p class="sub">${esc(typeof f.s === 'function' ? f.s() : f.s)}</p>
     ${f.topOut ? `<div class="actions" style="margin:0 0 1rem">${f.topOut}</div>` : ''}
     ${f.body()}

@@ -214,7 +214,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=7205fe68f9"></script>
+<script src="api.js?v=2b995156e7"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -2348,7 +2348,8 @@ async function createEverything() {
       schedId = uid();
       writes.push({ op:'upsert', table:'schedule', record:{ id:schedId,
         asset_id: key ? (units[key] || '') : '', structure_id:structId, title:j.title,
-        kind:'interval', every_n: j.every_n || 6, every_unit: j.every_unit || 'month',
+        kind: j.answer === 'reading' ? 'reading' : 'interval',
+        every_n: j.every_n || 6, every_unit: j.every_unit || 'month',
         next_due_on: j.due_on || today() } });
     }
     writes.push({ op:'upsert', table:'job', record:{ id:jid, property_id:propId,
@@ -2790,6 +2791,7 @@ const JOB_STATE = [['works','It works'],['intermittent','It works sometimes'],
 const SAFETY = [['none','Nothing special'],['gas','Gas'],['fire','Fire'],
   ['carbon_monoxide','Carbon monoxide'],['electrical','Electrical'],['water','Water'],
   ['structural','Structural'],['fall','Working at height']];
+const ANSWER_KIND = [['tick','Ticking it off'],['reading','Writing down a number']];
 const EVERY_UNIT = [['day','days'],['week','weeks'],['month','months'],['year','years']];
 
 function jobById(id) { return (DB.job || []).find(j => j.id === id); }
@@ -2959,6 +2961,13 @@ function jobFields(j, live, id) {
   const repGo  = live ? `draft.rep = this.value; drawJob('${id}')`  : 'setRepDraft(this.value)';
   const stepGo = live ? `addStep('${id}')`                          : 'addStepDraft()';
   const kind   = j.kind || 'task';
+  /* Tyre pressure, vacuum, propane, mite counts: plenty of repeating jobs are
+     answered with a NUMBER, not a tick. Saying so here makes the rule a reading
+     rule, and a reading rule sends you to the reading screen when it comes due
+     instead of to a checkbox with nowhere to put the answer. */
+  const answerKind = live
+    ? ((sched && sched.kind === 'reading') ? 'reading' : (j.answer || 'tick'))
+    : (j.answer || 'tick');
 
   return `
     <label for="jb-t">Name</label>
@@ -2999,7 +3008,9 @@ function jobFields(j, live, id) {
         <input id="jb-en" inputmode="numeric" value="${esc(everyN)}"></div>
       <div class="count"><span>&nbsp;</span>
         <select id="jb-eu">${optList(everyU, EVERY_UNIT)}</select></div>
-    </div>` : ''}`;
+    </div>
+    <label for="jb-ans">What does doing it look like?</label>
+    <select id="jb-ans">${optList(answerKind, ANSWER_KIND)}</select>` : ''}`;
 }
 
 /* Reads whatever of the form is on screen. The fault and improvement tails are
@@ -3013,7 +3024,8 @@ function readJobFields() {
     est_minutes: num(v('#jb-m')), est_cost: num(v('#jb-c')),
     prerequisites: v('#jb-p'), safety: v('#jb-sf') || 'none',
     rep: ($('#jb-r') && $('#jb-r').value === 'yes') ? 'yes' : '',
-    every_n: num(v('#jb-en')) || 6, every_unit: v('#jb-eu') || 'month' };
+    every_n: num(v('#jb-en')) || 6, every_unit: v('#jb-eu') || 'month',
+    answer: v('#jb-ans') || 'tick' };
   if (out.kind === 'fault') Object.assign(out, { state: v('#jb-st') || 'degraded',
     workaround: v('#jb-wa'), reported_on: v('#jb-ro'), reply: v('#jb-rp') });
   if (out.kind === 'improvement') Object.assign(out, { now: v('#jb-now'), want: v('#jb-want') });
@@ -3193,7 +3205,8 @@ async function saveJob(id) {
   if (f.rep === 'yes') {
     const rule = { id: (sc || {}).id || uid(), asset_id:j.asset_id || '',
       structure_id:j.structure_id || '', area_id:j.area_id || '', animal_id:j.animal_id || '',
-      title: rec.title, kind:'interval', every_n: f.every_n, every_unit: f.every_unit,
+      title: rec.title, kind: f.answer === 'reading' ? 'reading' : 'interval',
+      every_n: f.every_n, every_unit: f.every_unit,
       next_due_on: rec.due_on || today() };
     writes.push({ op:'upsert', table:'schedule', record:rule });
     rec.schedule_id = rule.id;

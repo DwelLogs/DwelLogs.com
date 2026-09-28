@@ -214,7 +214,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=f91389817e"></script>
+<script src="api.js?v=746e6adbc5"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -2598,7 +2598,12 @@ function intervalBasis(sched) {
 }
 /* Kinds that all but announce an animal. Ticking one of these is not proof —
    an empty coop is a coop — so this OFFERS and nothing more. */
-const ANIMAL_TYPES = ['dog','cat','bird','chicken','duck','goat','sheep','pig','cow','horse'];
+/* Generated from schema.json by build_app.py. Hand-keeping a list that
+   mirrors a picklist is how 'bee' gets added to the model and stays
+   unselectable in the app. Do not edit; run the build. */
+const ANIMAL_TYPES = ["cat", "dog", "bird", "chicken", "duck", "goat", "sheep", "pig", "cow", "horse", "bee"];
+const PRODUCES = ["eggs", "milk", "honey", "wax", "wool", "fibre", "meat", "manure"];
+const HELPS = ["pest_control", "brush_clearing", "pollination", "guarding", "draft", "herding"];
 const ANIMAL_KINDS = ['coop','stable','animal_pen','kennel','barn','pasture','pole_barn'];
 /* What the setup deliberately left blank. Not a nag and not a progress bar —
    "not sure yet" is a real answer everywhere in this app, so this is a list of
@@ -3976,7 +3981,7 @@ function drawAnimal() {
       <div class="count"><span>What is it?</span>
         <select id="an-t" onchange="anKind(this.value)">${ANIMAL_TYPES.map(t =>
           `<option value="${t}"${draft.an.type === t ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
-      <div class="count"><span>How many?</span>
+      <div class="count"><span>How many${draft.an.type === 'bee' ? ' hives' : ''}?</span>
         <input id="an-q" inputmode="numeric" value="${esc(String(draft.an.n))}"
           oninput="anCount(this.value)" onchange="anCount(this.value)"></div>
     </div>
@@ -3989,6 +3994,20 @@ function drawAnimal() {
       <option value="">It belongs to the place</option>
       ${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
     </select>
+    <h2>What you get from it</h2>
+    <div class="rows">${PRODUCES.map(v => `<div class="row">
+      <label class="tick" style="flex:1;min-width:0">
+        <input type="checkbox" class="an-p" value="${v}"
+          ${(draft.an.produces || []).indexOf(v) > -1 ? 'checked' : ''}>
+        <span>${esc(v.replace(/_/g, ' '))}</span></label></div>`).join('')}</div>
+
+    <h2>What it helps with</h2>
+    <div class="rows">${HELPS.map(v => `<div class="row">
+      <label class="tick" style="flex:1;min-width:0">
+        <input type="checkbox" class="an-h" value="${v}"
+          ${(draft.an.helps_with || []).indexOf(v) > -1 ? 'checked' : ''}>
+        <span>${esc(v.replace(/_/g, ' '))}</span></label></div>`).join('')}</div>
+
     <h2>${draft.an.n > 1 ? 'Names' : 'Name'}</h2>
     <div id="an-names">${animalNames()}</div>
     ${tip('The barn cat belongs to the place and stays when you go. A dog belongs to a person and ' +
@@ -4003,18 +4022,25 @@ function drawAnimal() {
 /* Only the name boxes are rebuilt when the count or the type changes. Redrawing
    the whole screen from inside a field's own change event replaces the element
    the browser is still dispatching to, and the next tap anywhere gets swallowed. */
+/* You keep three hives, not three bees. The count and the names are about the
+   unit a person actually manages, which is not always the animal. */
+const UNIT_NOUN = { bee: 'hive' };
+function unitNoun(type) { return UNIT_NOUN[type] || type; }
 function animalNames() {
   const a = draft.an, out = [];
   for (let i = 0; i < a.n; i++) {
     out.push(`<label for="an-n${i}" class="sr">Name ${i + 1}</label>
       <input id="an-n${i}" class="an-n" value="${esc(a.names[i] || '')}"
-        placeholder="${esc(a.n > 1 ? a.type + ' ' + (i + 1) : 'optional - a laying hen may not have one')}">`);
+        placeholder="${esc(a.n > 1 ? unitNoun(a.type) + ' ' + (i + 1) : 'optional - a laying hen may not have one')}">`);
   }
   return out.join('');
 }
 function keepAnimalNames() {
   if (!draft.an) return;
   draft.an.names = [...document.querySelectorAll('.an-n')].map(e => (e.value || '').trim());
+  const ticked = c => [...document.querySelectorAll(c)].filter(e => e.checked).map(e => e.value);
+  if (document.querySelector('.an-p')) draft.an.produces = ticked('.an-p');
+  if (document.querySelector('.an-h')) draft.an.helps_with = ticked('.an-h');
 }
 /* Both of these rebuild the name boxes, and both are wired to a change event,
    which fires on BLUR. Tapping from the count straight into a name box would
@@ -4054,9 +4080,11 @@ async function saveAnimal() {
   for (let i = 0; i < a.n; i++) {
     const id = uid();
     const typed = (a.names[i] || '').trim();
-    const name = typed || (a.n > 1 ? a.type + ' ' + (i + 1) : '');
+    const name = typed || (a.n > 1 ? unitNoun(a.type) + ' ' + (i + 1) : '');
     writes.push({ op:'upsert', table:'animal', record:{ id, property_id:prop.id,
       owner_id: owner || '', name, type:a.type, role,
+      produces: (a.produces || []).join(', '),
+      helps_with: (a.helps_with || []).join(', '),
       cared_for_by_id: owner || '', acquired_on:today() } });
     writes.push({ op:'upsert', table:'placement', record:{ id:uid(), animal_id:id,
       property_id:prop.id, arrived_on:today() } });
@@ -4065,7 +4093,7 @@ async function saveAnimal() {
   const n = a.n, t = a.type, first = a.names[0];
   draft.an = null;
   await boot();
-  say(n > 1 ? n + ' ' + t + 's are on the list.'
+  say(n > 1 ? n + ' ' + unitNoun(t) + 's are on the list.'
             : (first || ('The ' + t)) + ' is on the list.');
 }
 function drawMoved(stId) {

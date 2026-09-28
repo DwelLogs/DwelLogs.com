@@ -214,7 +214,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=2b995156e7"></script>
+<script src="api.js?v=440ec54c59"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -1376,11 +1376,7 @@ const PLACE = [
         ${draft.animals.map((a, i) => `<div class="card"><span class="title">${esc(a.name || a.type)}</span>
           <p class="meta">${esc(a.type)}</p>
           <button class="ghost" onclick="dropAnimal(${i})">Remove</button></div>`).join('')}
-        <label for="j-an">Name <span style="font-weight:400;color:var(--muted)">— blank is fine for a hen</span></label>
-        <input id="j-an" placeholder="blank is fine for a hen">
-        <label for="j-at">What is it?</label>
-        <select id="j-at">${['dog','cat','bird','chicken','duck','goat','sheep','pig','cow','horse']
-          .map(t => `<option value="${t}">${t}</option>`).join('')}</select>
+        ${animalCore()}
         <div class="actions" style="margin-top:.6rem">
           <button class="ghost" onclick="addAnimal()">Add it</button></div>
         ${tip('Feed runs out, papers expire and a vet charges by the trip — all the same machinery ' +
@@ -1691,11 +1687,7 @@ const JOIN = [
            <p class="meta">${esc(a.type)} · yours</p>
            <button class="ghost" onclick="dropAnimal(${i})">Remove</button></div>`).join('');
       return `${rows}
-        <label for="j-an" style="margin-top:${rows ? '1.2rem' : '0'}">Name</label>
-        <input id="j-an" placeholder="blank is fine for a hen">
-        <label for="j-at">What is it?</label>
-        <select id="j-at">${['dog','cat','bird','chicken','duck','goat','sheep','pig','cow','horse']
-          .map(t => `<option value="${t}">${t}</option>`).join('')}</select>
+        ${animalCore()}
         <div class="actions" style="margin-top:.8rem">
           <button class="ghost" onclick="addAnimal()">Add this one</button>
         </div>
@@ -1745,11 +1737,19 @@ function guessThing(text) {
 
 function addAnimal() {
   syncStep();
-  const t = $('#j-at').value, n = ($('#j-an').value || '').trim();
+  keepAnimalNames();
+  const a = draft.an || { type:ANIMAL_TYPES[0], n:1, names:[] };
+  const n = a.n || 1, t = a.type, first = (a.names || [])[0];
   draft.animals = draft.animals || [];
-  draft.animals.push({ name:n, type:t });
+  for (let i = 0; i < n; i++) {
+    const typed = ((a.names || [])[i] || '').trim();
+    draft.animals.push({ type:t,
+      name: typed || (n > 1 ? unitNoun(t) + ' ' + (i + 1) : '') });
+  }
+  draft.an = null;
   drawFirst();
-  say(n ? n + ' comes with you.' : 'One ' + t + ' comes with you.');
+  say(n > 1 ? n + ' ' + unitNoun(t) + 's come with you.'
+            : (first || ('One ' + t)) + ' comes with you.');
 }
 function dropAnimal(i) { syncStep(); draft.animals.splice(i, 1); drawFirst(); }
 /* The rooms this setup is about to create, in the order createEverything
@@ -3982,6 +3982,27 @@ async function revoke(id) {
 }
 function inDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); }
 
+/* ONE animal form. There were three: this one, and two copies inside the setup
+   flow that still asked for a name first, still explained in a label AND a
+   placeholder that a hen may not have one, and still did not know bees exist.
+   The same mistake as the job screen -- two forms for one object, so a fix
+   lands in one of them and the others quietly disagree. Everything renders the
+   same ids, so anKind / anCount / keepAnimalNames work wherever it appears. */
+function animalCore() {
+  draft.an = draft.an || { type:ANIMAL_TYPES[0], n:1, names:[], produces:[], helps_with:[] };
+  const a = draft.an;
+  return `<div class="counts" style="grid-template-columns:2fr 1fr">
+      <div class="count"><span>What is it?</span>
+        <select id="an-t" onchange="anKind(this.value)">${ANIMAL_TYPES.map(t =>
+          `<option value="${t}"${a.type === t ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="count"><span>How many${a.type === 'bee' ? ' hives' : ''}?</span>
+        <input id="an-q" inputmode="numeric" value="${esc(String(a.n))}"
+          oninput="anCount(this.value)" onchange="anCount(this.value)"></div>
+    </div>
+    <h2>${a.n > 1 ? 'Names' : 'Name'}</h2>
+    <div id="an-names">${animalNames()}</div>`;
+}
+
 function drawAnimal() {
   $('#tabs').hidden = true;
   const people = (DB.person || []);
@@ -3993,14 +4014,7 @@ function drawAnimal() {
   draft.an = draft.an || { type:'dog', n:1, names:[] };
   app.innerHTML = `<h1>Add an animal</h1>
     <p class="sub">Pet or livestock &mdash; the difference is what it is kept for, not how much you like it.</p>
-    <div class="counts" style="grid-template-columns:2fr 1fr">
-      <div class="count"><span>What is it?</span>
-        <select id="an-t" onchange="anKind(this.value)">${ANIMAL_TYPES.map(t =>
-          `<option value="${t}"${draft.an.type === t ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
-      <div class="count"><span>How many${draft.an.type === 'bee' ? ' hives' : ''}?</span>
-        <input id="an-q" inputmode="numeric" value="${esc(String(draft.an.n))}"
-          oninput="anCount(this.value)" onchange="anCount(this.value)"></div>
-    </div>
+    ${animalCore()}
     <label for="an-r">Kept as</label>
     <select id="an-r">${[['pet','a pet'],['laying','laying'],['meat','meat'],['dairy','dairy'],
         ['breeding','breeding'],['working','working'],['guard','guarding']]
@@ -4024,8 +4038,6 @@ function drawAnimal() {
           ${(draft.an.helps_with || []).indexOf(v) > -1 ? 'checked' : ''}>
         <span>${esc(v.replace(/_/g, ' '))}</span></label></div>`).join('')}</div>
 
-    <h2>${draft.an.n > 1 ? 'Names' : 'Name'}</h2>
-    <div id="an-names">${animalNames()}</div>
     ${tip('The barn cat belongs to the place and stays when you go. A dog belongs to a person and ' +
       'leaves with them. Both are ordinary, so it is asked rather than worked out &mdash; and whoever it ' +
       'belongs to, where it lives right now is a separate fact that changes when it moves.',
@@ -4047,7 +4059,7 @@ function animalNames() {
   for (let i = 0; i < a.n; i++) {
     out.push(`<label for="an-n${i}" class="sr">Name ${i + 1}</label>
       <input id="an-n${i}" class="an-n" value="${esc(a.names[i] || '')}"
-        placeholder="${esc(a.n > 1 ? unitNoun(a.type) + ' ' + (i + 1) : 'optional - a laying hen may not have one')}">`);
+        placeholder="${esc(a.n > 1 ? unitNoun(a.type) + ' ' + (i + 1) : 'optional')}">`);
   }
   return out.join('');
 }

@@ -4,6 +4,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DwelLogs</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#eef3f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1726" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DwelLogs">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png" type="image/png">
+<script>
+/* The escape hatch, first thing on the page and deliberately before anything
+   that can throw. A service worker that serves a broken app is a broken app
+   you cannot reach, so there has to be one URL that always undoes it:
+   /app/?fresh=1 unregisters every worker, empties every cache and reloads
+   clean. It is the link to text somebody when their phone is stuck. */
+if (location.search.indexOf('fresh=1') > -1) {
+  (async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const rs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(rs.map(r => r.unregister()));
+      }
+      if (window.caches) {
+        const ks = await caches.keys();
+        await Promise.all(ks.map(k => caches.delete(k)));
+      }
+    } catch (e) {}
+    location.replace(location.pathname);
+  })();
+}
+</script>
 <style>
   :root {
     color-scheme: light;
@@ -185,7 +214,18 @@
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=2"></script>
+<script src="api.js?v=1898ca6522"></script>
+<script>
+/* Registered after load so it never competes with boot. Failure here is not
+   fatal and is not reported: a browser with no service worker support, or a
+   page opened from a file, simply gets the app it always got. */
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0
+    && location.search.indexOf('fresh=1') < 0) {
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
 <script>
 /* DwelLogs — the sheet-backed app, starting from nothing.
    ------------------------------------------------------------------------

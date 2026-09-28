@@ -214,7 +214,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=746e6adbc5"></script>
+<script src="api.js?v=7205fe68f9"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -1010,6 +1010,8 @@ function startFlow(f) { flow = f; fs = 0; drawFirst(); }
    themes without a second copy. Simple on purpose — at 40px a detailed drawing
    is mud, and these have to read at a glance in a grid of twelve. */
 const ICON = {
+  /* A dial and a needle. Readings are levels more often than anything else. */
+  gauge: 'M4 17a8 8 0 0 1 16 0M12 17l4.2-4.4M4 17h1.5M18.5 17H20',
   /* The iOS share glyph: an arrow leaving a tray. Safari's button is unlabelled,
      so the shape is the instruction. */
   share: 'M12 3v11M12 3l-3.2 3.2M12 3l3.2 3.2M5 12.5V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5',
@@ -2555,6 +2557,7 @@ function drawHome() {
 
     <h2>Anything else</h2>
     <div class="pick">${[
+      ['gauge','Take a reading',"drawReading()"],
       ['bell','When to tell me','drawTell()'],
       ['camera','Add a photo','drawPhoto()'],
       ['paper','Add a paper','drawDoc()'],
@@ -4206,6 +4209,15 @@ const card = s => `<div class="card tap"><button onclick="openSched('${s.id}')">
    screen with the same notes, checklist and history. */
 async function openSched(id) {
   const rule = (DB.schedule || []).find(x => x.id === id);
+  /* "Check the propane level" is answered with a number, not by ticking a box.
+     A rule whose kind is a reading opens the reading screen and the answer
+     rolls the rule forward. */
+  if (rule && rule.kind === 'reading') {
+    const a = rule.asset_id ? 'asset:' + rule.asset_id
+            : rule.animal_id ? 'animal:' + rule.animal_id
+            : rule.area_id ? 'area:' + rule.area_id : 'property:' + prop.id;
+    return drawReading(a, id);
+  }
   if (rule) {
     let j = (DB.job || []).find(x => x.schedule_id === id && String(x.status) !== 'done');
     if (!j) {
@@ -4309,6 +4321,211 @@ async function addThing() {
   DB = (await DwelLogs.load()).db;
   show('home');
   say(name + ' added, with ' + tmpl[1].length + ' check-up' + (tmpl[1].length === 1 ? '' : 's') + '.');
+}
+
+/* ---------------------------------------------------------------- readings
+
+   The table draft 1 of the v1 line argued in by name -- "levels are half of
+   what people actually track" -- and which then sat with no screen for weeks
+   while three unrelated things asked for it: mite counts on a hive, the
+   odometer on a car, eggs a day.
+
+   The shape comes from the schema and is worth restating: result_type decides
+   what a result may be USED for. A number can be trended; a pass/fail cannot.
+   And `source` exists because instruments break -- a tank gauge reading 10%
+   and the supplier saying 40% are both real readings, and averaging them is
+   the wrong answer. */
+const RESULT_KIND = [['numeric','A number'], ['present_absent','Present or absent'],
+                     ['pass_fail','Pass or fail']];
+const FLAGS = { present_absent: [['present','Present'],['absent','Absent']],
+                pass_fail:      [['pass','Pass'],['fail','Fail']] };
+const READ_FROM = [['gauge','A gauge'],['dipstick','A dipstick'],['sight_glass','A sight glass'],
+                   ['meter','A meter'],['supplier','The supplier'],['delivery_ticket','A delivery ticket'],
+                   ['by_eye','By eye'],['lab','A lab']];
+
+/* Everything a reading can be about, in one list, because "which room is damp"
+   and "how full is the tank" are the same question to the person asking. */
+function readSubjects() {
+  const out = [];
+  (DB.asset || []).filter(a => a.status !== 'archived')
+    .forEach(a => out.push(['asset:' + a.id, a.name]));
+  (DB.animal || []).filter(a => a.status !== 'archived')
+    .forEach(a => out.push(['animal:' + a.id, a.name || ('The ' + a.type)]));
+  (DB.area || []).forEach(a => out.push(['area:' + a.id, a.name]));
+  (DB.structure || []).forEach(s => out.push(['structure:' + s.id, s.name || 'the building']));
+  out.push(['property:' + prop.id, prop.name]);
+  return out;
+}
+function subjectWords(r) {
+  const A = byId('asset'), N = byId('animal'), R = byId('area'), T = byId('structure');
+  if (r.asset_id)     return (A[r.asset_id] || {}).name || 'something';
+  if (r.animal_id)    return (N[r.animal_id] || {}).name || 'an animal';
+  if (r.area_id)      return (R[r.area_id] || {}).name || 'a room';
+  if (r.structure_id) return (T[r.structure_id] || {}).name || 'a building';
+  return prop.name;
+}
+function readingWords(r) {
+  if (String(r.result_type) === 'numeric')
+    return (r.value_num === '' || r.value_num == null ? '—' : r.value_num)
+           + (r.unit ? ' ' + r.unit : '');
+  const f = (FLAGS[r.result_type] || []).find(x => x[0] === r.value_flag);
+  return f ? f[1] : (r.value_flag || '—');
+}
+function readingsOf(limit) {
+  return (DB.reading || []).filter(r => r.status !== 'archived')
+    .sort((a, b) => String(b.taken_on).localeCompare(String(a.taken_on)))
+    .slice(0, limit || 12);
+}
+
+function drawReading(subject, scheduleId) {
+  $('#tabs').hidden = true;
+  const subs = readSubjects();
+  if (!draft.rd || subject || scheduleId) {
+    draft.rd = { subject: subject || (subs[0] || [''])[0], result_type:'numeric',
+                 value_num:'', value_flag:'', unit:'', source:'gauge',
+                 taken_on: today(), doubt:false, schedule_id: scheduleId || '' };
+  }
+  const r = draft.rd;
+  const rule = (DB.schedule || []).find(x => x.id === r.schedule_id);
+  /* Arriving from a rule, the repeat it already has is what the control should
+     show -- otherwise saving would quietly turn a monthly check into a one-off. */
+  if (rule && r.rep === undefined) {
+    r.rep = (rule.every_n && rule.kind !== 'once') ? 'yes' : '';
+    r.every_n = rule.every_n || '1';
+    r.every_unit = rule.every_unit || 'month';
+  }
+  const flags = FLAGS[r.result_type];
+  app.innerHTML = `<button class="back" onclick="draft.rd=null;show('home')">&lsaquo; Back</button>
+    <h1>${esc(rule ? rule.title : 'Take a reading')}</h1>
+
+    <label for="rd-s">What is it about?</label>
+    <select id="rd-s" onchange="keepReading();draft.rd.subject=this.value">
+      ${subs.map(([k, l]) => `<option value="${esc(k)}"${
+        r.subject === k ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+    </select>
+
+    <label for="rd-k">What kind of answer?</label>
+    <select id="rd-k" onchange="reReading(this.value)">
+      ${optList(r.result_type, RESULT_KIND)}</select>
+
+    ${flags ? `<label for="rd-f">Result</label>
+      <select id="rd-f">${optList(r.value_flag || flags[0][0], flags)}</select>`
+    : `<div class="counts" style="grid-template-columns:2fr 1fr">
+        <div class="count"><span>Value</span>
+          <input id="rd-v" inputmode="decimal" value="${esc(r.value_num)}"></div>
+        <div class="count"><span>Unit</span>
+          <input id="rd-u" value="${esc(r.unit)}" placeholder="%"></div>
+      </div>`}
+
+    <label for="rd-src">Read from</label>
+    <select id="rd-src">${optList(r.source, READ_FROM)}</select>
+
+    <label for="rd-d">Taken on</label>
+    <input id="rd-d" type="date" value="${esc(r.taken_on)}">
+
+    <label for="rd-rep">Ask me again?</label>
+    <select id="rd-rep" onchange="keepReading();draft.rd.rep=this.value;drawReading()">
+      <option value=""${!r.rep ? ' selected' : ''}>No &mdash; just this once</option>
+      <option value="yes"${r.rep ? ' selected' : ''}>Yes, on a repeat</option>
+    </select>
+    ${r.rep ? `<div class="counts" style="grid-template-columns:1fr 2fr">
+      <div class="count"><span>Every</span>
+        <input id="rd-en" inputmode="numeric" value="${esc(r.every_n || '1')}"></div>
+      <div class="count"><span>&nbsp;</span>
+        <select id="rd-eu">${optList(r.every_unit || 'month', EVERY_UNIT)}</select></div>
+    </div>` : ''}
+
+    <label class="tick" style="margin-top:.9rem"><input type="checkbox" id="rd-q"
+      ${r.doubt ? 'checked' : ''}><span>Not sure about this one</span></label>
+    ${tip('A doubted reading is kept and marked rather than thrown away, and nothing is ' +
+      'projected forward from it. A gauge that reads 10% while the supplier says 40% is not a ' +
+      'contradiction to settle by averaging &mdash; both were read from something, and which ' +
+      'instrument said so is the part worth keeping.')}
+
+    <div class="actions" style="margin-top:1.2rem">
+      <button class="primary" onclick="saveReading()">Save it</button>
+    </div>
+
+    ${(() => { const rs = readingsOf(); if (!rs.length) return '';
+      return `<h2>Lately</h2><div class="rows">${rs.map(x => `<div class="row">
+        <div class="grow"><b>${esc(subjectWords(x))} &middot; ${esc(readingWords(x))}</b>
+          <small>${esc(x.taken_on)}${String(x.trusted).toUpperCase() === 'TRUE'
+            ? '' : ' &middot; not sure'}</small></div></div>`).join('')}</div>`;
+    })()}`;
+}
+function keepReading() {
+  const r = draft.rd; if (!r) return;
+  const v = k => { const e = $(k); return e ? (e.value || '').trim() : undefined; };
+  if ($('#rd-s'))   r.subject     = v('#rd-s');
+  if ($('#rd-v'))   r.value_num   = v('#rd-v');
+  if ($('#rd-u'))   r.unit        = v('#rd-u');
+  if ($('#rd-f'))   r.value_flag  = v('#rd-f');
+  if ($('#rd-src')) r.source      = v('#rd-src');
+  if ($('#rd-d'))   r.taken_on    = v('#rd-d');
+  if ($('#rd-q'))   r.doubt       = $('#rd-q').checked;
+  if ($('#rd-en'))  r.every_n     = v('#rd-en');
+  if ($('#rd-eu'))  r.every_unit  = v('#rd-eu');
+}
+function reReading(k) { keepReading(); draft.rd.result_type = k; draft.rd.value_flag = ''; drawReading(); }
+
+async function saveReading() {
+  keepReading();
+  const r = draft.rd;
+  const [kind, id] = String(r.subject || '').split(':');
+  if (r.result_type === 'numeric' && r.value_num === '') return say('Put a number in first.');
+  const rec = { id: uid(), taken_on: r.taken_on || today(), result_type: r.result_type,
+    value_num: r.result_type === 'numeric' ? r.value_num : '',
+    value_flag: r.result_type === 'numeric' ? '' : (r.value_flag || (FLAGS[r.result_type] || [[]])[0][0]),
+    unit: r.result_type === 'numeric' ? r.unit : '',
+    source: r.source, trusted: r.doubt ? '' : 'TRUE',
+    schedule_id: r.schedule_id || '', by_person_id: me.id,
+    asset_id: kind === 'asset' ? id : '', animal_id: kind === 'animal' ? id : '',
+    area_id: kind === 'area' ? id : '', structure_id: kind === 'structure' ? id : '',
+    property_id: kind === 'property' ? id : prop.id };
+  const writes = [{ op:'upsert', table:'reading', record:rec }];
+
+  /* "Ask me again" is what makes a reading worth taking twice. Recording the
+     propane level is useful; being asked in November instead of remembering in
+     January is the point. The rule is a schedule of kind 'reading', which is
+     what sends somebody back to this screen rather than to a job. */
+  const num = x => { const n = Number(x); return Number.isFinite(n) && n > 0 ? n : 1; };
+  let sc = (DB.schedule || []).find(x => x.id === r.schedule_id);
+  if (r.rep === 'yes') {
+    const every = num(r.every_n), unit = r.every_unit || 'month';
+    const d = new Date();
+    ({ day:() => d.setDate(d.getDate() + every), week:() => d.setDate(d.getDate() + every * 7),
+       month:() => d.setMonth(d.getMonth() + every), year:() => d.setFullYear(d.getFullYear() + every)
+     }[unit] || (() => d.setMonth(d.getMonth() + every)))();
+    const rule = { id: (sc || {}).id || uid(), kind:'reading',
+      title: (sc || {}).title || ('Check ' + subjectWords(rec)),
+      asset_id: rec.asset_id, animal_id: rec.animal_id, area_id: rec.area_id,
+      structure_id: rec.structure_id, every_n: every, every_unit: unit,
+      next_due_on: d.toISOString().slice(0, 10) };
+    writes.push({ op:'upsert', table:'schedule', record:rule });
+    rec.schedule_id = rule.id;
+    sc = null;                      // already rolled, do not roll it twice
+  } else if (sc && r.rep === '') {
+    writes.push({ op:'upsert', table:'schedule', record:{ ...sc, kind:'once' } });
+    sc = null;
+  }
+
+  /* A reading taken against a rule IS that rule being done, so it rolls the
+     rule forward the same way finishing a job does. Otherwise "check the
+     level" stays overdue forever with the answer already recorded. */
+  if (sc && sc.every_n && sc.kind !== 'once') {
+    const d = new Date(), n = Number(sc.every_n) || 1;
+    ({ day:() => d.setDate(d.getDate() + n), week:() => d.setDate(d.getDate() + n * 7),
+       month:() => d.setMonth(d.getMonth() + n), year:() => d.setFullYear(d.getFullYear() + n)
+     }[sc.every_unit] || (() => d.setMonth(d.getMonth() + n)))();
+    writes.push({ op:'upsert', table:'schedule',
+      record:{ ...sc, next_due_on: d.toISOString().slice(0, 10) } });
+  }
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  const said = readingWords(rec), about = subjectWords(rec);
+  draft.rd = null;
+  await reload();
+  drawReading();
+  say(about + ': ' + said);
 }
 
 function drawLog() {

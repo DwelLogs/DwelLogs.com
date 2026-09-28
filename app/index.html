@@ -808,7 +808,7 @@ function connect(msg) {
     <div class="actions" style="margin:.4rem 0 .2rem">
       <button class="primary" onclick="saveConn(true)">Just on this device</button>
     </div>
-    <p class="hint">Saves here. Nothing leaves this device, and you can connect a sheet later.</p>
+    <p class="hint">Nothing leaves this device. You can connect a sheet later.</p>
 
     <h2>Or connect a Google Sheet</h2>
     <p class="sub">Keeps it on your phone and your computer, and lets you share it with
@@ -1430,43 +1430,50 @@ const PLACE = [
     take: () => true },
 
   { t:'What needs doing?',
-    s:'The next week or two \u2014 whatever is already on your mind. Add as many as you like; the list grows as you go.',
+    s:'Whatever is already on your mind. Add as many as you like; the list grows as you go.',
     skippable:true,
     body: () => {
-      /* This screen used to ask "what\u2019s bugging you today?" and take exactly one
+      /* This screen used to ask "what is bugging you today?" and take exactly one
          answer, which got the framing and the shape wrong at once. Nobody sets
          a place up mid-leak; they set it up on a calm morning with four jobs in
          their head. So: a list you add to, forward-looking by default, with the
-         fault states still there because sometimes a thing really is broken. */
+         fault states still there because sometimes a thing really is broken.
+
+         It then spent a while as a poorer twin of the job screen - a title and
+         a vague "when" - so a person could not say "November", or "and again
+         every three months", at the moment they were thinking it. Same form
+         now, same object, whichever door you came in by. */
+      draft.entry = draft.entry || blankEntry();
       const jobs = draft.jobs || [];
-      const lbl = v => (WHENS.concat(FAULTS).find(x => x[0] === v) || [0, v])[1];
       return `${jobs.length ? `<div class="rows">${jobs.map((j, i) => `<div class="row">
-          ${icon(FAULTS.some(f => f[0] === j.when) ? 'wrong' : 'todo', 22)}
-          <div class="grow"><b>${esc(j.what)}</b><small>${esc(lbl(j.when))}</small></div>
-          <button class="ghost" onclick="dropJob(${i})">Remove</button></div>`).join('')}</div>` : ''}
-        <label for="f-what">What needs doing?</label>
-        <input id="f-what" placeholder="clean the gutters">
-        <label for="f-when">When</label>
-        <select id="f-when">
-          ${WHENS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}
-          <optgroup label="Not a job \u2014 something is wrong">
-            ${FAULTS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}
-          </optgroup>
-        </select>
+          ${icon(j.kind === 'fault' ? 'wrong' : 'todo', 22)}
+          <div class="grow"><b>${esc(j.title)}</b><small>${esc(jobWhenWords(j))}</small></div>
+          <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+            onclick="editJob(${i})">Edit</button>
+          <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+            onclick="dropJob(${i})">Remove</button></div>`).join('')}</div>` : ''}
+        ${draft.editing != null ? '<p class="step">Editing</p>' : ''}
+        ${jobFields(draft.entry, false)}
+        ${moreSection(draft.entry, optList)}
         <div class="actions" style="margin-top:.8rem">
-          <button class="ghost" onclick="addJob()">Add it</button>
-        </div>
-        ${tip('<i>It works sometimes</i> is its own answer, and the hardest kind to live with \u2014 ' +
-          'a thing that fails on a Tuesday and behaves on a Wednesday never gets fixed, because it ' +
-          'never quite earns the call.')}`;
+          <button class="ghost" onclick="addJob()">${
+            draft.editing != null ? 'Update it' : 'Add it'}</button>
+          ${draft.editing != null
+            ? '<button class="ghost" onclick="cancelEditJob()">Cancel</button>' : ''}
+        </div>`;
     },
     /* A row half-typed when they tap Done or Skip still counts. Binning what
        somebody just wrote because they pressed the wrong button first is the
        bug this whole screen already had once. */
-    take: () => { const w = $('#f-what'); if (!w) return true;
-      const what = (w.value || '').trim();
-      if (what) { draft.jobs = draft.jobs || [];
-        draft.jobs.push({ what, when: $('#f-when').value }); }
+    take: () => { if (!$('#jb-t')) return true;
+      syncEntry();
+      const e = draft.entry;
+      if (e && e.title) {
+        draft.jobs = draft.jobs || [];
+        if (draft.editing != null) { draft.jobs[draft.editing] = e; draft.editing = null; }
+        else draft.jobs.push(e);
+        draft.entry = blankEntry();
+      }
       return true; } }
 ];
 /* Somebody who moved in last month genuinely does not know whether the pipes
@@ -1636,18 +1643,7 @@ function addPerson() {
 }
 function dropPerson(i) { syncStep(); draft.household.splice(i, 1); drawFirst(); }
 const WHENS  = [['this_week','this week'], ['next_week','next week'], ['someday','sometime']];
-const FAULTS = [['intermittent','it works sometimes'], ['degraded','it works, badly'],
-                ['unusable','it does not work at all']];
 
-function addJob() {
-  const what = ($('#f-what').value || '').trim();
-  if (!what) return say('Say what needs doing first.');
-  draft.jobs = draft.jobs || [];
-  draft.jobs.push({ what, when: $('#f-when').value });
-  drawFirst();
-  say(what + ' is on the list.');
-}
-function dropJob(i) { draft.jobs.splice(i, 1); drawFirst(); }
 
 /* No dropdown to hunt through. Type "clean the gutters" and if gutters are one
    of the things you just said you have, we join them up ourselves. If we
@@ -2162,16 +2158,40 @@ async function createEverything() {
      merge: they end up on the same board, opened by the same screen, and the
      person can change their mind about which it is by editing one field.
      The asset is guessed from the words and never demanded. */
-  const SLOTS = WHENS.map(w => w[0]);
   (draft.jobs || []).forEach(j => {
-    const key = guessThing(j.what);
-    const fault = SLOTS.indexOf(j.when) < 0;
-    writes.push({ op:'upsert', table:'job', record:{ id:uid(), property_id:propId,
-      kind: fault ? 'fault' : 'task', title:j.what, source:'owner', status:'open',
+    const key = guessThing(j.title);
+    const fault = j.kind === 'fault';
+    const jid = uid();
+    let schedId = '';
+    /* A repeat set during setup is the same rule the job screen would make, so
+       the very first "mark it done" rolls it forward and puts the next one on
+       the list. Without this the repeat would have been a note to nobody. */
+    if (j.rep === 'yes') {
+      schedId = uid();
+      writes.push({ op:'upsert', table:'schedule', record:{ id:schedId,
+        asset_id: key ? (units[key] || '') : '', structure_id:structId, title:j.title,
+        kind:'interval', every_n: j.every_n || 6, every_unit: j.every_unit || 'month',
+        next_due_on: j.due_on || today() } });
+    }
+    writes.push({ op:'upsert', table:'job', record:{ id:jid, property_id:propId,
+      kind: j.kind || 'task', title:j.title, notes:j.notes || '',
+      source:'owner', status:'open', schedule_id:schedId,
       asset_id: key ? (units[key] || '') : '', structure_id:structId,
+      start_on: j.start_on || '', due_on: j.due_on || '',
+      est_minutes: j.est_minutes || '', est_cost: j.est_cost || '',
+      prerequisites: j.prerequisites || '', safety: j.safety || 'none',
       first_seen_on: fault ? today() : '',
-      state: fault ? j.when : '',
-      slot: fault ? '' : j.when, column: fault ? 'investigating' : 'todo' } });
+      state: fault ? (j.state || 'degraded') : '',
+      workaround: fault ? (j.workaround || '') : '',
+      reported_on: fault ? (j.reported_on || '') : '',
+      reply: fault ? (j.reply || '') : '',
+      now:  j.kind === 'improvement' ? (j.now  || '') : '',
+      want: j.kind === 'improvement' ? (j.want || '') : '',
+      slot: (!fault && !j.due_on) ? 'this_week' : '',
+      column: fault ? 'investigating' : 'todo' } });
+    (j.steps || []).forEach((st, n) => writes.push({ op:'upsert', table:'step',
+      record:{ id:uid(), job_id:jid, text:st.text, position:n + 1,
+               done: st.done ? 'TRUE' : '' } }));
   });
 
   // What nothing on our lists could say. One row per word, counted, and never
@@ -2377,6 +2397,7 @@ function intervalBasis(sched) {
 }
 /* Kinds that all but announce an animal. Ticking one of these is not proof —
    an empty coop is a coop — so this OFFERS and nothing more. */
+const ANIMAL_TYPES = ['dog','cat','bird','chicken','duck','goat','sheep','pig','cow','horse'];
 const ANIMAL_KINDS = ['coop','stable','animal_pen','kennel','barn','pasture','pole_barn'];
 /* What the setup deliberately left blank. Not a nag and not a progress bar —
    "not sure yet" is a real answer everywhere in this app, so this is a list of
@@ -2579,82 +2600,36 @@ function jobAbout(j) {
 function drawJob(id) {
   const j = jobById(id); if (!j) return show('home');
   $('#tabs').hidden = true;
-  const steps = stepsOf(id), done = steps.filter(x => String(x.done).toUpperCase() === 'TRUE').length;
   const sched = (DB.schedule || []).find(x => x.id === j.schedule_id);
   const claimer = ((DB.person || []).find(p => p.id === j.claimed_by_id) || {}).name;
-  const sel = (v, list) => list.map(([k, l]) =>
-    `<option value="${k}"${v === k ? ' selected' : ''}>${esc(l)}</option>`).join('');
 
   app.innerHTML = `<button class="back" onclick="show('home')">&lsaquo; Back</button>
     <p class="step">${esc((JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'Job')}</p>
     <h1>${esc(j.title || 'A new job')}</h1>
     <p class="sub">${esc(jobAbout(j))}${sched ? ' &middot; from a rule' : ''}</p>
 
-    <label for="jb-t">Name</label>
-    <input id="jb-t" value="${esc(j.title || '')}" placeholder="what you would call it">
-    <label for="jb-k">What kind of thing is this?</label>
-    <select id="jb-k" onchange="reKind('${id}', this.value)">${sel(j.kind, JOB_KIND.map(k => [k[0], k[1]]))}</select>
-    <p class="hint">${esc((JOB_KIND.find(k => k[0] === j.kind) || [])[2] || '')}</p>
-
-    <label for="jb-n">Notes</label>
-    <textarea id="jb-n" rows="3" placeholder="anything worth remembering next time">${esc(j.notes || '')}</textarea>
-
-    <h2>Steps${steps.length ? ` <span class="chip ${done === steps.length ? 'ok' : 'soon'}">${done} of ${steps.length}</span>` : ''}</h2>
-    ${steps.length ? `<div class="rows">${steps.map(st => `<div class="row">
-      <label class="tick" style="flex:1;min-width:0">
-        <input type="checkbox" ${String(st.done).toUpperCase() === 'TRUE' ? 'checked' : ''}
-          onchange="tickStep('${st.id}','${id}',this.checked)">
-        <span${String(st.done).toUpperCase() === 'TRUE'
-          ? ' style="text-decoration:line-through;color:var(--muted)"' : ''}>${esc(st.text)}</span>
-      </label>
-      <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
-        onclick="dropStep('${st.id}','${id}')">Remove</button></div>`).join('')}</div>` : ''}
-    <input id="jb-step" placeholder="add a step — borrow the ladder"
-      onkeydown="if(event.key==='Enter'){event.preventDefault();addStep('${id}')}">
-    <div class="actions" style="margin-top:.5rem">
-      <button class="ghost" onclick="addStep('${id}')">Add step</button></div>
-
-    <h2>When</h2>
-    <label for="jb-s">Start</label>
-    <input id="jb-s" type="date" value="${esc(j.start_on || '')}">
-    <label for="jb-d">Due</label>
-    <input id="jb-d" type="date" value="${esc(j.due_on || '')}">
-    <label for="jb-r">Does it come round again?</label>
-    <select id="jb-r" onchange="draft.rep = this.value; drawJob('${id}')">
-      <option value=""${!repOn(j) ? ' selected' : ''}>No — just this once</option>
-      <option value="yes"${repOn(j) ? ' selected' : ''}>Yes, on a repeat</option>
-    </select>
-    ${repOn(j) ? `<div class="counts">
-      <label for="jb-en">Every</label>
-      <input id="jb-en" inputmode="numeric" value="${esc((sched || {}).every_n || '6')}" style="max-width:6rem">
-      <label for="jb-eu" class="sr">unit</label>
-      <select id="jb-eu">${sel((sched || {}).every_unit || 'month', EVERY_UNIT)}</select>
-    </div>
-    ` : ''}
+    ${jobFields(j, true, id)}
 
     ${(() => {
       const mine = j.claimed_by_id === me.id, since = sinceWords(j.claimed_at);
       if (!claimer) {
         /* Assigned but not picked up is its own state and the one worth seeing:
            a job quietly waiting on somebody who has not agreed to it. It still
-           sits in the pool \u2014 being assigned does not stop anybody else taking
+           sits in the pool - being assigned does not stop anybody else taking
            it, it only says who it was meant for. */
         const forWhom = ((DB.person || []).find(p => p.id === j.owner_id) || {}).name;
         return `<h2>${forWhom ? 'Meant for ' + esc(forWhom) + ', not picked up'
                               : 'Nobody has this'}</h2>
         <div class="actions" style="margin-top:.2rem">
-          <button class="ghost" onclick="claimJob('${id}', true)">I will do it</button></div>
-        <p class="hint">Nobody has taken it yet.</p>`;
+          <button class="ghost" onclick="claimJob('${id}', true)">I will do it</button></div>`;
       }
       if (mine) return `<h2>You have this${since ? ' &middot; ' + esc(since) : ''}</h2>
         <div class="actions" style="margin-top:.2rem">
-          <button class="ghost" onclick="claimJob('${id}', false)">Put it back</button></div>
-        <p class="hint">Yours until you put it back.</p>`;
-      return `<h2>${esc(claimer)} has this${since ? ' &middot; ' + esc(since) : ''}</h2>
-        <p class="hint">Theirs until they put it back.</p>`;
+          <button class="ghost" onclick="claimJob('${id}', false)">Put it back</button></div>`;
+      return `<h2>${esc(claimer)} has this${since ? ' &middot; ' + esc(since) : ''}</h2>`;
     })()}
 
-    ${moreSection(j, sel)}
+    ${moreSection(j, optList)}
 
     ${(() => { const H = historyOf(j); if (!H.length) return '';
       /* Date on the face of it. The card underneath opens on a deliberate tap,
@@ -2743,6 +2718,156 @@ function sinceWords(at) {
   if (d < 14) return 'for a week';
   if (d < 60) return 'for ' + Math.round(d / 7) + ' weeks';
   return 'for ' + Math.round(d / 30) + ' months';
+}
+
+/* ONE form for a job, used by the job screen and by setup.
+
+   There were two. Setup collected a title and a vague "this week / sometime";
+   the job screen collected everything. So somebody setting up a place could
+   not say "November" at the moment they were thinking about November, and the
+   dates and the repeat they wanted were on a screen they could only reach by
+   tapping a job that did not exist yet. Two forms for one object is the bug.
+   A date picker bolted onto the old one would only have made two forms that
+   disagreed less.
+
+   `live` means the job is a row in DB: steps write straight through and the
+   repeat is a schedule row. Otherwise it is a draft entry held in memory until
+   the place exists, and the same markup reads and writes that object instead. */
+function optList(v, list) {
+  return list.map(([k, l]) =>
+    `<option value="${k}"${v === k ? ' selected' : ''}>${esc(l)}</option>`).join('');
+}
+
+function jobFields(j, live, id) {
+  const steps  = live ? stepsOf(id) : (j.steps || []);
+  const isDone = s => live ? String(s.done).toUpperCase() === 'TRUE' : !!s.done;
+  const done   = steps.filter(isDone).length;
+  const rep    = live ? repOn(j) : j.rep === 'yes';
+  const sched  = live ? (DB.schedule || []).find(x => x.id === j.schedule_id) : null;
+  const everyN = live ? ((sched || {}).every_n    || '6')     : (j.every_n    || '6');
+  const everyU = live ? ((sched || {}).every_unit || 'month') : (j.every_unit || 'month');
+  const kindGo = live ? `reKind('${id}', this.value)`               : 'reKindDraft(this.value)';
+  const repGo  = live ? `draft.rep = this.value; drawJob('${id}')`  : 'setRepDraft(this.value)';
+  const stepGo = live ? `addStep('${id}')`                          : 'addStepDraft()';
+  const kind   = j.kind || 'task';
+
+  return `
+    <label for="jb-t">Name</label>
+    <input id="jb-t" value="${esc(j.title || '')}" placeholder="what you would call it">
+    <label for="jb-k">What kind of thing is this?</label>
+    <select id="jb-k" onchange="${kindGo}">${optList(kind, JOB_KIND.map(k => [k[0], k[1]]))}</select>
+    <p class="hint">${esc((JOB_KIND.find(k => k[0] === kind) || [])[2] || '')}</p>
+
+    <label for="jb-n">Notes</label>
+    <textarea id="jb-n" rows="3" placeholder="anything worth remembering next time">${esc(j.notes || '')}</textarea>
+
+    <h2>Steps${steps.length ? ` <span class="chip ${done === steps.length ? 'ok' : 'soon'}">${done} of ${steps.length}</span>` : ''}</h2>
+    ${steps.length ? `<div class="rows">${steps.map((st, n) => `<div class="row">
+      <label class="tick" style="flex:1;min-width:0">
+        <input type="checkbox" ${isDone(st) ? 'checked' : ''}
+          onchange="${live ? `tickStep('${st.id}','${id}',this.checked)` : `tickStepDraft(${n},this.checked)`}">
+        <span${isDone(st) ? ' style="text-decoration:line-through;color:var(--muted)"' : ''}>${esc(st.text)}</span>
+      </label>
+      <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+        onclick="${live ? `dropStep('${st.id}','${id}')` : `dropStepDraft(${n})`}">Remove</button></div>`).join('')}</div>` : ''}
+    <input id="jb-step" placeholder="add a step &mdash; borrow the ladder"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();${stepGo}}">
+    <div class="actions" style="margin-top:.5rem">
+      <button class="ghost" onclick="${stepGo}">Add step</button></div>
+
+    <h2>When</h2>
+    <label for="jb-s">Start</label>
+    <input id="jb-s" type="date" value="${esc(j.start_on || '')}">
+    <label for="jb-d">Due</label>
+    <input id="jb-d" type="date" value="${esc(j.due_on || '')}">
+    <label for="jb-r">Does it come round again?</label>
+    <select id="jb-r" onchange="${repGo}">
+      <option value=""${!rep ? ' selected' : ''}>No &mdash; just this once</option>
+      <option value="yes"${rep ? ' selected' : ''}>Yes, on a repeat</option>
+    </select>
+    ${rep ? `<div class="counts" style="grid-template-columns:1fr 2fr">
+      <div class="count"><span>Every</span>
+        <input id="jb-en" inputmode="numeric" value="${esc(everyN)}"></div>
+      <div class="count"><span>&nbsp;</span>
+        <select id="jb-eu">${optList(everyU, EVERY_UNIT)}</select></div>
+    </div>` : ''}`;
+}
+
+/* Reads whatever of the form is on screen. The fault and improvement tails are
+   only in the DOM when that kind is selected, so a missing field is left alone
+   rather than blanked. */
+function readJobFields() {
+  const v = k => { const el = $(k); return el ? (el.value || '').trim() : ''; };
+  const num = x => { const n = Number(x); return Number.isFinite(n) && n > 0 ? n : ''; };
+  const out = { kind: v('#jb-k') || 'task', title: v('#jb-t'), notes: v('#jb-n'),
+    start_on: v('#jb-s'), due_on: v('#jb-d'),
+    est_minutes: num(v('#jb-m')), est_cost: num(v('#jb-c')),
+    prerequisites: v('#jb-p'), safety: v('#jb-sf') || 'none',
+    rep: ($('#jb-r') && $('#jb-r').value === 'yes') ? 'yes' : '',
+    every_n: num(v('#jb-en')) || 6, every_unit: v('#jb-eu') || 'month' };
+  if (out.kind === 'fault') Object.assign(out, { state: v('#jb-st') || 'degraded',
+    workaround: v('#jb-wa'), reported_on: v('#jb-ro'), reply: v('#jb-rp') });
+  if (out.kind === 'improvement') Object.assign(out, { now: v('#jb-now'), want: v('#jb-want') });
+  return out;
+}
+
+/* ---- the setup side of that form -------------------------------------- */
+function blankEntry() { return { kind:'task', steps:[] }; }
+/* Every redraw of the setup screen goes through here first, so nothing typed
+   is lost when the kind changes or a step is added. This screen has dropped
+   half-typed rows once before. */
+function syncEntry() {
+  if (!$('#jb-t')) return;
+  const steps = (draft.entry || {}).steps || [];
+  draft.entry = readJobFields();
+  draft.entry.steps = steps;
+}
+function reKindDraft(k)  { syncEntry(); draft.entry.kind = k; drawFirst(); }
+function setRepDraft(v)  { syncEntry(); draft.entry.rep = v;  drawFirst(); }
+function addStepDraft() {
+  const el = $('#jb-step'), t = (el.value || '').trim();
+  if (!t) return say('Type the step first.');
+  syncEntry(); draft.entry.steps.push({ text:t, done:false }); drawFirst();
+}
+function dropStepDraft(n) { syncEntry(); draft.entry.steps.splice(n, 1); drawFirst(); }
+function tickStepDraft(n, on) {
+  const s = ((draft.entry || {}).steps || [])[n]; if (s) s.done = !!on;
+}
+function jobWhenWords(j) {
+  const bits = [];
+  if (j.due_on) bits.push('due ' + j.due_on);
+  if (j.rep === 'yes') bits.push('every ' + (j.every_n || 6) + ' ' +
+    ((EVERY_UNIT.find(u => u[0] === (j.every_unit || 'month')) || [0, 'months'])[1]));
+  if (j.kind === 'fault' && !bits.length) bits.push('something is wrong');
+  if (!bits.length) bits.push('no date yet');
+  return bits.join(' · ');
+}
+function addJob() {
+  syncEntry();
+  const e = draft.entry;
+  if (!e || !e.title) return say('Say what needs doing first.');
+  draft.jobs = draft.jobs || [];
+  if (draft.editing != null) { draft.jobs[draft.editing] = e; draft.editing = null;
+    say(e.title + ' updated.'); }
+  else { draft.jobs.push(e); say(e.title + ' is on the list.'); }
+  draft.entry = blankEntry();
+  drawFirst();
+}
+function editJob(i) {
+  syncEntry();
+  /* Tapping Edit with something half-typed keeps it rather than binning it.
+     Appending leaves index i where it was. */
+  if (draft.editing == null && draft.entry && draft.entry.title) draft.jobs.push(draft.entry);
+  draft.editing = i;
+  draft.entry = JSON.parse(JSON.stringify(draft.jobs[i] || blankEntry()));
+  drawFirst();
+}
+function cancelEditJob() { draft.editing = null; draft.entry = blankEntry(); drawFirst(); }
+function dropJob(i) {
+  (draft.jobs || []).splice(i, 1);
+  if (draft.editing === i) { draft.editing = null; draft.entry = blankEntry(); }
+  else if (draft.editing != null && draft.editing > i) draft.editing--;
+  drawFirst();
 }
 
 function repOn(j) {
@@ -2841,28 +2966,25 @@ async function claimJob(id, take) {
 
 async function saveJob(id) {
   const j = jobById(id); if (!j) return;
-  const v = k => { const el = $(k); return el ? (el.value || '').trim() : undefined; };
-  const num = x => { const n = Number(x); return Number.isFinite(n) && n > 0 ? n : ''; };
-  const rec = { ...j, kind: v('#jb-k') || j.kind, title: v('#jb-t') || j.title,
-    notes: v('#jb-n'), start_on: v('#jb-s'), due_on: v('#jb-d'),
-    est_minutes: num(v('#jb-m')), est_cost: num(v('#jb-c')),
-    prerequisites: v('#jb-p'), safety: v('#jb-sf') };
-  if (rec.kind === 'fault') Object.assign(rec, { state: v('#jb-st'), workaround: v('#jb-wa'),
-    reported_on: v('#jb-ro'), reply: v('#jb-rp') });
-  if (rec.kind === 'improvement') Object.assign(rec, { now: v('#jb-now'), want: v('#jb-want') });
+  const f = readJobFields();
+  const rec = { ...j, kind:f.kind, title: f.title || j.title, notes:f.notes,
+    start_on:f.start_on, due_on:f.due_on, est_minutes:f.est_minutes, est_cost:f.est_cost,
+    prerequisites:f.prerequisites, safety:f.safety };
+  if (f.kind === 'fault') Object.assign(rec, { state:f.state, workaround:f.workaround,
+    reported_on:f.reported_on, reply:f.reply });
+  if (f.kind === 'improvement') Object.assign(rec, { now:f.now, want:f.want });
 
   const writes = [{ op:'upsert', table:'job', record:rec }];
 
-  /* A repeat is a RULE, and the rule is a schedule row — the job is one
+  /* A repeat is a RULE, and the rule is a schedule row - the job is one
      occurrence of it. Turning the repeat on here makes the rule if there is
      not one; turning it off makes the rule a 'once', which the schedule kind
      picklist has always had a value for. */
-  const wantsRep = $('#jb-r') && $('#jb-r').value === 'yes';
   const sc = (DB.schedule || []).find(x => x.id === j.schedule_id);
-  if (wantsRep) {
-    const rule = { id: (sc || {}).id || uid(), asset_id:j.asset_id || '', structure_id:j.structure_id || '',
-      area_id:j.area_id || '', animal_id:j.animal_id || '', title: rec.title, kind:'interval',
-      every_n: num(v('#jb-en')) || 6, every_unit: v('#jb-eu') || 'month',
+  if (f.rep === 'yes') {
+    const rule = { id: (sc || {}).id || uid(), asset_id:j.asset_id || '',
+      structure_id:j.structure_id || '', area_id:j.area_id || '', animal_id:j.animal_id || '',
+      title: rec.title, kind:'interval', every_n: f.every_n, every_unit: f.every_unit,
       next_due_on: rec.due_on || today() };
     writes.push({ op:'upsert', table:'schedule', record:rule });
     rec.schedule_id = rule.id;
@@ -3641,13 +3763,22 @@ function inDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return d.
 function drawAnimal() {
   $('#tabs').hidden = true;
   const people = (DB.person || []);
+  /* Name came first, with a hint explaining that a laying hen may not have one.
+     The tester read the hint, did not know what it wanted, and had to be told.
+     The type is the thing she knows; the name is the thing she may not have.
+     So the type is asked first, the count sits beside it, and the name boxes
+     appear afterwards already knowing what they are naming. */
+  draft.an = draft.an || { type:'dog', n:1, names:[] };
   app.innerHTML = `<h1>Add an animal</h1>
-    <p class="sub">Pet or livestock — the difference is what it is kept for, not how much you like it.</p>
-    <label for="an-n">Name <span style="font-weight:400;color:var(--muted)">— optional</span></label>
-    <input id="an-n" placeholder="a laying hen may not have one">
-    <label for="an-t">What is it?</label>
-    <select id="an-t">${['dog','cat','bird','chicken','duck','goat','sheep','pig','cow','horse']
-      .map(t => `<option value="${t}">${t}</option>`).join('')}</select>
+    <p class="sub">Pet or livestock &mdash; the difference is what it is kept for, not how much you like it.</p>
+    <div class="counts" style="grid-template-columns:2fr 1fr">
+      <div class="count"><span>What is it?</span>
+        <select id="an-t" onchange="anKind(this.value)">${ANIMAL_TYPES.map(t =>
+          `<option value="${t}"${draft.an.type === t ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="count"><span>How many?</span>
+        <input id="an-q" inputmode="numeric" value="${esc(String(draft.an.n))}"
+          oninput="anCount(this.value)" onchange="anCount(this.value)"></div>
+    </div>
     <label for="an-r">Kept as</label>
     <select id="an-r">${[['pet','a pet'],['laying','laying'],['meat','meat'],['dairy','dairy'],
         ['breeding','breeding'],['working','working'],['guard','guarding']]
@@ -3657,26 +3788,84 @@ function drawAnimal() {
       <option value="">It belongs to the place</option>
       ${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
     </select>
+    <h2>${draft.an.n > 1 ? 'Names' : 'Name'}</h2>
+    <div id="an-names">${animalNames()}</div>
     ${tip('The barn cat belongs to the place and stays when you go. A dog belongs to a person and ' +
-      'leaves with them. Both are ordinary, so it is asked rather than worked out — and whoever it ' +
+      'leaves with them. Both are ordinary, so it is asked rather than worked out &mdash; and whoever it ' +
       'belongs to, where it lives right now is a separate fact that changes when it moves.',
       'Why both are offered')}
     <div class="actions">
-      <button class="primary" onclick="saveAnimal()">Add it</button>
+      <button class="primary" id="an-go" onclick="saveAnimal()">Add ${draft.an.n > 1 ? 'them' : 'it'}</button>
       <button class="ghost" onclick="show('home')">Cancel</button>
     </div>`;
 }
+/* Only the name boxes are rebuilt when the count or the type changes. Redrawing
+   the whole screen from inside a field's own change event replaces the element
+   the browser is still dispatching to, and the next tap anywhere gets swallowed. */
+function animalNames() {
+  const a = draft.an, out = [];
+  for (let i = 0; i < a.n; i++) {
+    out.push(`<label for="an-n${i}" class="sr">Name ${i + 1}</label>
+      <input id="an-n${i}" class="an-n" value="${esc(a.names[i] || '')}"
+        placeholder="${esc(a.n > 1 ? a.type + ' ' + (i + 1) : 'optional - a laying hen may not have one')}">`);
+  }
+  return out.join('');
+}
+function keepAnimalNames() {
+  if (!draft.an) return;
+  draft.an.names = [...document.querySelectorAll('.an-n')].map(e => (e.value || '').trim());
+}
+/* Both of these rebuild the name boxes, and both are wired to a change event,
+   which fires on BLUR. Tapping from the count straight into a name box would
+   therefore tear down and rebuild the box being tapped, losing the first thing
+   typed into it -- the same way redrawing from inside a field's own event
+   swallows the next tap elsewhere in this file. So: if the value has not
+   actually changed, do nothing at all. */
+function anKind(t) {
+  if (!draft.an || draft.an.type === t) return;
+  keepAnimalNames(); draft.an.type = t;
+  const box = $('#an-names'); if (box) box.innerHTML = animalNames();
+}
+function anCount(v) {
+  if (!draft.an) return;
+  const n = Math.floor(Number(v));
+  const want = Number.isFinite(n) && n > 0 ? Math.min(n, 40) : 1;
+  const q = $('#an-q'), typing = q && document.activeElement === q;
+  /* Never rewrite the box while they are still in it -- clamping "50" to "40"
+     mid-keystroke fights the typist. Junk gets normalised when they leave. */
+  if (want === draft.an.n) { if (q && !typing && q.value !== String(want)) q.value = String(want); return; }
+  keepAnimalNames();
+  draft.an.n = want;
+  if (q && !typing) q.value = String(want);
+  const box = $('#an-names'); if (box) box.innerHTML = animalNames();
+  const h2 = box && box.previousElementSibling;
+  if (h2 && h2.tagName === 'H2') h2.textContent = want > 1 ? 'Names' : 'Name';
+  const go = $('#an-go');
+  if (go) go.textContent = want > 1 ? 'Add them' : 'Add it';
+}
 async function saveAnimal() {
-  const id = uid(), owner = $('#an-o').value;
-  const named = ($('#an-n').value || '').trim(), kind = $('#an-t').value;
-  const writes = [{ op:'upsert', table:'animal', record:{ id, property_id:prop.id,
-    owner_id:owner || '', name:named, type:kind, role:$('#an-r').value,
-    cared_for_by_id:owner || '', acquired_on:today() } },
-  { op:'upsert', table:'placement', record:{ id:uid(), animal_id:id, property_id:prop.id,
-    arrived_on:today() } }];
+  keepAnimalNames();
+  const a = draft.an, owner = $('#an-o').value, role = $('#an-r').value;
+  const writes = [];
+  /* Two of a thing get numbered, the same way two fire extinguishers do, so
+     "which one did I already do" has an answer. One of a thing keeps a blank
+     name and shows as "the cat" - numbering a single animal reads as a herd. */
+  for (let i = 0; i < a.n; i++) {
+    const id = uid();
+    const typed = (a.names[i] || '').trim();
+    const name = typed || (a.n > 1 ? a.type + ' ' + (i + 1) : '');
+    writes.push({ op:'upsert', table:'animal', record:{ id, property_id:prop.id,
+      owner_id: owner || '', name, type:a.type, role,
+      cared_for_by_id: owner || '', acquired_on:today() } });
+    writes.push({ op:'upsert', table:'placement', record:{ id:uid(), animal_id:id,
+      property_id:prop.id, arrived_on:today() } });
+  }
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  const n = a.n, t = a.type, first = a.names[0];
+  draft.an = null;
   await boot();
-  say((named || ('The ' + kind)) + ' is on the list.');
+  say(n > 1 ? n + ' ' + t + 's are on the list.'
+            : (first || ('The ' + t)) + ' is on the list.');
 }
 function drawMoved(stId) {
   const list = movers();

@@ -288,7 +288,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=6306df6477"></script>
+<script src="api.js?v=60f9d2c786"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -360,6 +360,22 @@ const uid = () => 'loc-' + Math.random().toString(36).slice(2, 10);
 const ymd = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'),
                   String(d.getDate()).padStart(2, '0')].join('-');
 const today = () => ymd(new Date());
+/* Move a date on by one turn of a rule. This switch existed in FIVE places --
+   the template writer, finishing a job, and three around readings -- and two of
+   them only knew months and years, which is how "every 2 weeks" came out due in
+   two years. One copy, every unit, and a date that is a local calendar day at
+   both ends. */
+function rollFrom(from, n, unit) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(from || '').trim());
+  const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date();
+  const k = Math.max(1, Math.floor(Number(n) || 1));
+  ({ day:  () => d.setDate(d.getDate() + k),
+     week: () => d.setDate(d.getDate() + k * 7),
+     month:() => d.setMonth(d.getMonth() + k),
+     year: () => d.setFullYear(d.getFullYear() + k)
+   }[unit] || (() => d.setMonth(d.getMonth() + k)))();
+  return ymd(d);
+}
 const inMonths = n => { const d = new Date(); d.setMonth(d.getMonth() + n); return ymd(d); };
 /* Randi, 2026-09-29: "the day late is still wrong - it has no date only a
    every 3 months on it." It had a date, and the date was TODAY.
@@ -1829,17 +1845,53 @@ const PLACE = [
     when: () => plannedTypes().length > 0,
     body: () => {
       draft.picks = draft.picks || {};
+      draft.every = draft.every || {};
+      /* Randi, 2026-09-29: "I want to change the cadence here too not just the
+         opt In."
+
+         The interval was a grey line of text, which made the template's guess
+         look like a fact. It is a suggestion -- that is the rule in CLAUDE.md,
+         and a suggestion you cannot argue with is a decision. Editing it here
+         costs nothing; discovering three months later that the app wanted the
+         septic pumped on somebody else's schedule costs a lot.
+
+         The boxes sit OUTSIDE the tick label. Inside it, every tap on the
+         number would have toggled the check-up off. */
       return plannedTypes().map(g => `<label style="margin-top:1.1rem">${esc(g.name)}</label>
-        <div class="rows">${g.checks.map(([title, n, unit]) => `<div class="row">
+        <div class="rows">${g.checks.map(([title, n, unit]) => {
+          const k = pickKey(g.name, title);
+          const cur = draft.every[k] || { n, unit };
+          return `<div class="row" style="flex-wrap:wrap">
           <label class="tick" style="flex:1;min-width:0">
-            <input type="checkbox" class="pk" data-k="${esc(pickKey(g.name, title))}"
+            <input type="checkbox" class="pk" data-k="${esc(k)}"
               ${picked(g.name, title) ? 'checked' : ''}>
-            <span>${esc(title)}<small style="display:block;color:var(--muted)"
-              >${esc(everyWords(n, unit))}</small></span>
-          </label></div>`).join('')}</div>`).join('')
+            <span>${esc(title)}</span>
+          </label>
+          ${unit === 'arrival'
+            ? `<p class="meta" style="width:100%;padding-left:2.1rem;margin:.1rem 0 0"
+                >when you arrive</p>`
+            : `<div style="display:flex;align-items:center;gap:.4rem;width:100%;
+                 padding-left:2.1rem;margin-top:.15rem">
+              <span class="meta">every</span>
+              <input class="ev-n" data-k="${esc(k)}" data-d="${esc(n + '|' + unit)}"
+                inputmode="numeric"
+                value="${esc(String(cur.n))}" aria-label="how often, number"
+                style="width:3.4rem;margin:0;padding:.3rem .4rem;text-align:center">
+              <select class="ev-u" data-k="${esc(k)}" aria-label="how often, unit"
+                style="width:auto;margin:0;padding:.3rem 1.6rem .3rem .5rem">${
+                [['day','days'],['week','weeks'],['month','months'],['year','years']]
+                  .map(([v, l]) => `<option value="${v}"${cur.unit === v ? ' selected' : ''}
+                    >${l}</option>`).join('')}</select>
+              ${String(cur.n) !== String(n) || cur.unit !== unit
+                ? '<span class="chip soon">yours</span>' : ''}
+            </div>`}
+          </div>`; }).join('')}</div>`).join('')
         + tip('Nothing here is thrown away. Anything you untick is still set up, just kept ' +
           'quiet -- so it is there if you change your mind, and it never turns into a ' +
-          'reminder you did not ask for.');
+          'reminder you did not ask for.')
+        + tip('These come from manuals, building codes and our own estimate, and every one of ' +
+          'them says which. Change any of them and it becomes yours &mdash; the app stops ' +
+          'claiming the manual said so, and never quietly puts it back.', 'Where these numbers came from');
     },
     take: () => { takePicks(); return true; } },
 
@@ -2274,6 +2326,11 @@ function everyWords(n, unit) {
   return 'every ' + (n > 1 ? n + ' ' + unit + 's' : unit);
 }
 function pickKey(type, title) { return type + '|' + title; }
+/* The cadence she typed for this check-up, or nothing if she left it alone. */
+function everyFor(type, title) {
+  const e = (draft.every || {})[pickKey(type, title)];
+  return e && Number.isFinite(e.n) && e.n > 0 ? e : null;
+}
 /* Default on. Unticking is a decision, and it is remembered -- see addThing. */
 function picked(type, title) {
   const p = (draft.picks || {})[pickKey(type, title)];
@@ -2281,7 +2338,23 @@ function picked(type, title) {
 }
 function takePicks() {
   draft.picks = draft.picks || {};
+  draft.every = draft.every || {};
   document.querySelectorAll('.pk').forEach(e => { draft.picks[e.dataset.k] = e.checked; });
+  document.querySelectorAll('.ev-n').forEach(e => {
+    const n = Number((e.value || '').trim());
+    const u = (document.querySelector('.ev-u[data-k="' + CSS.escape(e.dataset.k) + '"]') || {}).value;
+    /* A blank or a word is not a cadence. Left alone, the template's number
+       stands -- the screen never stores a number nobody typed. */
+    /* Only what she CHANGED. Storing every row meant every rule came out
+       stamped interval_source: owner, including the ones she never touched --
+       which is the app putting words in her mouth and losing the one thing
+       that made these numbers trustworthy: where each came from. */
+    const [dn, du] = String(e.dataset.d || '').split('|');
+    const same = String(Math.floor(n)) === String(dn) && u === du;
+    if (Number.isFinite(n) && n > 0 && n <= 240 && u && !same)
+      draft.every[e.dataset.k] = { n: Math.floor(n), unit: u };
+    else delete draft.every[e.dataset.k];
+  });
   // This only runs when that screen is on the glass, which is the honest test
   // of whether anybody was actually shown the list.
   if (document.querySelector('.pk')) draft.picksSeen = true;
@@ -2662,6 +2735,59 @@ async function finishFirst() {
     ? 'You are in. This is ' + (prop || {}).name + '.'
     : n ? n + (n === 1 ? ' thing tracked' : ' things tracked') + ' — add the next one when you touch it.'
         : 'Your place is set up. Add things as you touch them.');
+  /* Straight into the catch-up while the place is still in mind. Every date
+     given here replaces one the app worked out from the day of setup, which is
+     the difference between a schedule that is true and one that merely starts
+     today. Skipping it costs nothing -- that IS what it would have done. */
+  if (flow !== 'join' && catchUpRules(null).length) drawCatchUp('');
+}
+
+/* Randi, 2026-09-29: "I think people might think of things at any point so if
+   we added to after a set up screen (and add thing screen) that would be good."
+
+   Everything the app has just set up, in one list, each with a date box. Empty
+   your head in one pass rather than opening twenty check-ups -- and skip it
+   entirely, because a place you have just moved into genuinely has no history
+   and being made to say so twenty times would be its own insult.
+
+   It is offered, never forced, and it comes back: anything still unrecorded
+   shows up here again whenever you ask for it. */
+function catchUpRules(onlyAsset) {
+  const done = new Set((DB.completion || []).map(c => c.schedule_id).filter(Boolean));
+  const mine = new Set(descendants('property', (prop || {}).id).map(([, i]) => i));
+  return (DB.schedule || []).filter(sc => sc.status !== 'archived'
+    && sc.every_n && sc.kind !== 'once' && sc.muted !== 'TRUE' && !done.has(sc.id)
+    && (onlyAsset ? sc.asset_id === onlyAsset : SUBJ_FKS.some(f => sc[f] && mine.has(sc[f]))));
+}
+let CATCH_ON = null;
+function drawCatchUp(onlyAsset) {
+  $('#tabs').hidden = false;
+  if (onlyAsset !== undefined) CATCH_ON = onlyAsset || null;
+  const rows = catchUpRules(CATCH_ON);
+  if (!rows.length) {
+    app.innerHTML = `<h1>Nothing left to catch up on</h1>
+      <p class="sub">Everything the app is watching has a date on it.</p>
+      <div class="actions"><button class="ghost" onclick="show('home')">Home</button></div>`;
+    return window.scrollTo(0, 0);
+  }
+  const A = byId('asset'), AN = byId('animal'), V = byId('vehicle');
+  const about = sc => (A[sc.asset_id] || AN[sc.animal_id] || V[sc.vehicle_id] || {}).name || '';
+  const by = {};
+  rows.forEach(sc => { const k = about(sc) || 'The place'; (by[k] = by[k] || []).push(sc); });
+  app.innerHTML = `<h1>When was any of this last done?</h1>
+    <p class="sub">Only what you know. Anything you skip just counts from today, which is
+      what it would have done anyway.</p>
+    ${Object.keys(by).sort().map(k => `<h2>${esc(k)}</h2>` + by[k].map(sc =>
+      `<div class="card"><span class="title">${esc(sc.title || 'A check-up')}</span>
+        <p class="meta">every ${esc(everyWords(sc.every_n, sc.every_unit).replace(/^every /, ''))}
+          &middot; next ${esc(whenDue(daysTo(sc.next_due_on)))}</p>
+        ${lastDoneBox(sc.id, 'c' + sc.id.replace(/\W/g, ''))}</div>`).join('')).join('')}
+    <div class="actions" style="margin-top:1.6rem">
+      <button class="primary" onclick="CATCH_ON=null;show('home')">Done for now</button>
+      ${CATCH_ON && catchUpRules(null).length > rows.length
+        ? `<button class="ghost" onclick="drawCatchUp('')">The rest of the place</button>` : ''}
+    </div>`;
+  window.scrollTo(0, 0);
 }
 
 /* Adding a second place later: the same PLACE steps, no person step, and it
@@ -2745,6 +2871,11 @@ function thingWrites(typeName, o) {
     name:o.name || typeName, status:'active', power_source:o.powered || '',
     installed_on:o.installed || '' } });
   tmpl[1].forEach(([title, n, unit, src, whenSource]) => {
+    /* Her number beats the template's, and the row says so: interval_source
+       becomes `owner`, so nothing downstream goes on claiming the manual said
+       every three years when she said every two. */
+    const ov = o.every ? o.every(typeName, title) : null;
+    if (ov && unit !== 'arrival') { n = ov.n; unit = ov.unit; src = 'owner'; }
     const rec = { id:uid(), asset_id:id, title, responsibility:'owner', cost_source:'entered',
       /* Unticked does not mean deleted. The rule is still written, muted, so it
          can be turned back on without retyping and so the app never quietly
@@ -2755,11 +2886,13 @@ function thingWrites(typeName, o) {
     // new, and a made-up date would only make it look overdue in the meantime.
     if (unit === 'arrival') rec.kind = 'on_arrival';
     else {
-      const due = new Date();
-      if (unit === 'month') due.setMonth(due.getMonth() + n);
-      else due.setFullYear(due.getFullYear() + n);
+      /* Every unit, not just the two the templates happened to use. This fell
+         through to setFullYear for anything else, so the first check-up set to
+         "every 2 weeks" came out due in 2028. Templates only ever said months
+         and years, which is why it survived -- until the cadence became
+         something a person could type. */
       Object.assign(rec, { kind:'interval', every_n:n, every_unit:unit,
-        next_due_on:ymd(due) });
+        next_due_on:rollFrom(today(), n, unit) });
     }
     writes.push({ op:'upsert', table:'schedule', record:rec });
   });
@@ -2902,7 +3035,7 @@ async function createEverything() {
       if (already) { if (name) already.rec.name = name; return already.rec.id; }
     }
     const t = thingWrites(typeName, { typeIds, propId, structId, areaId, powered,
-      name: name || typeName, keep:picked });
+      name: name || typeName, keep:picked, every:everyFor });
     t.writes.forEach(w => writes.push(w));
     made.push({ type:typeName, rec:t.rec });
     return t.id;
@@ -3432,6 +3565,10 @@ function todo() {
     label: noRooms.length === buildings().filter(x => kgroup(x.kind) !== 'land').length
       ? 'Rooms' : 'Rooms in ' + noRooms[0].name, go:'drawRooms()' });
   if (!(DB.animal || []).length) out.push({ icon:'animal', label:'Animals', go:'drawAnimal()' });
+  /* It thinks of itself at the end of setup, but people remember these things
+     in the shower three days later. */
+  if (catchUpRules(null).length)
+    out.push({ icon:'todo', label:'When it was last done', go:"drawCatchUp('')" });
   if (!(DB.invite || []).length && (DB.membership || []).length < 2)
     out.push({ icon:'invite', label:'Somebody else', go:'drawInvite()' });
   return out;
@@ -4415,7 +4552,8 @@ function descendants(kind, id) {
 }
 const SUBJ_FKS = ['asset_id','area_id','structure_id','animal_id','vehicle_id','supply_id'];
 const stepWhere = st => ((DB.area || []).find(x => x.id === st.area_id) || {}).name
-  || ((DB.structure || []).find(x => x.id === st.structure_id) || {}).name || '';
+  || ((DB.structure || []).find(x => x.id === st.structure_id) || {}).name
+  || st.where_else || '';
 /* The work anywhere under here -- including a round that merely STOPS here. A
    watering job hung off the property with a stop in the greenhouse is work in
    the greenhouse, and standing in there is exactly when you want to know. */
@@ -5100,6 +5238,67 @@ function drawJob(id) {
 
     ${moreSection(j, optList)}
 
+    ${(() => {
+      /* Randi, 2026-09-29: "how do I ... link to what I need to buy, or tie it
+         to someone who might do it for me like a service?"
+
+         Both already existed in the model and neither had a way in. `You need`
+         was a line of prose, so "a new filter" could not become a link, a part
+         number, or the thing that stops this job appearing on a Saturday when
+         the filter is not on the shelf -- which the blockers code has been
+         ready to do all along. */
+      const mine = (DB.job_supply || []).filter(x => x.job_id === id && x.status !== 'archived');
+      const sup = i2 => (DB.supply || []).find(x => x.id === i2) || {};
+      const avail = (DB.supply || []).filter(x => x.status !== 'archived'
+        && !mine.some(m => m.supply_id === x.id));
+      return `<h2>What to buy</h2>
+        ${mine.map(x => { const sp = sup(x.supply_id); return `<div class="card">
+          <span class="title">${esc(sp.name || 'a supply')}${sp.part_number
+            ? ` <span style="font-weight:400;color:var(--muted)">${esc(sp.part_number)}</span>` : ''}</span>
+          <p class="meta">${x.how_many > 1 ? x.how_many + ' &middot; ' : ''}${esc(shelfLine(sp))}${
+            safeUrl(sp.link) ? ` &middot; <a href="${esc(safeUrl(sp.link))}" target="_blank"
+              rel="noopener">where to get it</a>` : ''}</p>
+          <button class="quiet" onclick="dropJobSupply('${x.id}','${id}')">Remove</button>
+        </div>`; }).join('')}
+        <select id="jb-sup" onchange="const e=$('#jb-supnew');if(e)e.hidden=this.value!=='new'">
+          <option value="">Add something it needs&hellip;</option>
+          ${avail.map(x => `<option value="${x.id}">${esc(x.name)}${
+            x.part_number ? esc(' · ' + x.part_number) : ''}</option>`).join('')}
+          <option value="new">Something not on the list&hellip;</option>
+        </select>
+        <div id="jb-supnew" hidden>
+          <label for="jb-supn">What is it</label>
+          <input id="jb-supn" placeholder="water test kit">
+          <label for="jb-supp">Part number</label>
+          <input id="jb-supp" placeholder="optional">
+          <label for="jb-supl">Where to get it</label>
+          <input id="jb-supl" type="url" placeholder="a link, if there is one">
+        </div>
+        <div class="counts" style="grid-template-columns:1fr 2fr;margin-top:.5rem">
+          <div class="count"><span>How many</span>
+            <input id="jb-supq" inputmode="numeric" placeholder="1"></div>
+          <div class="actions"><button class="add" onclick="addJobSupply('${id}')">Add it</button></div>
+        </div>
+
+        <h2>Who does it</h2>
+        <select id="jb-svc" onchange="const e=$('#jb-svcnew');if(e)e.hidden=this.value!=='new';
+          if(this.value!=='new')setJobService('${id}', this.value)">
+          <option value="">You, or whoever is about</option>
+          ${(DB.service || []).filter(x => x.status !== 'archived').map(x =>
+            `<option value="${x.id}"${j.service_id === x.id ? ' selected' : ''}
+              >${esc(x.name)}</option>`).join('')}
+          <option value="new">Somebody you call&hellip;</option>
+        </select>
+        <div id="jb-svcnew" hidden>
+          <label for="jb-svcn">Who</label>
+          <input id="jb-svcn" placeholder="Lakeport Septic">
+          <div class="actions" style="margin-top:.5rem">
+            <button class="add" onclick="addService('${id}')">Add them</button></div>
+        </div>
+        <p class="hint">A company rather than a person: it is who you ring, and it stays
+          right when whoever last rang them moves out.</p>`;
+    })()}
+
     ${(() => { const H = historyOf(j); if (!H.length) return '';
       /* Date on the face of it. The card underneath opens on a deliberate tap,
          and only there does a name appear. See docs/no-scorekeeping.md. */
@@ -5110,11 +5309,38 @@ function drawJob(id) {
       </details>`).join('')}</div>`;
     })()}
 
+    ${(() => {
+      /* Randi, 2026-09-29: "I find myself wanting to put in things that
+         happened in the last few months since they were done in the past
+         before I got this."
+
+         Only offered where it is true: a repeating check-up that has never
+         been recorded as done. Once there is history, this is the wrong
+         question -- the right one is on the finish button. */
+      const sc = (DB.schedule || []).find(x => x.id === j.schedule_id);
+      if (!sc || !sc.every_n || sc.kind === 'once') return '';
+      if ((DB.completion || []).some(c => c.schedule_id === sc.id)) return '';
+      return `<h2>Was it already done?</h2>
+        <p class="hint" style="margin:-.2rem 0 .7rem">If it was seen to before you started
+          keeping track, say when. The next one is counted from then instead of from today,
+          which is the difference between a real date and one the app made up.</p>
+        ${lastDoneBox(sc.id, 'job', id)}`;
+    })()}
+
     <div class="actions" style="margin-top:1.4rem">
       <button class="primary" onclick="saveJob('${id}')">Save</button>
-      ${String(j.status) === 'done' ? '' :
-        `<button class="ghost" onclick="finishJob('${id}')">Mark it done</button>`}
-    </div>`;
+    </div>
+    ${String(j.status) === 'done' ? '' : `<h2>Done it?</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end">
+        <div style="flex:1;min-width:9rem">
+          <label for="jb-don" style="margin:0 0 .2rem">On</label>
+          <input id="jb-don" type="date" max="${esc(today())}" value="${esc(today())}"
+            style="margin:0"></div>
+        <button class="primary" style="margin:0"
+          onclick="finishJob('${id}', $('#jb-don').value)">Mark it done</button>
+      </div>
+      <p class="hint">It starts on today. Change it if you did it earlier &mdash; the next one
+        counts from the day you actually did it.</p>`}`;
 }
 
 /* WHEN it was last done, and deliberately not BY WHOM.
@@ -5263,12 +5489,21 @@ function jobFields(j, live, id) {
       const areas = (DB.area || []).filter(x => x.status !== 'archived');
       if (!places.length && !areas.length) return '';
       const up = a2 => ((DB.structure || []).find(x => x.id === a2.structure_id) || {}).name;
-      return `<select id="jb-stw" style="margin-top:.5rem">
+      /* Randi, 2026-09-29: "how do I add a get from place (not here)".
+         "Get the test kit from environmental health" is a real step with a
+         real address, and this list can only ever name buildings that are
+         hers -- so the shop, the council office and the vet had nowhere to go
+         but inside the sentence, where nothing can use them. */
+      return `<select id="jb-stw" style="margin-top:.5rem"
+          onchange="const e=$('#jb-stwe');if(e){e.hidden=this.value!=='x';if(!e.hidden)e.focus()}">
         <option value="">Anywhere in particular?</option>
         ${places.map(x => `<option value="s:${x.id}">${esc(x.name)}</option>`).join('')}
         ${areas.map(x => `<option value="a:${x.id}">${esc(x.name)}${
           up(x) ? esc(' — ' + up(x)) : ''}</option>`).join('')}
-      </select>`;
+        <option value="x">Somewhere else &mdash; not here</option>
+      </select>
+      <input id="jb-stwe" hidden style="margin-top:.4rem"
+        placeholder="where &mdash; the hardware shop, environmental health">`;
     })() : ''}
     <input id="jb-step" placeholder="add a step &mdash; borrow the ladder"
       onkeydown="if(event.key==='Enter'){event.preventDefault();${stepGo}}">
@@ -5511,8 +5746,60 @@ async function addStep(id) {
   await DwelLogs.write([{ op:'upsert', table:'step',
     record:{ id:uid(), job_id:id, text:t, position:n + 1, done:'',
       structure_id: w.startsWith('s:') ? w.slice(2) : '',
-      area_id: w.startsWith('a:') ? w.slice(2) : '' } }]);
+      area_id: w.startsWith('a:') ? w.slice(2) : '',
+      where_else: w === 'x' ? (($('#jb-stwe') || {}).value || '').trim() : '' } }]);
   await reload(); drawJob(id);
+}
+async function addJobSupply(id) {
+  const pick = (($('#jb-sup') || {}).value || '');
+  const q = Number((($('#jb-supq') || {}).value || '').trim()) || 1;
+  if (!pick) return say('Pick one, or add something new.');
+  const writes = [];
+  let sid = pick;
+  if (pick === 'new') {
+    const n = (($('#jb-supn') || {}).value || '').trim();
+    if (!n) return say('Give it a name first.');
+    sid = uid();
+    writes.push({ op:'upsert', table:'supply', record:{ id:sid,
+      property_id:(prop || {}).id, name:n,
+      part_number:(($('#jb-supp') || {}).value || '').trim(),
+      link:(($('#jb-supl') || {}).value || '').trim(),
+      /* Deliberately not "0 on hand". Blank is not zero: the app has no idea
+         whether there is one on the shelf, and saying zero would put this on
+         the Running low list on the strength of a guess. */
+      asset_id: jobById(id) ? (jobById(id).asset_id || '') : '' } });
+  }
+  writes.push({ op:'upsert', table:'job_supply',
+    record:{ id:uid(), job_id:id, supply_id:sid, how_many:q } });
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await reload(); drawJob(id); say('Added to what it needs.');
+}
+async function dropJobSupply(rowId, jobId) {
+  try { await DwelLogs.write([{ op:'archive', table:'job_supply', id:rowId }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await reload(); drawJob(jobId);
+}
+async function setJobService(id, val) {
+  const j = jobById(id); if (!j) return;
+  syncJob(id);
+  const writes = [{ op:'upsert', table:'job', record:{ ...jobById(id), service_id: val || '' } }];
+  /* The rule behind a repeating job carries this too, so next year's
+     occurrence knows who to ring without anybody saying it again. */
+  const sc = (DB.schedule || []).find(x => x.id === j.schedule_id);
+  if (sc) writes.push({ op:'upsert', table:'schedule', record:{ ...sc, service_id: val || '' } });
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await reload(); drawJob(id);
+}
+async function addService(id) {
+  const n = (($('#jb-svcn') || {}).value || '').trim();
+  if (!n) return say('Give them a name first.');
+  const sid = uid();
+  try {
+    await DwelLogs.write([{ op:'upsert', table:'service',
+      record:{ id:sid, property_id:(prop || {}).id, name:n } }]);
+  } catch (e) { return say('Could not save: ' + e.message); }
+  await reload();
+  return setJobService(id, sid);
 }
 async function tickStep(stepId, jobId, on) {
   const st = (DB.step || []).find(x => x.id === stepId); if (!st) return;
@@ -5571,14 +5858,97 @@ async function saveJob(id) {
   say('Saved.');
 }
 
+/* A date typed into a box, or nothing. Never a guess. */
+const asDay = v => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '').trim());
+  if (!m) return '';
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return d.getFullYear() === +m[1] && d.getMonth() === +m[2] - 1 && d.getDate() === +m[3]
+    ? ymd(d) : '';
+};
+/* Who did a piece of past work. The list is deliberately short and deliberately
+   nameless: not sure, us, whoever was here before, or a company.
+
+   Randi, 2026-09-29: "Not sure we want to give an optional who did it question"
+   -- then, a minute later: "maybe its previous owners, maybe its a service."
+   Both are right, and together they are the whole rule. Asking WHICH HOUSEMATE
+   did something three months ago is a ledger reconstructed from memory, which
+   is the rift this app is built not to cause. Asking whether it was the people
+   who lived here before, a company you can ring again, or simply the household
+   is provenance -- it tells you how much to trust the date, and it survives
+   somebody moving out. So `us` is as specific as this ever gets, and
+   by_person_id is written only when somebody ticks a job off as they do it. */
+const DID_IT = [['not_sure','Not sure'], ['us','Us'],
+                ['before_us','Whoever was here before'], ['service','A company']];
+
+/* Work that happened before the app knew about it. This is not "finish the
+   open job" -- the open job is the NEXT one. It records what happened and
+   re-anchors the rule to it, so a septic pumped in June on a three-year cycle
+   is next due in June, not three years from the afternoon you typed it in. */
+async function logPast(schedId, on, who, serviceId, jobId) {
+  const sc = (DB.schedule || []).find(x => x.id === schedId);
+  const done = asDay(on);
+  if (!done) return say('Put a date on it first.');
+  if (done > today()) return say('That is in the future. Mark it done when it happens.');
+  const writes = [{ op:'upsert', table:'completion', record:{ id:uid(),
+    schedule_id: schedId || '', job_id: jobId || '',
+    asset_id:(sc || {}).asset_id || '', animal_id:(sc || {}).animal_id || '',
+    vehicle_id:(sc || {}).vehicle_id || '',
+    done_on:done, recorded_on:today(), origin:'planned',
+    what:(sc || {}).title || 'Done before',
+    did_it: who || 'not_sure', service_id: who === 'service' ? (serviceId || '') : '' } }];
+  if (sc && sc.every_n && sc.kind !== 'once') {
+    const next = rollFrom(done, sc.every_n, sc.every_unit);
+    writes.push({ op:'upsert', table:'schedule', record:{ ...sc, next_due_on: next } });
+    /* The open occurrence moves with the rule. Leaving it where it was is how
+       you end up with a job due next September for something now anchored to
+       June -- the rule and the card disagreeing about the same thing. */
+    (DB.job || []).filter(x => x.schedule_id === schedId && openJob(x))
+      .forEach(x => writes.push({ op:'upsert', table:'job', record:{ ...x, due_on: next } }));
+  }
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await reload();
+  const nx = (DB.schedule || []).find(x => x.id === schedId) || {};
+  say('Noted — done ' + agoWords(daysTo(done)) + (nx.next_due_on
+    ? '. Next one ' + whenDue(daysTo(nx.next_due_on)) + '.' : '.'));
+  return true;
+}
+/* The control, wherever it is wanted: on the job screen, and on the catch-up
+   list. One markup, so the two can never ask the question differently. */
+function lastDoneBox(sid, tag, jobId) {
+  const svc = (DB.service || []).filter(x => x.status !== 'archived');
+  return `<div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end">
+    <div style="flex:1;min-width:9rem">
+      <label for="ld-d-${tag}" style="margin:0 0 .2rem">When</label>
+      <input id="ld-d-${tag}" type="date" max="${esc(today())}" style="margin:0"></div>
+    <div style="flex:1;min-width:9rem">
+      <label for="ld-w-${tag}" style="margin:0 0 .2rem">Who did it</label>
+      <select id="ld-w-${tag}" style="margin:0"
+        onchange="const b=$('#ld-s-${tag}');if(b)b.hidden=this.value!=='service'">${
+        DID_IT.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select></div>
+    ${svc.length ? `<select id="ld-s-${tag}" hidden style="margin:0;flex:1;min-width:9rem">${
+      svc.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>` : ''}
+    <button class="ghost" style="margin:0" onclick="logPast('${sid}',
+      $('#ld-d-${tag}').value, $('#ld-w-${tag}').value,
+      ($('#ld-s-${tag}')||{}).value, '${jobId || ''}').then(ok=>{if(ok)${
+      jobId ? `drawJob('${jobId}')` : 'drawCatchUp()'}})">Record it</button>
+  </div>`;
+}
 /* Finishing writes a completion — append-only history — and, when there is a
    rule behind it, moves the rule on. That is the loop the whole app is for. */
-async function finishJob(id) {
+async function finishJob(id, on) {
   const j = jobById(id); if (!j) return;
+  /* The date is whatever the box says, and the box starts on today. Ticking
+     something off on Sunday that you actually did on Friday used to file it as
+     Sunday and count the next one from Sunday -- two days of drift per turn,
+     forever, on a rule nobody would think to check. */
+  const done = asDay(on) || today();
   const cid = uid();
   const writes = [{ op:'upsert', table:'completion',
       record:{ id:cid, job_id:id, asset_id:j.asset_id || '', schedule_id:j.schedule_id || '',
-               done_on:today(), by_person_id:me.id } },
+               animal_id:j.animal_id || '', vehicle_id:j.vehicle_id || '',
+               done_on:done, recorded_on:today(), origin:'planned',
+               what:j.title || 'Done', by_person_id:me.id } },
     /* Randi, 2026-09-27: "when a job gets completed, if un owned it could be
        assigned to who finished it." That is assignment used as a RECORD OF FACT
        rather than a directive \u2014 the only honest way to write this field by
@@ -5588,15 +5958,11 @@ async function finishJob(id) {
        the blame, and who actually did it is on the completion either way. The
        claim is left alone too \u2014 Dave taking it and Randi finishing it is a real
        and interesting fact, and overwriting it would hide that. */
-    { op:'upsert', table:'job', record:{ ...j, status:'done', done_on:today(),
+    { op:'upsert', table:'job', record:{ ...j, status:'done', done_on:done,
         owner_id: j.owner_id || me.id, completion_id:cid } }];
   const sc = (DB.schedule || []).find(x => x.id === j.schedule_id);
   if (sc && sc.every_n && sc.kind !== 'once') {
-    const d = new Date(), n = Number(sc.every_n) || 1;
-    ({ day:() => d.setDate(d.getDate() + n), week:() => d.setDate(d.getDate() + n * 7),
-       month:() => d.setMonth(d.getMonth() + n), year:() => d.setFullYear(d.getFullYear() + n)
-     }[sc.every_unit] || (() => d.setMonth(d.getMonth() + n)))();
-    const next = ymd(d);
+    const next = rollFrom(done, sc.every_n, sc.every_unit);
     writes.push({ op:'upsert', table:'schedule', record:{ ...sc, next_due_on: next } });
     writes.push({ op:'upsert', table:'job', record:{ id:uid(), property_id:prop.id, kind:j.kind,
       title:j.title, source:'schedule', schedule_id:sc.id, asset_id:j.asset_id || '',
@@ -7026,8 +7392,13 @@ async function addThing() {
   t.writes.forEach(w => writes.push(w));
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
   DB = (await DwelLogs.load()).db;
-  show('home');
   const on = want.size;
+  /* A thing you already own has a history, and the moment you have just typed
+     its name is the moment you remember when the filter was last changed. Its
+     own check-ups only -- the whole catch-up list here would be an ambush. */
+  const fresh = (DB.schedule || []).filter(sc => sc.asset_id === t.id
+    && sc.every_n && sc.kind !== 'once' && sc.muted !== 'TRUE');
+  if (fresh.length) drawCatchUp(t.id); else show('home');
   say(name + ' added' + (t.checks
     ? ', with ' + on + ' check-up' + (on === 1 ? '' : 's')
       + (on < t.checks ? ' — the rest are kept quiet.' : '.')

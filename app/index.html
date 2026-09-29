@@ -52,8 +52,15 @@ if (location.search.indexOf('fresh=1') > -1) {
   html { -webkit-text-size-adjust:100%; }
   body { margin:0; background:var(--bg); color:var(--ink);
     font:1rem/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  /* viewport-fit=cover means the page really does reach the edges, so the safe
+     area has to be paid for at BOTH ends. Only the bottom was, and installed to
+     a home screen on a notched phone that put the first 59 pixels of every
+     screen underneath the clock -- Randi's "What cools it?" came out as
+     "Wh10:42 it?". In a browser tab the chrome hides it; the bug only exists
+     for the people who liked it enough to install it. */
   .wrap { max-width:34rem; margin:0 auto; padding-inline:1rem;
-          padding-block:1rem calc(5rem + env(safe-area-inset-bottom,0px)); }
+          padding-block:calc(1rem + env(safe-area-inset-top,0px))
+                        calc(5rem + env(safe-area-inset-bottom,0px)); }
   h1 { font-size:1.5rem; line-height:1.2; margin:.3rem 0 .4rem; }
   h2 { font-size:1rem; margin:1.5rem 0 .5rem; }
   p.sub { color:var(--muted); margin:.2rem 0 1rem; }
@@ -281,7 +288,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=4936704567"></script>
+<script src="api.js?v=fb7cbf2e21"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -543,6 +550,18 @@ function otherBox(key, label) {
     ${tip('If enough people write the same thing, it becomes a real option. Somebody reads them ' +
        'first — nothing is added automatically.', 'What happens to this')}</div>`;
 }
+/* Randi, 2026-09-29: "I selected another building but the input text stays on
+   each even though it's for the building i wrote it for."
+
+   draft.other is one flat map keyed by object.field, so "structure.cooling"
+   was ONE box shared by the house, the barn and the ADU -- type "Wall unit"
+   for the ADU and the house claims it too. The ticks were already per
+   building; only the words were not. The key carries the building now, and
+   the suggestion writer takes it back off, because what gets reported is that
+   somebody typed "Wall unit" under cooling -- not which of their sheds. */
+const otherScope = () => draft.reopened ? '#' + draft.reopened
+  : (draft.sysFor == null || draft.sysFor === '') ? '' : '#' + draft.sysFor;
+
 function takeOther() {
   draft.other = draft.other || {};
   document.querySelectorAll('.otv').forEach(e => {
@@ -1482,7 +1501,23 @@ const PLACE = [
          ever asked about the main building -- the others existed in the draft
          with nowhere to put an answer. One row of names, because a barn with a
          sub-panel and an ADU with a water heater under the sink are ordinary. */
-      const picker = others.length ? `<div class="chips" style="margin:.2rem 0 1rem">
+      /* Reopened from the hub, hydrate() builds a draft for ONE building and
+         `more` is empty -- so this row vanished exactly where it was needed
+         most, and changing the subject of the screen meant Done, home, back
+         in, pick the other one. Off the real rows in that mode, and switching
+         SAVES first, because the ticks already on screen are answers. */
+      const back = draft.reopened;
+      const live2 = back ? buildings().filter(x => !x.property_id
+        || x.property_id === (prop || {}).id) : [];
+      const picker = back
+        ? (live2.length > 1 ? `<div class="chips" style="margin:.2rem 0 1rem">
+            ${live2.map(b2 => `<button type="button" aria-pressed="${b2.id === back}"
+              onclick="syncStep();saveStep('What does it run on?','${b2.id}')"
+              >${esc(b2.name || kindLabel(b2.kind) || 'a building')}${
+              SYSTEMS.some(q => b2[q.k] && b2[q.k] !== 'not_sure_yet') ? '' : ' ·'}</button>`).join('')}</div>
+            <p class="hint" style="margin:-.6rem 0 1rem">Each one gets its own answers.
+              Switching saves this one first.</p>` : '')
+        : others.length ? `<div class="chips" style="margin:.2rem 0 1rem">
         ${[['', draft.building || 'the main one']].concat(others.map((b2, i) => [String(i), b2.name]))
           .map(([v, l]) => `<button type="button" aria-pressed="${String(draft.sysFor || '') === v}"
             onclick="syncStep();draft.sysFor='${v}';drawFirst()">${esc(l)}${
@@ -1500,7 +1535,7 @@ const PLACE = [
           <div class="opts">${keep.map(o => one(o, false)).join('')}
           ${rest.length ? rest.map(o => one(o, true)).join('') +
             `<button class="ghost" onclick="showRest(this)">Show the rest</button>` : ''}</div>
-          ${otherBox('structure.' + sys.k, 'Another ' + SYS_NOUN[sys.k] + '?')}`;
+          ${otherBox('structure.' + sys.k + otherScope(), 'Another ' + SYS_NOUN[sys.k] + '?')}`;
       }).join('')
         + (['wheels','floating'].includes(g)
           ? tip('A house that moves does not have well water or city water — it has a hose, and what ' +
@@ -2995,7 +3030,7 @@ async function createEverything() {
       property_id:propId, count:1, context_kind:ctxKind, context_group:ctxGroup,
       by_kind:ctxKind + ':1', first_seen_on:today(), last_seen_on:today(), status:'new' } });
   Object.entries(draft.other || {}).forEach(([k, typed]) => {
-    const [obj, field] = k.split('.'); suggest(obj, field, typed);
+    const [obj, field] = k.split('.'); suggest(obj, String(field).split('#')[0], typed);
   });
   if (draft.bkindOther) suggest('structure', 'kind', draft.bkindOther);
   /* One row per room typed. draft.other keeps a single value per key, so
@@ -3473,7 +3508,7 @@ function reopen(stepId, stId) {
 }
 /* Done, on a reopened screen. Each section writes only its own subject --
    the screen you were on is the thing you changed. */
-async function saveStep(stepId) {
+async function saveStep(stepId, goToStructId) {
   const stId = draft.reopened;
   const st = (DB.structure || []).find(x => x.id === stId) || {};
   const writes = [];
@@ -3526,12 +3561,17 @@ async function saveStep(stepId) {
         attached_to_id:b2.attached ? stId : '',
         visibility:b2.theirs ? 'presence_only' : 'shared' } }));
   }
-  if (!writes.length) { draft = {}; return show('home'); }
+  if (!writes.length) { draft = {};
+    return goToStructId ? reopen(stepId, goToStructId) : show('home'); }
   try { await DwelLogs.write(writes); }
   catch (e) { return say('Could not save: ' + e.message); }
   draft = {};
   await boot();
   if (SHARE_ASK) return drawShare();
+  /* Switching to another building is a save, not an exit. Without this the only
+     way to answer for the barn was Done, home, back in, pick the barn -- four
+     taps to change the subject of a screen that is ABOUT the subject. */
+  if (goToStructId) return reopen(stepId, goToStructId);
   show('home');
   const n = writes.filter(w => w.table === 'area').length;
   const b3 = writes.filter(w => w.table === 'structure' && w.record.id !== stId).length;

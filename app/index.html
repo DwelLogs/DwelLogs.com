@@ -254,7 +254,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=0fe55de02e"></script>
+<script src="api.js?v=3dec59e827"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -753,7 +753,12 @@ const STARTER = {
     ['Window unit',     [['Clean the filter', 1, 'month', 'manufacturer']]],
     ['Swamp cooler',    [['Replace the pads', 1, 'year', 'our_estimate'],
                          ['Winterise it', 1, 'year', 'our_estimate']]],
-    ['Whole-house fan', [['Clean the louvres', 1, 'year', 'our_estimate']]]
+    ['Whole-house fan', [['Clean the louvres', 1, 'year', 'our_estimate']]],
+    /* Not the same machine as a whole-house fan, and worth its own line: one
+       pulls air through the rooms you live in, the other vents the roof space
+       on a thermostat you never see. Which is exactly how one sits there
+       clicking on with a dead motor for a year and nobody notices. */
+    ['Attic fan',       [['Check it actually turns', 1, 'year', 'our_estimate']]]
   ],
   'Appliances': [
     ['Refrigerator', [['Replace the water filter', 6, 'month', 'manufacturer'],
@@ -762,7 +767,16 @@ const STARTER = {
     ['Dishwasher',   [['Clean the filter', 3, 'month', 'manufacturer']]],
     ['Dryer',        [['Clear the vent hose', 1, 'year', 'code']]],
     ['Washer',       [['Replace the supply hoses', 5, 'year', 'our_estimate']]],
-    ['Range or oven',[['Clean the hood filter', 3, 'month', 'our_estimate']]]
+    ['Range or oven',[['Clean the hood filter', 3, 'month', 'our_estimate']]],
+    /* A sink is where the leak happens, and the cupboard under it is where the
+       stop tap lives. Three of them because the work is not the same: a kitchen
+       sink has a disposal and a grease trap, a basin has a pop-up that seizes,
+       and a wash sink in a barn is the one that freezes. */
+    ['Kitchen sink',  [['Check under it for damp', 6, 'month', 'our_estimate'],
+                       ['Clear the trap', 1, 'year', 'our_estimate']]],
+    ['Bathroom basin',[['Check under it for damp', 6, 'month', 'our_estimate']]],
+    ['Utility sink',  [['Check under it for damp', 6, 'month', 'our_estimate'],
+                       ['Drain it before the freeze', 1, 'year', 'our_estimate']]]
   ],
   'Safety': [
     ['Smoke detector',           [['Test it', 6, 'month', 'code'],
@@ -1381,9 +1395,10 @@ const PLACE = [
           <label for="mr-n" style="margin-top:.8rem">What do you call that room?</label>
           <input id="mr-n" value="${esc(draft.mainRoom || 'Main room')}">
           <label style="margin-top:1rem">What is in it?</label>
-          ${(draft.corners || []).map((c, i) => `<div class="card">
-            <span class="title">${esc(c)}</span>
-            <button class="quiet" onclick="dropCorner(${i})">Remove</button></div>`).join('')}
+          ${(draft.namedRooms || []).map((c, i) => [c, i])
+            .filter(([c]) => roomUnder(c)).map(([c, i]) => `<div class="card">
+            <span class="title">${esc(roomLabel(c))}</span>
+            <button class="quiet" onclick="dropNamedRoom(${i})">Remove</button></div>`).join('')}
           <input id="cn-n" placeholder="bed, kitchen, eating area…">
           <div class="actions" style="margin-top:.6rem">
             <button class="add" onclick="addCorner()">Add</button></div>
@@ -1416,14 +1431,28 @@ const PLACE = [
 
           <label style="margin-top:1.2rem">A room we did not list?</label>
           ${(draft.namedRooms || []).map((r, i) => `<div class="card">
-            <span class="title">${esc(r)}</span>
+            <span class="title">${esc(roomLabel(r))}</span>
+            ${roomUnder(r) ? `<p class="meta">in ${esc(roomUnder(r))}</p>` : ''}
             <button class="quiet" onclick="dropNamedRoom(${i})">Remove</button></div>`).join('')}
-          <input id="nr-n" placeholder="craft room, sunroom, tack room"
+          <input id="nr-n" placeholder="craft room, tack room, second floor"
             onkeydown="if(event.key==='Enter'){event.preventDefault();addNamedRoom()}">
+          ${(() => {
+            /* A barn is two floors before it is any rooms. Naming the floor and
+               then putting the electrical room inside it is how somebody
+               describes a building out loud, and it is one select rather than a
+               whole concept of storeys: a floor is a room with rooms in it. */
+            const inside = roomsPlanned();
+            return inside.length ? `<label for="nr-p" style="margin-top:.7rem">Inside which?
+              <span style="font-weight:400;color:var(--muted)">&mdash; optional</span></label>
+              <select id="nr-p"><option value="">Not inside another one</option>
+                ${inside.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>`
+              : '';
+          })()}
           <div class="actions" style="margin-top:.6rem">
             <button class="add" onclick="addNamedRoom()">Add room</button></div>
           ${tip('Each one becomes a room you can file a leak or a smoke detector against. ' +
-            'Nothing more is assumed about it.')}` : ''}`;
+            'Nothing more is assumed about it. Name a floor and then put rooms inside it — ' +
+            'a floor is a room with rooms in it, and the barn reads the way you would say it.')}` : ''}`;
     },
     take: () => { takeOther();
       draft.spaces = [...document.querySelectorAll('.sp:checked')].map(e => e.value);
@@ -1597,10 +1626,10 @@ const PLACE = [
           ['workshop','Workshop'],['greenhouse','Greenhouse'],['coop','Coop'],
           ['deck','Deck'],['studio','Studio'],['pool_house','Pool house'],
           ['pump_house','Pump house']].map(([v, l]) => `<button type="button"
-          aria-pressed="${(draft.mbKind || 'shed') === v}" onclick="draft.mbKind='${v}';drawFirst()">
+          aria-pressed="${(draft.mbKind || 'shed') === v}" onclick="draft.mbKind='${v}';draft.mbTouched=true;drawFirst()">
           ${icon(v, 30)}<span class="cap">${esc(l)}</span></button>`).join('')}</div>
         <details class="disclose"><summary>Something else</summary>
-          <select id="mb-k2" onchange="draft.mbKind=this.value">${kindOptions(draft.mbKind || 'shed')}</select>
+          <select id="mb-k2" onchange="draft.mbKind=this.value;draft.mbTouched=true">${kindOptions(draft.mbKind || 'shed')}</select>
         </details>
         <label class="tick"><input type="checkbox" id="mb-a"> It is attached to ${esc(draft.building)}</label>
         <label class="tick"><input type="checkbox" id="mb-o"> It belongs to somebody else</label>
@@ -1818,12 +1847,36 @@ function syncStep() {
   const step = STEPS()[fs];
   if (step && step.take) { try { step.take(); } catch (e) {} }
 }
+/* Typing a name into the box and then pressing Next is somebody answering the
+   question. The old form threw it away without a word -- a whole household and
+   four chickens, gone, and the home screen then said "still blank", which is
+   the app calling her a liar about something she had just typed. So every way
+   OUT of a step commits what is in its add-boxes, exactly as if Add had been
+   pressed, and says what it kept. Each adder is split in two for it: take*()
+   commits silently and returns what to say, add*() is that plus the redraw.
+   This runs at the four exits -- Next, Done, Skip, Back -- rather than inside
+   each step's take(), because take() is also called mid-answer by syncStep()
+   and would then commit the row an adder was halfway through adding. Every
+   take*() returns null when its box is not on the screen, so one call covers
+   every step. */
+function sweepAdders() {
+  const kept = [takeCorner(), takeNamedRoom(), takeBuilding(), takeHousePerson(), takeAnimal()]
+    .filter(Boolean);
+  if (kept.length) say(kept.join(' · '));
+  return kept.length;
+}
+function takeHousePerson() {
+  const el = $('#hh-n'), v = ((el || {}).value || '').trim();
+  if (!v) return null;
+  draft.household = draft.household || []; draft.household.push(v);
+  el.value = '';
+  return v + ' is on the list.';
+}
 function addPerson() {
   syncStep();
-  const v = ($('#hh-n').value || '').trim();
-  if (!v) return say('A name, however you say it.');
-  draft.household = draft.household || []; draft.household.push(v);
-  drawFirst(); say(v + ' is on the list.');
+  const m = takeHousePerson();
+  if (!m) return say('A name, however you say it.');
+  drawFirst(); say(m);
 }
 function dropPerson(i) { syncStep(); draft.household.splice(i, 1); drawFirst(); }
 const WHENS  = [['this_week','this week'], ['next_week','next week'], ['someday','sometime']];
@@ -1843,10 +1896,15 @@ function guessThing(text) {
   return best ? best.key : null;
 }
 
-function addAnimal() {
-  syncStep();
+/* The animal form is never empty -- a type is always selected and the count
+   starts at 1 -- so "is there something in the boxes" cannot be read off the
+   boxes. `touched` is set by the three things that mean she answered: changing
+   the type, changing the count, typing a name. */
+function takeAnimal(force) {
+  if (!$('#an-t')) return null;
   keepAnimalNames();
-  const a = draft.an || { type:ANIMAL_TYPES[0], n:1, names:[] };
+  const a = draft.an;
+  if (!a || (!force && !a.touched)) return null;
   const n = a.n || 1, t = a.type, first = (a.names || [])[0];
   draft.animals = draft.animals || [];
   for (let i = 0; i < n; i++) {
@@ -1855,9 +1913,14 @@ function addAnimal() {
       name: typed || (n > 1 ? unitNoun(t) + ' ' + (i + 1) : '') });
   }
   draft.an = null;
-  drawFirst();
-  say(n > 1 ? n + ' ' + unitNoun(t) + 's come with you.'
-            : (first || ('One ' + t)) + ' comes with you.');
+  return n > 1 ? n + ' ' + unitNoun(t) + 's come with you.'
+               : (first || ('One ' + typeLabel(t))) + ' comes with you.';
+}
+function addAnimal() {
+  syncStep();
+  const m = takeAnimal(true);
+  if (!m) return say('Pick what it is first.');
+  drawFirst(); say(m);
 }
 function dropAnimal(i) { syncStep(); draft.animals.splice(i, 1); drawFirst(); }
 /* The rooms this setup is about to create, in the order createEverything
@@ -1871,16 +1934,11 @@ function roomsPlanned() {
     if (!def || !def[2]) return;          // a slab is not a room you can stand in
     out.push(AREA_NAME[k] || k);
   });
-  if (draft.openPlan) {
-    out.push(draft.mainRoom || 'Main room');
-    (draft.corners || []).forEach(c => out.push(c));
-  }
   ROOMS.forEach(r => {
-    if (draft.openPlan && r[0] !== 'bathrooms') return;
     const n = (draft.rooms || {})[r[0]] || 0;
     for (let i = 1; i <= n; i++) out.push(roomName(r) + (n > 1 ? ' ' + i : ''));
   });
-  (draft.namedRooms || []).forEach(nm => out.push(nm));
+  (draft.namedRooms || []).forEach(r => out.push(typeof r === 'string' ? r : r.name));
   return out;
 }
 /* Only things there is more than one of. One dishwasher does not need a room to
@@ -2058,7 +2116,7 @@ function drawFirst() {
   const backTo = hubStep ? 'hubStep=null;drawHub()'
     : fs ? 'fs--;drawFirst()'
     : flow === 'place' ? 'drawWho()' : 'drawWho()';
-  app.innerHTML = `<button class="back" onclick="syncStep();${backTo}">&lsaquo; Back</button>
+  app.innerHTML = `<button class="back" onclick="syncStep();sweepAdders();${backTo}">&lsaquo; Back</button>
     <p class="step">${hubStep ? esc(draft.place || 'Setting up') : f.skippable
       ? `Optional <button class="skiplink" onclick="skipFirst()">${
           fs === list.length - 1 ? 'skip and finish' : 'skip this'}</button>`
@@ -2125,27 +2183,45 @@ function readHere() {
   HERE.forEach(([k]) => { out[k] = [...document.querySelectorAll('.hr-' + k + ':checked')].map(e => e.value); });
   return out;
 }
+/* A corner of an open-plan room and a room somebody named are the same record
+   with the same shape: a name, and what it is inside. They were two lists doing
+   one job, which is how the two came to be written to the sheet by two
+   different code paths. One list now; the open-plan screen just fills the
+   parent in for you. */
+function takeCorner() {
+  const el = $('#cn-n'), v = ((el || {}).value || '').trim();
+  if (!v) return null;
+  draft.namedRooms = draft.namedRooms || [];
+  draft.namedRooms.push({ name:v, parent: draft.mainRoom || 'Main room' });
+  el.value = '';
+  return v + ' added.';
+}
 function addCorner() {
   syncStep();
-  const v = ($('#cn-n').value || '').trim();
-  if (!v) return say('Name it first — bed, kitchen, whatever you call that end.');
-  draft.corners = draft.corners || []; draft.corners.push(v);
-  drawFirst(); say(v + ' added.');
+  const m = takeCorner();
+  if (!m) return say('Name it first — bed, kitchen, whatever you call that end.');
+  drawFirst(); say(m);
 }
 /* A list of room types cannot know about a tack room, a milk house or the
    room somebody calls the snug. Typed rooms are made exactly as named, and the
    word is also kept as a suggestion -- which is how the list gets better. */
+function takeNamedRoom() {
+  const el = $('#nr-n'), t = ((el || {}).value || '').trim();
+  if (!t) return null;
+  draft.namedRooms = draft.namedRooms || [];
+  draft.namedRooms.push({ name:t, parent: (($('#nr-p') || {}).value) || '' });
+  el.value = '';
+  return t + ' is on the list.';
+}
+const roomLabel = r => typeof r === 'string' ? r : r.name;
+const roomUnder = r => (typeof r === 'string' ? '' : r.parent) || '';
 function addNamedRoom() {
   syncStep();
-  const el = $('#nr-n'), t = (el.value || '').trim();
-  if (!t) return say('Say what the room is first.');
-  draft.namedRooms = draft.namedRooms || [];
-  draft.namedRooms.push(t);
-  drawFirst();
-  say(t + ' is on the list.');
+  const m = takeNamedRoom();
+  if (!m) return say('Say what the room is first.');
+  drawFirst(); say(m);
 }
 function dropNamedRoom(i) { syncStep(); (draft.namedRooms || []).splice(i, 1); drawFirst(); }
-function dropCorner(i) { syncStep(); draft.corners.splice(i, 1); drawFirst(); }
 function saveMain() {
   const typed = ($('#mh-n').value || '').trim();
   draft.buildingNamed = !!typed;
@@ -2155,14 +2231,28 @@ function saveMain() {
   draft.editMain = false;
   drawFirst(); say(draft.building + ' · ' + kindLabel(draft.bkind));
 }
-function addBuilding() {
-  syncStep();
+/* The name may be left blank -- the kind names it. So on the way out, a kind
+   they actually tapped counts as an answer just as much as a typed name does;
+   the untouched default sitting there does not. */
+function takeBuilding(force) {
+  const el = $('#mb-n'); if (!el) return null;
+  const typed = (el.value || '').trim();
+  if (!force && !typed && !draft.mbTouched) return null;
   draft.more = draft.more || [];
   const kind = draft.mbKind || 'shed';
   const taken = [draft.building].concat(draft.more.map(x => x.name));
-  const name = uniqueName(($('#mb-n').value || '').trim() || kindLabel(kind), taken);
+  const name = uniqueName(typed || kindLabel(kind), taken);
   draft.more.push({ name, kind, attached:$('#mb-a').checked, theirs:$('#mb-o').checked });
-  drawFirst(); say(name + ' added.');
+  // The kind stays selected -- three barns is three taps of Add, not three
+  // hunts down the list. What it was FOR is spent, so the sweep on the way out
+  // will not add a fourth nobody asked for.
+  el.value = ''; draft.mbTouched = false;
+  return name + ' added.';
+}
+function addBuilding() {
+  syncStep();
+  const m = takeBuilding(true);
+  drawFirst(); say(m);
 }
 function dropBuilding(i) { syncStep(); draft.more.splice(i, 1); drawFirst(); }
 function showRest(btn) {
@@ -2176,6 +2266,10 @@ function showRest(btn) {
 function doneStep() {
   const step = STEPS()[fs];
   if (step && step.take) { const r = step.take(); if (typeof r === 'string') return say(r); }
+  sweepAdders();
+  // Reopened from the home screen, so Done goes back there and writes -- there
+  // is no setup hub to return to.
+  if (draft.reopened) return saveStep(step && step.t);
   hubStep = null; drawHub();
 }
 function skipFirst() {
@@ -2184,6 +2278,7 @@ function skipFirst() {
   // skipping an untouched one still records nothing.
   const step = STEPS()[fs];
   if (step && step.skippable) { try { step.take(); } catch (e) {} }
+  sweepAdders();
   if (fs < STEPS().length - 1) { fs++; return drawFirst(); }
   draft.type = null; draft.thingName = '';
   return finishFirst();
@@ -2198,6 +2293,7 @@ async function nextFirst() {
     if (el) { el.classList.add('missing'); el.focus(); }
     return say(r);
   }
+  sweepAdders();
   if (fs < list.length - 1) { fs++; return drawFirst(); }
   return finishFirst();
 }
@@ -2267,6 +2363,88 @@ async function acceptInvite() {
       note:'Came with ' + (draft.name || 'them') } });
   });
   await DwelLogs.write(writes);
+}
+
+/* A thing and the check-ups its template carries. Written three times over --
+   once in the first-run setup, once on the Add screen, once for the well a
+   systems answer implies -- and the three had already drifted: the Add screen
+   was quietly dropping `muted`, `interval_source` and the on-arrival kind, so
+   the same dishwasher got different check-ups depending on which screen you
+   happened to add it from. One writer now.
+
+   `typeIds` is for the first run only, where the catalogue is still sitting in
+   the same unwritten batch and cannot be looked up yet. Everywhere else the
+   catalogue is on the books and the name finds it. */
+function thingWrites(typeName, o) {
+  o = o || {};
+  const tid = (o.typeIds || {})[typeName]
+    || ((DB.asset_type || []).find(x => x.name === typeName) || {}).id;
+  const tmpl = Object.values(STARTER).flat().find(x => x[0] === typeName);
+  if (!tid || !tmpl) return { id:null, writes:[], checks:0 };
+  const id = uid(), writes = [];
+  writes.push({ op:'upsert', table:'asset', record:{ id, property_id:o.propId || (prop || {}).id,
+    structure_id:o.structId || '', asset_type_id:tid, area_id:o.areaId || '',
+    name:o.name || typeName, status:'active', power_source:o.powered || '',
+    installed_on:o.installed || '' } });
+  tmpl[1].forEach(([title, n, unit, src, whenSource]) => {
+    const rec = { id:uid(), asset_id:id, title, responsibility:'owner', cost_source:'entered',
+      /* Unticked does not mean deleted. The rule is still written, muted, so it
+         can be turned back on without retyping and so the app never quietly
+         forgets what a water heater needs. */
+      muted: o.keep && !o.keep(typeName, title) ? 'TRUE' : '',
+      interval_source:src, applies_when_source:(whenSource || []).join(', ') };
+    // An arrival check-up has no date. It is due when she pulls up somewhere
+    // new, and a made-up date would only make it look overdue in the meantime.
+    if (unit === 'arrival') rec.kind = 'on_arrival';
+    else {
+      const due = new Date();
+      if (unit === 'month') due.setMonth(due.getMonth() + n);
+      else due.setFullYear(due.getFullYear() + n);
+      Object.assign(rec, { kind:'interval', every_n:n, every_unit:unit,
+        next_due_on:due.toISOString().slice(0, 10) });
+    }
+    writes.push({ op:'upsert', table:'schedule', record:rec });
+  });
+  return { id, writes, checks:tmpl[1].length, rec:writes[0].record };
+}
+
+/* The rooms this draft describes, as area rows. Setup calls it with nothing on
+   the books; the same screen reopened later calls it with rooms already there.
+   So it is keyed by NAME and it only ever adds: reopening the rooms screen and
+   pressing Done must not make a second Kitchen, and lowering a count is not a
+   demolition order. Removing a room is its own decision, made on the room. */
+function areaWrites(structId) {
+  const out = [], byName = {};
+  (DB.area || []).filter(a => a.structure_id === structId)
+    .forEach(a => { byName[a.name] = a.id; });
+  const add = rec => { if (byName[rec.name]) return null;
+    byName[rec.name] = rec.id; out.push({ op:'upsert', table:'area', record:rec }); return rec.id; };
+  (draft.spaces || []).forEach(k => {
+    const def = SPACES.find(x => x[0] === k);
+    if (!def || !def[2]) return;          // a slab is not a room you can stand in
+    add({ id:uid(), structure_id:structId, name:AREA_NAME[k] || k, kind:def[2] });
+  });
+  ROOMS.forEach(r => {
+    const n = (draft.rooms || {})[r[0]] || 0;
+    for (let i = 1; i <= n; i++)
+      add({ id:uid(), structure_id:structId,
+        name:roomName(r) + (n > 1 ? ' ' + i : ''), kind:r[2] });
+  });
+  /* A room somebody named themselves is made exactly as typed, with no kind
+     guessed for it. A wrong kind is worse than none.
+
+     Parents go down before children, so the child has an id to point at. Two
+     passes rather than a sort, because somebody types "Overhead storage" before
+     they think to add the "Second floor" it is on, and the order they thought of
+     things in is not a thing to hold against them. */
+  const named = (draft.namedRooms || []).map(r => typeof r === 'string' ? { name:r } : r)
+    .filter(r => r && r.name);
+  named.filter(r => !r.parent).forEach(r =>
+    add({ id:uid(), structure_id:structId, name:r.name }));
+  named.filter(r => r.parent).forEach(r =>
+    add({ id:uid(), structure_id:structId, name:r.name,
+      parent_area_id: byName[r.parent] || '' }));
+  return out;
 }
 
 /* The whole point of starting empty: this is every table a new person touches,
@@ -2341,36 +2519,7 @@ async function createEverything() {
   structRec.heated = (sys.heat || []).some(h => h !== 'none') ? 'TRUE' : '';
 
   // Areas first, so a thing can land in one.
-  const areaIds = {};
-  (draft.spaces || []).forEach(k => {
-    const def = SPACES.find(x => x[0] === k);
-    if (!def || !def[2]) return;          // a slab is not a room you can stand in
-    const id = uid(); areaIds[k] = id;
-    writes.push({ op:'upsert', table:'area', record:{ id, structure_id:structId,
-      name:AREA_NAME[k] || k, kind:def[2] } });
-  });
-  // One room with corners inside it, not three rooms pretending to be separate.
-  if (draft.openPlan) {
-    const mainId = uid();
-    writes.push({ op:'upsert', table:'area', record:{ id:mainId, structure_id:structId,
-      name:draft.mainRoom || 'Main room' } });
-    (draft.corners || []).forEach(c => {
-      writes.push({ op:'upsert', table:'area', record:{ id:uid(), structure_id:structId,
-        name:c, parent_area_id:mainId } });
-    });
-  }
-  /* A room somebody named themselves is made exactly as typed, with no kind
-     guessed for it. A wrong kind is worse than none. */
-  (draft.namedRooms || []).forEach(nm => {
-    writes.push({ op:'upsert', table:'area', record:{ id:uid(), structure_id:structId, name:nm } });
-  });
-  ROOMS.forEach(r => {
-    if (draft.openPlan && r[0] !== 'bathrooms') return;
-    const n = (draft.rooms || {})[r[0]] || 0;
-    for (let i = 1; i <= n; i++)
-      writes.push({ op:'upsert', table:'area', record:{ id:uid(), structure_id:structId,
-        name:roomName(r) + (n > 1 ? ' ' + i : ''), kind:r[2] } });
-  });
+  areaWrites(structId).forEach(w => writes.push(w));
 
   // One asset per thing, each carrying its template's check-ups.
   const made = [];
@@ -2384,35 +2533,11 @@ async function createEverything() {
       const already = made.find(m => m.type === typeName);
       if (already) { if (name) already.rec.name = name; return already.rec.id; }
     }
-    const id = uid();
-    const rec = { id, property_id:propId, structure_id:structId,
-      asset_type_id:typeIds[typeName], name:name || typeName, area_id: areaId || '',
-      status:'active', power_source:powered || '' };
-    writes.push({ op:'upsert', table:'asset', record:rec });
-    Object.values(STARTER).flat().filter(x => x[0] === typeName)[0][1]
-      .forEach(([title, n, unit, src, whenSource]) => {
-        // An arrival check-up has no date. It is due when she pulls up somewhere
-        // new, and a made-up date would only make it look overdue in the meantime.
-        if (unit === 'arrival') {
-          writes.push({ op:'upsert', table:'schedule', record:{ id:uid(), asset_id:id,
-            title, kind:'on_arrival', responsibility:'owner', cost_source:'entered',
-            muted: picked(typeName, title) ? '' : 'TRUE',
-            interval_source:src, applies_when_source:(whenSource || []).join(', ') } });
-          return;
-        }
-        const due = new Date();
-        if (unit === 'month') due.setMonth(due.getMonth() + n); else due.setFullYear(due.getFullYear() + n);
-        /* Unticked does not mean deleted. The rule is still written, muted, so it
-           can be turned back on without retyping and so the app never quietly
-           forgets what a water heater needs. */
-        writes.push({ op:'upsert', table:'schedule', record:{ id:uid(), asset_id:id,
-          title, kind:'interval', every_n:n, every_unit:unit, responsibility:'owner',
-          cost_source:'entered', next_due_on:due.toISOString().slice(0, 10),
-          muted: picked(typeName, title) ? '' : 'TRUE',
-          interval_source:src, applies_when_source:(whenSource || []).join(', ') } });
-      });
-    made.push({ type:typeName, rec });
-    return id;
+    const t = thingWrites(typeName, { typeIds, propId, structId, areaId, powered,
+      name: name || typeName, keep:picked });
+    t.writes.forEach(w => writes.push(w));
+    made.push({ type:typeName, rec:t.rec });
+    return t.id;
   }
   SYSTEMS.forEach(q => {
     const v = sys[q.k]; if (!v) return;
@@ -2547,6 +2672,7 @@ function schedules() {
 
 function show(s) {
   screen = s;
+  SUBJ_TRAIL = [];
   $('#tabs').hidden = false;
   $('#tabs').innerHTML = [['home','Home'],['add','Add'],['log','Log']]
     .map(([k, l]) => `<button onclick="show('${k}')" aria-current="${k === s ? 'page' : 'false'}">${l}</button>`).join('');
@@ -2668,6 +2794,14 @@ function drawHome() {
     })()}
     ${(() => { const p = papers().filter(x => x.state !== 'ok');
       return p.length ? `<h2>Papers running out</h2>` + p.map(paperCard).join('') : ''; })()}
+    ${(() => { const low = lowStock();
+      return low.length ? `<h2>Running low</h2>` + low.map(x =>
+        `<div class="card tap"><button onclick="drawSupply('${x.id}')">
+          <span class="title">${esc(x.name)}${x.part_number
+            ? ` <span style="font-weight:400;color:var(--muted)">${esc(x.part_number)}</span>` : ''}</span>
+          <p class="meta">${esc(shelfLine(x))}${x.about ? ' · for ' + esc(x.about) : ''}${
+            supplierName(x) ? ' · ' + esc(supplierName(x)) : ''}</p>
+        </button></div>`).join('') : ''; })()}
     ${sch.length ? `<h2>Everything else</h2>` +
       sch.filter(x => x.state === 'ok').map(card).join('') : ''}
     <p class="meta" style="margin-top:1.4rem">${DwelLogs.raw === null ? '' :
@@ -2694,6 +2828,7 @@ function drawHome() {
 
     <h2>Anything else</h2>
     <div class="pick">${[
+      ['buildings','Look around',"subject('property', prop.id)"],
       ['gauge','Take a reading',"drawReading()"],
       ['bell','When to tell me','drawTell()'],
       ['camera','Add a photo','drawPhoto()'],
@@ -2703,6 +2838,7 @@ function drawHome() {
       ['invite','Invite somebody','drawInvite()'],
       ['device','My other device','drawHandoff()'],
       ['animal','Add an animal','drawAnimal()'],
+      ['things','Add a vehicle','drawVehicle()'],
       ...(movers().length ? [['location','I&rsquo;ve moved','drawMoved()']] : []),
       ['addplace','Another place','addPlace()'],
       ['restart','Start over','startOver()']
@@ -2744,7 +2880,21 @@ function intervalBasis(sched) {
 const ANIMAL_TYPES = ["cat", "dog", "bird", "chicken", "duck", "goat", "sheep", "pig", "cow", "horse", "bee"];
 const PRODUCES = ["eggs", "milk", "honey", "wax", "wool", "fibre", "meat", "manure"];
 const HELPS = ["pest_control", "brush_clearing", "pollination", "guarding", "draft", "herding"];
+const VEHICLE_KINDS = ["car", "truck", "suv", "van", "motorcycle", "tractor", "mower", "atv", "utv", "trailer", "boat", "bus", "golf_cart", "snowblower"];
+const VEHICLE_ROLES = ["daily", "second", "project", "seasonal", "work", "spare", "for_sale"];
+const ROAD_STATUS = ["roadworthy", "off_road", "project", "laid_up", "not_sure_yet"];
+const VEHICLE_FUEL = ["gasoline", "diesel", "electric", "hybrid", "propane", "none"];
+const USAGE_UNITS = ["mile", "km", "hour"];
 const ANIMAL_KINDS = ['coop','stable','animal_pen','kennel','barn','pasture','pole_barn'];
+/* Buildings somebody could sleep in. A shed is a building and it is not a
+   home, so asking who lives in it is a question with no answer -- and a
+   question with no answer never goes away, which is how one shed kept a "still
+   blank" tile on the home screen forever. An unrecognised kind counts as a
+   home, on the same rule the rest of the file uses: when we know nothing we
+   filter nothing. Both the tile and the building picker read this, so the two
+   can never disagree about what counts. */
+const LIVED_IN = ['home','wheels','floating','soft','unknown'];
+const lived = () => (DB.structure || []).filter(x => LIVED_IN.includes(kgroup(x.kind)));
 /* What the setup deliberately left blank. Not a nag and not a progress bar —
    "not sure yet" is a real answer everywhere in this app, so this is a list of
    doors, and it shrinks as they get used. */
@@ -2753,36 +2903,543 @@ function todo() {
   const unset = v => !v || v === 'not_sure_yet';
   // Per building, so a ranch with a count on the house and none on the cabin
   // still has something to fill in.
-  const homes = (DB.structure || []).filter(x => kgroup(x.kind) !== 'land');
+  const homes = lived();
   const blank = homes.filter(x => !x.people_living);
   if (blank.length) out.push({ icon:'people',
     label: blank.length === homes.length || homes.length === 1
       ? 'Who lives here' : 'Who lives in ' + blank[0].name,
     go:'drawWhoElse()' });
-  if (unset(st.water) || unset(st.power) || unset(st.heat))
-    out.push({ icon:'systems', label:'What it runs on', go:"say('Coming next — the systems screen moves into the app.')" });
-  if (!(DB.asset || []).length) out.push({ icon:'things', label:"What's in it", go:"say('Coming next.')" });
-  if (!(DB.area || []).length) out.push({ icon:'rooms', label:'Rooms', go:"say('Coming next.')" });
+  /* Every tile opens the screen that asks it. Three of these used to answer a
+     tap with "coming next" -- a list of things to do made of things you cannot
+     do -- while the screens themselves had been shipping since the first run,
+     reachable only during setup. */
+  /* Any building, not just the first. A place whose ADU has never been asked
+     what it runs on still has something to fill in, and the old test only ever
+     looked at structure[0]. */
+  if (buildings().some(x => unset(x.water) || unset(x.power) || unset(x.heat)))
+    out.push({ icon:'systems', label:'What it runs on', go:'drawSystems()' });
+  if (!(DB.asset || []).length)
+    out.push({ icon:'things', label:"What's in it", go:"show('add')" });
+  if (buildings().some(x => !(DB.area || []).some(a => a.structure_id === x.id)))
+    out.push({ icon:'rooms', label:'Rooms', go:'drawRooms()' });
   if (!(DB.animal || []).length) out.push({ icon:'animal', label:'Animals', go:'drawAnimal()' });
   if (!(DB.invite || []).length && (DB.membership || []).length < 2)
     out.push({ icon:'invite', label:'Somebody else', go:'drawInvite()' });
   return out;
 }
+/* ---- reopening a setup screen -------------------------------------------
+   The setup hub already lets you walk into any section in any order. Nothing
+   about those screens is first-run only -- what made them first-run only was
+   that `draft` is empty afterwards and Done had nothing to write to. So rather
+   than build a second Rooms screen and a second Systems screen to sit beside
+   the ones that already work (the same mistake as three animal forms and two
+   job forms), the draft is filled back in FROM the database and Done writes the
+   difference. One screen per subject, for good.
+
+   Additive, like every other write in this app: reopening Rooms and pressing
+   Done adds what is new and touches nothing that is already there. */
+function hydrate(stId) {
+  const st = (DB.structure || []).find(x => x.id === stId)
+    || lived()[0] || (DB.structure || [])[0] || {};
+  const areas = (DB.area || []).filter(a => a.structure_id === st.id);
+  const split = v => String(v || '').split(',').map(x => x.trim()).filter(Boolean);
+  draft = {
+    reopened: st.id,
+    place: (prop || {}).name, pkind: (prop || {}).kind,
+    building: st.name, bkind: st.kind,
+    people: st.people_living || null, kids: st.children_here || '',
+    spaces: split(st.spaces),
+    sys: {}, rooms: {}, namedRooms: [], corners: [], more: [],
+    household: logPeople().map(p => p.name),
+    animals: []
+  };
+  SYSTEMS.forEach(q => {
+    const v = st[q.k];
+    if (!v || v === 'not_sure_yet') return;
+    draft.sys[q.k] = q.multi ? split(v) : v;
+  });
+  /* Counted rooms come back as counts, named ones as names, so the screen
+     reads the way it was filled in. A room is "counted" when its name is the
+     room type, on its own or numbered -- "Bedroom 2" is two bedrooms, "Tack
+     room" is a name somebody chose. */
+  const claimed = new Set();
+  ROOMS.forEach(r => {
+    const base = roomName(r);
+    const mine = areas.filter(a => a.name === base || new RegExp('^' + base + ' \\d+$').test(a.name));
+    if (!mine.length) return;
+    draft.rooms[r[0]] = mine.length;
+    mine.forEach(a => claimed.add(a.id));
+  });
+  Object.values(AREA_NAME).forEach(n => {
+    const a = areas.find(x => x.name === n); if (a) claimed.add(a.id);
+  });
+  /* Everything else is a named room, carrying what it is inside. An open-plan
+     room set up on the first run comes back as exactly that: the main room, and
+     the corners nested under it. The tick box is not restored because it was
+     only ever a way of producing this shape -- and the shape is what is true. */
+  const nameOf = i => (areas.find(a => a.id === i) || {}).name || '';
+  areas.forEach(a => { if (!claimed.has(a.id))
+    draft.namedRooms.push({ name:a.name, parent:nameOf(a.parent_area_id) }); });
+  return st.id;
+}
+/* What a building runs on is a fact about THAT building. An ADU on its own
+   holding tank with a heater under the sink is not on the house system, and
+   answering for the main house and hoping it covers the rest is how the app
+   ends up holding something nobody said. So the question is asked per
+   building, the same question every time. */
+function sysSaid(st) {
+  const n = SYSTEMS.filter(q => st[q.k] && st[q.k] !== 'not_sure_yet').length;
+  return n ? n + ' of ' + SYSTEMS.length + ' answered' : 'nothing said yet';
+}
+const buildings = () => (DB.structure || []).filter(x => x.status !== 'archived');
+function drawSystems(stId) {
+  const list = buildings();
+  if (stId) return reopen('What does it run on?', stId);
+  if (list.length === 1) return reopen('What does it run on?', list[0].id);
+  return pickBuilding({ title:'Which building?',
+    sub:'Each one gets its own answers. A cabin on its own tank is not on the house system.',
+    list, meta:sysSaid, go: x => `drawSystems('${x.id}')` });
+}
+function drawRooms(stId) {
+  const list = buildings();
+  if (stId) return reopen('What is it made of?', stId);
+  if (list.length === 1) return reopen('What is it made of?', list[0].id);
+  return pickBuilding({ title:'Which building?',
+    sub:'Rooms belong to a building, so the question is asked about one at a time.',
+    list, go: x => `drawRooms('${x.id}')`,
+    meta: x => { const n = (DB.area || []).filter(a => a.structure_id === x.id).length;
+      return n ? n + (n === 1 ? ' room' : ' rooms') : 'nothing yet'; } });
+}
+/* Open one of the setup screens on a place that is already set up. */
+function reopen(stepId, stId) {
+  const id = hydrate(stId);
+  flow = flow || 'place';
+  openStep(stepId);
+  return id;
+}
+/* Done, on a reopened screen. Each section writes only its own subject --
+   the screen you were on is the thing you changed. */
+async function saveStep(stepId) {
+  const stId = draft.reopened;
+  const st = (DB.structure || []).find(x => x.id === stId) || {};
+  const writes = [];
+  const rec = { ...st };
+  if (stepId === 'What does it run on?') {
+    SYSTEMS.forEach(q => { const v = draft.sys[q.k];
+      rec[q.k] = v == null ? (st[q.k] || 'not_sure_yet') : (q.multi ? v.join(', ') : v); });
+    rec.heated = (draft.sys.heat || []).some(h => h !== 'none') ? 'TRUE' : '';
+    writes.push({ op:'upsert', table:'structure', record:rec });
+    /* A systems answer lands in two places, here as much as on the first run:
+       "city water" is a true fact with nothing to service, and "a well" is a
+       thing with a maintenance life. Saying you have a well and getting no well
+       to service would make this screen a worse version of the one in setup.
+
+       But a second building saying "a well" is usually the SAME well. Making a
+       second one silently gives the place two wells, two sets of check-ups and
+       two things to test every year, one of which does not exist. So: a thing
+       already on this building is left alone, a thing that exists nowhere is
+       made here, and a thing that exists on some OTHER building is a question
+       for the person -- it is their place, and only they know whether the pipe
+       runs across the yard. */
+    const typeOf = a2 => ((DB.asset_type || []).find(t => t.id === a2.asset_type_id) || {}).name;
+    const live = (DB.asset || []).filter(x => x.status !== 'archived');
+    const here = new Set(live.filter(x => x.structure_id === stId).map(typeOf));
+    const pending = [];
+    SYSTEMS.forEach(q => {
+      const v = draft.sys[q.k]; if (!v) return;
+      (q.multi ? v : [v]).forEach(val => {
+        const o = q.o.find(x => x[0] === val); if (!o) return;
+        o[2].forEach(tn => {
+          if (here.has(tn)) return;       // one well, however many times you say so
+          here.add(tn);
+          const powered = q.k === 'heat' ? val : '';
+          const elsewhere = live.find(x => typeOf(x) === tn && x.structure_id !== stId);
+          if (elsewhere) { pending.push({ tn, sys:q.k, powered, other:elsewhere.id,
+            otherName:(((DB.structure || []).find(y => y.id === elsewhere.structure_id)) || {}).name || 'the place' }); return; }
+          thingWrites(tn, { structId:stId, powered }).writes.forEach(w => writes.push(w));
+        });
+      });
+    });
+    if (pending.length) SHARE_ASK = { stId, pending };
+  } else if (stepId === 'What is it made of?') {
+    rec.spaces = (draft.spaces || []).join(', ');
+    writes.push({ op:'upsert', table:'structure', record:rec });
+    areaWrites(stId).forEach(w => writes.push(w));
+  } else if (stepId === 'Any other buildings?') {
+    (draft.more || []).forEach(b2 => writes.push({ op:'upsert', table:'structure',
+      record:{ id:uid(), property_id:(prop || {}).id, name:b2.name,
+        kind:b2.kind === '__other' ? 'other' : b2.kind,
+        attached_to_id:b2.attached ? stId : '',
+        visibility:b2.theirs ? 'presence_only' : 'shared' } }));
+  }
+  if (!writes.length) { draft = {}; return show('home'); }
+  try { await DwelLogs.write(writes); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  draft = {};
+  await boot();
+  if (SHARE_ASK) return drawShare();
+  show('home');
+  const n = writes.filter(w => w.table === 'area').length;
+  const b3 = writes.filter(w => w.table === 'structure' && w.record.id !== stId).length;
+  const th = writes.filter(w => w.table === 'asset').length;
+  say(n ? n + (n === 1 ? ' room added.' : ' rooms added.')
+        : b3 ? b3 + (b3 === 1 ? ' building added.' : ' buildings added.')
+        : th ? th + (th === 1 ? ' thing to look after added.' : ' things to look after added.')
+        : 'Noted.');
+}
+
+/* Which building? -- asked by every screen whose answers are per-building, and
+   written once because three copies of it is three chances to disagree about
+   which buildings count. */
+function pickBuilding(o) {
+  $('#tabs').hidden = true;
+  app.innerHTML = `<h1>${esc(o.title)}</h1>
+    ${o.sub ? `<p class="sub">${esc(o.sub)}</p>` : ''}
+    ${o.list.map(x => `<div class="card tap"><button onclick="${o.go(x)}">
+      <span class="title">${esc(x.name)}</span>
+      <p class="meta">${esc(o.meta ? o.meta(x) : (kindLabel(x.kind) || ''))}</p>
+    </button></div>`).join('')}
+    <div class="actions"><button class="ghost" onclick="show('home')">Back</button></div>`;
+}
+/* ---- the shelf ----------------------------------------------------------
+
+   The half of a check-up that makes it doable. "Replace the water filter" is
+   not an instruction, it is a shopping trip somebody has to reconstruct from
+   memory every six months: which filter, where from, and is there one already
+   in the cupboard.
+
+   Two ways of knowing how long a stock lasts, kept apart on purpose. A bottle
+   of algaecide doing four treatments is COUNTED -- it is on the label. A propane
+   tank lasting about three months is HEARSAY until two deliveries bracket a
+   measured span, which is why `rate_source` names whoever said so. The counted
+   kind is arithmetic and the app may do it; the other kind is somebody's word
+   and the app must never print it as its own. */
+function shelfLine(x) {
+  const n = Number(x.on_hand);
+  if (!Number.isFinite(n)) return x.rate_estimate || 'no count';
+  const unit = x.unit || (n === 1 ? 'left' : 'left');
+  const head = n + ' ' + unit;
+  const per = Number(x.covers);
+  if (!Number.isFinite(per) || per <= 1) return head;
+  const uses = n * per;
+  return head + ' · ' + uses + (uses === 1 ? ' use' : ' uses');
+}
+const supplyLow = x => {
+  const n = Number(x.on_hand), keep = Number(x.keep_at_least);
+  return Number.isFinite(n) && Number.isFinite(keep) && n <= keep;
+};
+/* The line she drew herself, crossed. Only supplies with a reorder line count --
+   a stock nobody set a line on is not low, it is just a number, and inventing a
+   threshold would be the app deciding something nobody asked it to decide. */
+function lowStock() {
+  const names = {};
+  ['structure','area','asset','animal','vehicle'].forEach(t =>
+    (DB[t] || []).forEach(r => { names[r.id] = r.name || r.kind; }));
+  return (DB.supply || []).filter(x => x.status !== 'archived' && supplyLow(x))
+    .map(x => ({ ...x, about: names[x.asset_id || x.vehicle_id || x.animal_id || x.area_id]
+      || (prop || {}).name || '' }))
+    .sort((a, b) => (Number(a.on_hand) || 0) - (Number(b.on_hand) || 0));
+}
+/* Adding one, or opening one you have. `forKind`/`forId` attach it to whatever
+   you were standing on when you asked. */
+function drawSupply(id, forKind, forId) {
+  const x = id ? (DB.supply || []).find(y => y.id === id) : null;
+  const g = x || {};
+  const owner = x ? null : { kind:forKind, id:forId };
+  const people = (DB.person || []).filter(p => p.status !== 'archived');
+  $('#tabs').hidden = true;
+  const back = x ? `subject('${supplyFor(x)[0]}','${supplyFor(x)[1]}')`
+                 : `subject('${forKind}','${forId}')`;
+  app.innerHTML = `<button class="back" onclick="${back}">&lsaquo; Back</button>
+    <h1>${x ? esc(x.name) : 'Something you keep'}</h1>
+    <p class="sub">${x ? 'What it is and where it comes from.'
+      : 'A filter, a bag of feed, a bottle of treatment — anything you run out of.'}</p>
+
+    <label for="sp-n">What is it?</label>
+    <input id="sp-n" value="${esc(g.name || '')}" placeholder="water filter, layer pellets, algaecide">
+
+    <label for="sp-p">Part or spec <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+    <input id="sp-p" value="${esc(g.part_number || '')}" placeholder="20x25x1, FGE-401, 10W-30">
+    ${tip('The one thing worth writing down. Six months from now this is what gets typed into a ' +
+      'search box, and nobody remembers whether it was the 20x25 or the 16x20.', 'Why the part number')}
+
+    <div class="counts">
+      <div class="count"><span>How many now</span>
+        <input id="sp-h" inputmode="decimal" value="${esc(g.on_hand != null ? g.on_hand : '')}" placeholder="0"></div>
+      <div class="count"><span>Counted in</span>
+        <input id="sp-u" value="${esc(g.unit || '')}" placeholder="bottles, bags"></div>
+    </div>
+    <div class="counts">
+      <div class="count"><span>One does how many?</span>
+        <input id="sp-c" inputmode="numeric" value="${esc(g.covers != null ? g.covers : '')}" placeholder="1"></div>
+      <div class="count"><span>Reorder at</span>
+        <input id="sp-k" inputmode="decimal" value="${esc(g.keep_at_least != null ? g.keep_at_least : '')}" placeholder="—"></div>
+    </div>
+    ${tip('One bottle of pool treatment does four doses, so two bottles is eight goes rather than ' +
+      'two. Leave it blank when one is one — a filter is a filter.', 'One does how many')}
+
+    <label for="sp-s">Buy from <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+    <select id="sp-s"><option value="">Nobody in particular</option>
+      ${people.map(pp => `<option value="${pp.id}"${g.supplier_id === pp.id ? ' selected' : ''}
+        >${esc(pp.name)}${pp.company ? ' — ' + esc(pp.company) : ''}</option>`).join('')}
+      <option value="__new">+ Somewhere new</option></select>
+    <div id="sp-newb" hidden>
+      <label for="sp-sn">Who or where?</label>
+      <input id="sp-sn" placeholder="Ace Hardware, the feed store"></div>
+
+    <label for="sp-l">Where to get it <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+    <input id="sp-l" value="${esc(g.link || '')}" placeholder="a link, a shelf, an aisle">
+
+    ${x ? `<h2 style="margin-top:1.6rem">Bought</h2>
+      ${(DB.completion || []).filter(c => c.supply_id === x.id)
+        .sort((a2, b2) => String(b2.done_on).localeCompare(String(a2.done_on))).slice(0, 6)
+        .map(c => `<div class="row"><span>${esc((c.how_many || '') + ' ' + (x.unit || ''))}</span>
+          <span class="meta">${esc(c.done_on || '')}${c.cost ? ' · ' + esc(money(c.cost)) : ''}</span>
+        </div>`).join('') || '<p class="hint">Nothing recorded yet.</p>'}
+      <div class="actions" style="margin-top:.6rem">
+        <button class="add" onclick="drawBuy('${x.id}')">Bought some</button></div>` : ''}
+
+    <div class="actions">
+      <button class="primary" onclick="saveSupply('${x ? x.id : ''}','${forKind || ''}','${forId || ''}')"
+        >${x ? 'Save' : 'Add'}</button>
+      <button class="ghost" onclick="${back}">Cancel</button>
+    </div>`;
+  const sel = $('#sp-s');
+  if (sel) sel.onchange = e => { $('#sp-newb').hidden = e.target.value !== '__new'; };
+}
+const supplierName = x =>
+  (((DB.person || []).find(p => p.id === x.supplier_id)) || {}).name || '';
+/* Which thing a supply belongs to, for getting back where you came from. */
+function supplyFor(x) {
+  const hit = [['asset','asset_id'], ['vehicle','vehicle_id'], ['animal','animal_id'],
+               ['area','area_id']].find(([, f]) => x[f]);
+  return hit ? [hit[0], x[hit[1]]] : ['property', (prop || {}).id];
+}
+async function saveSupply(id, forKind, forId) {
+  const val = i => (($('#' + i) || {}).value || '').trim();
+  const name = val('sp-n');
+  if (!name) return say('Say what it is first.');
+  const num = v => { const n = Number(v); return v !== '' && Number.isFinite(n) ? n : ''; };
+  const writes = [];
+  let supplier = val('sp-s');
+  if (supplier === '__new') {
+    const who = val('sp-sn');
+    if (!who) return say('Name the place, or pick nobody in particular.');
+    supplier = uid();
+    writes.push({ op:'upsert', table:'person',
+      record:{ id:supplier, name:who, role:'provider' } });
+  }
+  const old = id ? (DB.supply || []).find(y => y.id === id) : null;
+  const rec = { ...(old || {}), id: id || uid(), property_id:(prop || {}).id,
+    name, part_number:val('sp-p'), link:val('sp-l'), unit:val('sp-u'),
+    on_hand:num(val('sp-h')), covers:num(val('sp-c')), keep_at_least:num(val('sp-k')),
+    supplier_id:supplier };
+  if (!id && forKind && SUBJECT[forKind] && forKind !== 'property')
+    rec[SUBJECT[forKind].fk] = forId;
+  writes.push({ op:'upsert', table:'supply', record:rec });
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await boot();
+  const [k, i] = supplyFor(rec);
+  subject(k, i); say(name + (id ? ' saved.' : ' is on the shelf.'));
+}
+/* Buying is a completion, the same as doing the job is. Which means a thing's
+   history reads as one list rather than two to interleave by eye. */
+function drawBuy(id) {
+  const x = (DB.supply || []).find(y => y.id === id) || {};
+  $('#tabs').hidden = true;
+  app.innerHTML = `<button class="back" onclick="drawSupply('${id}')">&lsaquo; Back</button>
+    <h1>Bought ${esc(x.name)}</h1>
+    <p class="sub">${x.part_number ? esc(x.part_number) + ' · ' : ''}${
+      esc(shelfLine(x))} now.</p>
+    <div class="counts">
+      <div class="count"><span>How many${x.unit ? ' (' + esc(x.unit) + ')' : ''}</span>
+        <input id="by-n" inputmode="decimal" value="1"></div>
+      <div class="count"><span>What it cost</span>
+        <input id="by-c" inputmode="decimal" placeholder="—"></div>
+    </div>
+    <label for="by-d">When</label>
+    <input id="by-d" type="date" value="${today()}">
+    <label for="by-w">Anything worth knowing
+      <span style="font-weight:400;color:var(--muted)">— optional</span></label>
+    <input id="by-w" placeholder="had to order it, took a week">
+    <div class="actions">
+      <button class="primary" onclick="saveBuy('${id}')">Add it to the shelf</button>
+      <button class="ghost" onclick="drawSupply('${id}')">Cancel</button>
+    </div>`;
+}
+async function saveBuy(id) {
+  const x = (DB.supply || []).find(y => y.id === id) || {};
+  const many = Number($('#by-n').value);
+  if (!Number.isFinite(many) || many <= 0) return say('How many did you get?');
+  const cost = ($('#by-c').value || '').trim();
+  const note = ($('#by-w').value || '').trim();
+  const when = $('#by-d').value || today();
+  const was = Number(x.on_hand);
+  await DwelLogs.write([
+    { op:'upsert', table:'completion', record:{ id:uid(), supply_id:id, how_many:many,
+      done_on:when, cost: cost === '' ? '' : cost, by_person_id:(me || {}).id,
+      origin:'purchase',
+      what: note || ('Bought ' + many + ' ' + (x.unit || '') ).trim() } },
+    // The shelf keeps itself. A count somebody has to remember to edit is a
+    // count that is wrong by the second time they need it.
+    { op:'upsert', table:'supply', record:{ ...x,
+      on_hand: (Number.isFinite(was) ? was : 0) + many } }]);
+  await boot(); drawSupply(id);
+  say('On the shelf — ' + shelfLine((DB.supply || []).find(y => y.id === id) || {}) + '.');
+}
+
+/* Moving a thing. A fridge carried out to the ADU is the SAME fridge -- same
+   age, same filter history, same warranty -- and an app that answers "moved" by
+   making you delete one and add another throws all of that away and calls it
+   tidying.
+
+   So a move is two writes and no deletions: the thing points somewhere new, and
+   `placement` gets a row saying when it arrived, with the old row closed off.
+   That table has carried `arrived_on` and `left_on` since the beginning and has
+   been waiting for a screen. Where it used to be stays true, because it was. */
+function drawThingTo(kind, id) {
+  const row = subjRow(kind, id); if (!row) return show('home');
+  const places = buildings();
+  $('#tabs').hidden = true;
+  const now = row.structure_id
+    ? ((DB.structure || []).find(x => x.id === row.structure_id) || {}).name : null;
+  app.innerHTML = `<button class="back" onclick="subject('${kind}','${id}')">&lsaquo; Back</button>
+    <h1>Where is ${esc(subjName(kind, id))} now?</h1>
+    <p class="sub">${now ? 'It was in ' + esc(now) + '. ' : ''}It stays the same ${
+      esc(String(SUBJECT[kind].what(row) || 'thing').toLowerCase())} &mdash;
+      same age, same history, same papers.</p>
+
+    <label for="mv-s">Which building?</label>
+    <select id="mv-s" onchange="moveAreas()">
+      <option value="">Nowhere in particular</option>
+      ${places.map(x => `<option value="${x.id}"${row.structure_id === x.id ? ' selected' : ''}
+        >${esc(x.name)}</option>`).join('')}</select>
+
+    <div id="mv-arw"><label for="mv-a">Which room or area
+        <span style="font-weight:400;color:var(--muted)">&mdash; optional</span></label>
+      <select id="mv-a"></select></div>
+
+    <label for="mv-d">When</label>
+    <input id="mv-d" type="date" value="${today()}">
+
+    <div class="actions">
+      <button class="primary" onclick="saveThingTo('${kind}','${id}')">Moved</button>
+      <button class="ghost" onclick="subject('${kind}','${id}')">Cancel</button>
+    </div>`;
+  moveAreas(row.area_id);
+}
+function moveAreas(sel) {
+  const box = $('#mv-a'); if (!box) return;
+  const mine = (DB.area || []).filter(a => a.structure_id === $('#mv-s').value
+    && a.status !== 'archived');
+  box.innerHTML = `<option value="">Somewhere in the building</option>`
+    + mine.map(a => `<option value="${a.id}"${sel === a.id ? ' selected' : ''}
+      >${esc(a.name)}</option>`).join('');
+  $('#mv-arw').hidden = !mine.length;
+}
+async function saveThingTo(kind, id) {
+  const row = subjRow(kind, id), table = SUBJECT[kind].table;
+  const stId = $('#mv-s').value, arId = ($('#mv-a') || {}).value || '';
+  const when = $('#mv-d').value || today();
+  if (stId === row.structure_id && arId === (row.area_id || ''))
+    return say('That is where it already is.');
+  const writes = [{ op:'upsert', table, record:{ ...row, structure_id:stId, area_id:arId } }];
+  // Close the stay it was on rather than editing it: where it used to be is a
+  // fact that stays true, and a history you can rewrite is not a history.
+  const open = (DB.placement || []).find(pl => pl[SUBJECT[kind].fk] === id && !pl.left_on);
+  if (open) writes.push({ op:'upsert', table:'placement',
+    record:{ ...open, left_on:when } });
+  /* Nothing writes a placement when a thing is first added -- a row per asset
+     saying "it is where it is" earns nothing. So the first move is also where
+     the old stay gets written down, backdated to whatever we honestly know: the
+     day it was installed, or blank, which reads as "it was there, we never knew
+     since when". Better than losing that it was ever in the house. */
+  else if (row.structure_id) writes.push({ op:'upsert', table:'placement',
+    record:{ id:uid(), property_id:(prop || {}).id, structure_id:row.structure_id,
+      area_id:row.area_id || '', [SUBJECT[kind].fk]:id,
+      arrived_on:row.installed_on || row.acquired_on || '', left_on:when } });
+  const fresh = { id:uid(), property_id:(prop || {}).id, arrived_on:when,
+    structure_id:stId || '', area_id:arId };
+  fresh[SUBJECT[kind].fk] = id;
+  writes.push({ op:'upsert', table:'placement', record:fresh });
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await boot(); subject(kind, id);
+  const to = stId ? ((DB.structure || []).find(x => x.id === stId) || {}).name : 'nowhere in particular';
+  say('Moved to ' + to + '. Everything it has needed came with it.');
+}
+
+/* Same one, or its own? Asked only when the answer is genuinely unknown to the
+   app -- the place already has one of these and this building has just said it
+   has one too. Sharing records a hookup, which is what `hookup` is for: what a
+   building is ACTUALLY connected to, asked and never assumed. Its own makes a
+   second thing with its own check-ups, which is right for two wells and wrong
+   for one well and a long pipe.
+
+   Not sure yet is the default and it writes neither, because the systems answer
+   on the building is already true and saved -- the ADU has a holding tank
+   either way. Only whose it is stays open. */
+let SHARE_ASK = null;
+const HOOKUP_UTIL = { water:'water', waste:'sewer_septic', power:'electric',
+  heat:'heat', hot_water:'hot_water', cooling:'cooling' };
+function drawShare() {
+  const { stId, pending } = SHARE_ASK;
+  const st = (DB.structure || []).find(x => x.id === stId) || {};
+  $('#tabs').hidden = true;
+  app.innerHTML = `<h1>Same one, or its own?</h1>
+    <p class="sub">${esc(st.name)} needs these and the place already has them.
+      Nothing here changes what you just said it runs on.</p>
+    ${pending.map((x, i) => `<label style="margin-top:1.3rem">${esc(x.tn)}</label>
+      <p class="hint" style="margin:.1rem 0 .5rem">already on ${esc(x.otherName)}</p>
+      <div class="opts">
+        <label class="tick"><input type="radio" name="sh-${i}" value="share">
+          ${esc(st.name)} is on that one</label>
+        <label class="tick"><input type="radio" name="sh-${i}" value="own">
+          ${esc(st.name)} has its own</label>
+        <label class="tick"><input type="radio" name="sh-${i}" value="" checked>
+          Not sure yet</label>
+      </div>`).join('')}
+    ${tip('Sharing records what this building is connected to, so a fault on the well reads as a ' +
+      'fault for everything on it. Its own makes a second thing with its own check-ups. Not sure ' +
+      'yet records neither and asks nothing again until you come back.', 'What each one does')}
+    <div class="actions">
+      <button class="primary" onclick="saveShare()">Save</button>
+      <button class="ghost" onclick="SHARE_ASK=null;show('home')">Not now</button>
+    </div>`;
+}
+async function saveShare() {
+  const { stId, pending } = SHARE_ASK;
+  const writes = [];
+  let shared = 0, own = 0;
+  pending.forEach((x, i) => {
+    const pick = (document.querySelector(`input[name="sh-${i}"]:checked`) || {}).value;
+    if (pick === 'share') {
+      shared++;
+      writes.push({ op:'upsert', table:'hookup', record:{ id:uid(), structure_id:stId,
+        utility:HOOKUP_UTIL[x.sys] || x.sys, source_asset_id:x.other, started_on:today() } });
+    } else if (pick === 'own') {
+      own++;
+      thingWrites(x.tn, { structId:stId, powered:x.powered }).writes.forEach(w => writes.push(w));
+    }
+  });
+  SHARE_ASK = null;
+  if (!writes.length) { show('home'); return say('Left open.'); }
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await boot(); show('home');
+  const bits = [];
+  if (shared) bits.push(shared === 1 ? 'one shared' : shared + ' shared');
+  if (own) bits.push(own === 1 ? 'one of its own' : own + ' of its own');
+  say('Noted — ' + bits.join(', ') + '.');
+}
+
 /* The household half of "who is here", reachable after setup. */
 function drawWhoElse(stId) {
-  const homes = (DB.structure || []).filter(x => !['land'].includes(kgroup(x.kind)));
+  const homes = lived();
   const st = (stId && homes.find(x => x.id === stId)) || (homes.length === 1 ? homes[0] : null);
   $('#tabs').hidden = true;
-  if (!st) {
-    app.innerHTML = `<h1>Which building?</h1>
-      <p class="sub">Counted per building, because that is what wears the things in it.</p>
-      ${homes.map(x => `<div class="card tap"><button onclick="drawWhoElse('${x.id}')">
-        <span class="title">${esc(x.name)}</span>
-        <p class="meta">${x.people_living ? x.people_living + ' recorded' : 'nobody recorded yet'}</p>
-      </button></div>`).join('')}
-      <div class="actions"><button class="ghost" onclick="show('home')">Back</button></div>`;
-    return;
-  }
+  if (!st) return pickBuilding({ title:'Which building?',
+    sub:'Counted per building, because that is what wears the things in it.',
+    list:homes, go: x => `drawWhoElse('${x.id}')`,
+    meta: x => x.people_living ? x.people_living + ' recorded' : 'nobody recorded yet' });
   app.innerHTML = `<h1>Who lives in ${esc(st.name)}?</h1>
     <p class="sub">Both optional. It changes what gets suggested, never what gets decided.</p>
     <div class="counts">
@@ -2795,18 +3452,64 @@ function drawWhoElse(stId) {
     ${tip('This building, not the whole place. The washer in here is worn by the people in here, ' +
       'not by anybody out in the guest cabin. The app will offer a shorter interval on the things ' +
       'that take the beating and say why — it never quietly changes one.', 'Which “here”?')}
+
+    <label style="margin-top:1.3rem">Anybody you want on the log?</label>
+    ${logPeople().map(p => `<div class="card"><span class="title">${esc(p.name)}</span>
+      <button class="quiet" onclick="dropLogPerson('${p.id}','${st.id}')">Remove</button></div>`).join('')}
+    <input id="hh-n" placeholder="a name — you can invite them properly later">
+    <div class="actions" style="margin-top:.6rem">
+      <button class="add" onclick="addLogPerson('${st.id}')">Add person</button></div>
+    ${tip('This only puts their name on the list so an entry can say who did it. It does not ' +
+      'give them the app — that is an invite, and it is a separate decision you make later.',
+      'This is not an invite')}
+
     <div class="actions">
       <button class="primary" onclick="saveWhoElse('${st.id}')">Save</button>
       <button class="ghost" onclick="show('home')">Back</button>
     </div>`;
 }
-async function saveWhoElse(stId) {
-  const st = (DB.structure || []).find(x => x.id === stId);
-  const v = ($('#pl-n').value || '').trim(), n = Number(v);
-  await DwelLogs.write([{ op:'upsert', table:'structure', record:{ ...st,
+/* Names on the log, minus the account holders and the tradespeople. Setup
+   wrote these from draft.household; after setup there is no draft, so the row
+   is written straight out. */
+function logPeople() {
+  const mine = new Set((DB.membership || []).map(m => m.person_id));
+  return (DB.person || []).filter(p =>
+    p.role !== 'provider' && p.status !== 'archived' && !mine.has(p.id));
+}
+/* Adding a name redraws this screen from the database, so anything typed above
+   and not yet saved would be gone -- type "3", add Dave, and the headcount you
+   just typed is wiped by the redraw that shows him. So the count goes down in
+   the same write. Nothing on this screen is lost by doing something else on it. */
+function whoElseWrites(stId) {
+  const st = (DB.structure || []).find(x => x.id === stId) || {};
+  const v = (($('#pl-n') || {}).value || '').trim(), n = Number(v);
+  return [{ op:'upsert', table:'structure', record:{ ...st,
     people_living: v && Number.isFinite(n) && n > 0 ? Math.floor(n) : '',
-    children_here: $('#pl-k').value || '' } }]);
-  await boot(); say('Noted.');
+    children_here: (($('#pl-k') || {}).value) || '' } }];
+}
+async function addLogPerson(stId) {
+  const v = ($('#hh-n').value || '').trim();
+  if (!v) return say('A name, however you say it.');
+  await DwelLogs.write(whoElseWrites(stId).concat(
+    [{ op:'upsert', table:'person', record:{ id:uid(), name:v, role:'resident' } }]));
+  await boot(); drawWhoElse(stId); say(v + ' is on the list.');
+}
+async function dropLogPerson(id, stId) {
+  const name = ((DB.person || []).find(x => x.id === id) || {}).name;
+  /* Archived, not deleted. Their name is on entries that already happened, and
+     an entry that suddenly says nobody did it is a worse record than one
+     naming somebody who has moved out. */
+  await DwelLogs.write(whoElseWrites(stId).concat([{ op:'archive', table:'person', id }]));
+  await boot(); drawWhoElse(stId); say(name ? name + ' taken off the list.' : 'Taken off.');
+}
+async function saveWhoElse(stId) {
+  const added = ($('#hh-n').value || '').trim();
+  const writes = whoElseWrites(stId);
+  // Same rule as the setup steps: a name sitting in the box is an answer.
+  if (added) writes.push({ op:'upsert', table:'person',
+    record:{ id:uid(), name:added, role:'resident' } });
+  await DwelLogs.write(writes);
+  await boot(); show('home'); say(added ? 'Noted — ' + added + ' is on the list.' : 'Noted.');
 }
 /* Offered, never forced, and never automatic. It is their spreadsheet: the app
    does not get to restructure it because it happened to open. Everything it
@@ -2935,13 +3638,326 @@ function stepsOf(id) {
   return (DB.step || []).filter(x => x.job_id === id && x.status !== 'archived')
     .sort((a, b) => (+a.position || 0) - (+b.position || 0));
 }
+/* Which of them a job hangs off, most specific first -- a job on the dishwasher
+   is about the dishwasher, not about the kitchen it stands in. One list, so the
+   words and the link can never point at different things. */
+const JOB_AT = [['asset','asset_id'], ['vehicle','vehicle_id'], ['animal','animal_id'],
+                ['area','area_id'], ['structure','structure_id']];
 /* What it is about, in words, whichever of the five it hangs off. */
 function jobAbout(j) {
-  const n = t => ((DB[t] || []).find(r => r.id === j[t.replace('structure','structure')
-    .replace(/^(\w+)$/, '$1') + '_id']) || {});
-  const look = (t, k) => ((DB[t] || []).find(r => r.id === j[k]) || {}).name;
-  return look('asset','asset_id') || look('area','area_id') || look('structure','structure_id')
-      || look('animal','animal_id') || (prop || {}).name || '';
+  const at = JOB_AT.map(([k, f]) => [k, j[f]]).find(([, v]) => v);
+  return (at && subjName(at[0], at[1])) || (prop || {}).name || '';
+}
+
+/* ---- the subject screen -------------------------------------------------
+
+   Every thing in here is the same shape from a distance: it is somewhere, it
+   has work against it, it holds other things, it has cost money and it has a
+   past. A room, a dishwasher, a goat, a car, a building, a person. Writing that
+   screen seven times is writing the same drift seven times -- the Add screen
+   and the setup screen had already disagreed about what a check-up is, and
+   those were only two copies of something much smaller.
+
+   So: one renderer, and a table of what actually differs. What differs turns
+   out to be three things -- the column other tables use to point at it, the
+   words for what it is, and what it holds. Everything else is shared.
+
+   The FK is the whole trick. `job` carries asset_id, area_id, structure_id,
+   animal_id, vehicle_id and property_id; so do schedule, completion, reading,
+   supply and document. "Show me everything about this" was already answerable
+   on every subject in the model. There was just no screen asking. */
+const SUBJECT = {
+  property: { table:'property', fk:'property_id', icon:'buildings',
+    what: () => 'Place',
+    holds: ['structure','area','animal','vehicle','asset'] },
+  structure: { table:'structure', fk:'structure_id', icon:'buildings',
+    what: st => kindLabel(st.kind) || 'Building',
+    holds: ['area','asset','animal','vehicle'] },
+  area: { table:'area', fk:'area_id', icon:'rooms',
+    what: a => (a.kind || 'Room').replace(/_/g, ' '),
+    holds: ['area','asset','animal','vehicle'] },
+  asset: { table:'asset', fk:'asset_id', icon:'things',
+    what: a => ((DB.asset_type || []).find(t => t.id === a.asset_type_id) || {}).name || 'Thing',
+    holds: ['asset'] },
+  animal: { table:'animal', fk:'animal_id', icon:'animal',
+    what: a => typeLabel(a.type), holds: [] },
+  vehicle: { table:'vehicle', fk:'vehicle_id', icon:'things',
+    what: v => [v.year, v.make, v.model].filter(Boolean).join(' ')
+      || (v.kind || 'vehicle').replace(/_/g, ' '), holds: [] },
+  /* A person is the one subject nothing points at with a matching *_id: work
+     reaches them through owner_id and claimed_by_id, which is two columns and a
+     different question -- "meant for" is not "did". Handled where it differs,
+     shared everywhere else. */
+  person: { table:'person', fk:null, icon:'people',
+    what: p => (p.role || '').replace(/_/g, ' ') || 'Person', holds: [] }
+};
+const subjRow = (kind, id) => ((DB[(SUBJECT[kind] || {}).table] || []).find(r => r.id === id) || null);
+const subjName = (kind, id) => {
+  const r = subjRow(kind, id); if (!r) return '';
+  return r.name || (SUBJECT[kind].what(r) || '').replace(/^./, c => c.toUpperCase());
+};
+/* Rows of `table` that sit inside this subject. Areas are the exception worth
+   writing down: they hang off a building by `structure_id` and off each other by
+   `parent_area_id`, so a barn whose second floor holds the storage must show the
+   floor and not the storage -- otherwise the list is flat and the nesting you
+   just described is nowhere on screen. */
+function subjHolds(kind, id, child) {
+  const live = (DB[child] || []).filter(r => r.status !== 'archived' && r.id !== id);
+  if (child === 'area') {
+    if (kind === 'area') return live.filter(r => r.parent_area_id === id);
+    if (kind === 'structure') return live.filter(r => r.structure_id === id && !r.parent_area_id);
+    return [];
+  }
+  return live.filter(r => r[SUBJECT[kind].fk] === id);
+}
+/* Work pointing at this subject. A person's is the work they hold or were
+   meant for; everything else is the column with its name on it. */
+function subjJobs(kind, id) {
+  const open = j => j.status !== 'done' && j.status !== 'archived';
+  if (kind === 'person')
+    return (DB.job || []).filter(j => j.claimed_by_id === id || j.owner_id === id);
+  return (DB.job || []).filter(j => j[SUBJECT[kind].fk] === id);
+}
+/* What it has cost. Some subjects are named on a completion directly; the rest
+   reach money through the jobs that were done on them. Both, never twice --
+   a completion naming the dishwasher AND the job on the dishwasher is one
+   payment, and counting it twice would make the screen a liar about the only
+   number on it nobody can check by eye. */
+function subjSpend(kind, id) {
+  const fk = SUBJECT[kind].fk, seen = new Set(), out = [];
+  const take = c => { if (!c || seen.has(c.id)) return; seen.add(c.id); out.push(c); };
+  if (fk && (DB.completion || []).some(c => fk in c))
+    (DB.completion || []).filter(c => c[fk] === id).forEach(take);
+  const jobs = new Set(subjJobs(kind, id).map(j => j.id));
+  (DB.completion || []).filter(c => jobs.has(c.job_id)).forEach(take);
+  return out;
+}
+const money = v => {
+  const n = Number(v);
+  return Number.isFinite(n) && n ? n.toLocaleString(undefined,
+    { style:'currency', currency:((prop || {}).currency || 'USD'),
+      maximumFractionDigits:0 }) : '';
+};
+/* Where it is, from the inside out. Each step is tappable, because "which
+   building was that room in" is a question you ask by wanting to go there. */
+function subjWhere(kind, row) {
+  const out = [];
+  let a = kind === 'area' ? (DB.area || []).find(x => x.id === row.parent_area_id)
+        : row.area_id ? (DB.area || []).find(x => x.id === row.area_id) : null;
+  let guard = 0;
+  while (a && guard++ < 6) {
+    out.push(['area', a.id, a.name]);
+    a = (DB.area || []).find(x => x.id === a.parent_area_id);
+  }
+  const stId = kind === 'structure' ? row.attached_to_id : row.structure_id;
+  const st = stId && (DB.structure || []).find(x => x.id === stId);
+  if (st) out.push(['structure', st.id, st.name]);
+  if (kind !== 'property' && prop) out.push(['property', prop.id, prop.name]);
+  /* On a place that is one building, the house is named after the place, so the
+     chain comes out "Home > Home". Saying it twice is not more information. */
+  return out.filter((x, i) => !i || x[2] !== out[i - 1][2]);
+}
+
+function subject(kind, id) {
+  const def = SUBJECT[kind]; if (!def) return show('home');
+  const row = subjRow(kind, id); if (!row) return show('home');
+  $('#tabs').hidden = true;
+  const last = SUBJ_TRAIL[SUBJ_TRAIL.length - 1];
+  if (!last || last[0] !== kind || last[1] !== id) SUBJ_TRAIL.push([kind, id]);
+  if (SUBJ_TRAIL.length > 20) SUBJ_TRAIL.shift();
+  const name = subjName(kind, id);
+  const jobs = subjJobs(kind, id);
+  const open = jobs.filter(j => j.status !== 'done' && j.status !== 'archived');
+  const spend = subjSpend(kind, id);
+  const total = spend.reduce((a, c) => a + (Number(c.cost) || 0), 0);
+  const where = subjWhere(kind, row);
+  const has = t => (DB[t] || []).filter(r => def.fk && r[def.fk] === id);
+  const papers = has('document'), stock = has('supply'), reads = has('reading');
+  const rules = has('schedule').filter(r => r.muted !== 'TRUE');
+
+  const sect = (title, body, add) => !body && !add ? '' :
+    `<h2 style="margin-top:1.6rem">${esc(title)}</h2>${body || ''}${add || ''}`;
+  const tap = (k, i, label, meta) => `<div class="card tap"><button onclick="subject('${k}','${i}')">
+    <span class="title">${esc(label)}</span>${meta ? `<p class="meta">${esc(meta)}</p>` : ''}</button></div>`;
+
+  app.innerHTML = `<button class="back" onclick="subjBack()">&lsaquo; Back</button>
+    <p class="step">${esc(String(def.what(row) || '').replace(/^./, c => c.toUpperCase()))}</p>
+    <h1>${esc(name)}</h1>
+    ${where.filter(x => x[2] !== name).length ? `<p class="sub">${
+      where.filter(x => x[2] !== name).map(([k, i, n]) =>
+      `<button class="skiplink" onclick="subject('${k}','${i}')">${esc(n)}</button>`)
+      .join(' <span aria-hidden="true">&rsaquo;</span> ')}</p>` : ''}
+
+    ${(() => {
+      /* A thing can be present and dead at the same time, and the two facts live
+         in different places on purpose: the building still says it has an attic
+         fan, because it does, and the fan says the motor has gone. Neither is
+         wrong and neither cancels the other -- but standing in front of the
+         thing you should not have to read the job list to learn it does not
+         work. Worst open fault wins; "works" is not a state worth a chip. */
+      const rank = { unusable:3, degraded:2, intermittent:1 };
+      const worst = open.filter(j => rank[j.state])
+        .sort((x, y) => rank[y.state] - rank[x.state])[0];
+      if (!worst) return '';
+      const word = { unusable:'not working', degraded:'not right',
+                     intermittent:'works sometimes' }[worst.state];
+      return `<p style="margin:.4rem 0 0"><span class="chip ${
+        worst.state === 'intermittent' ? 'soon' : 'attn'}">${esc(word)}</span></p>`;
+    })()}
+
+    ${sect('Needs doing',
+      open.length ? open.map(j => `<div class="card tap"><button onclick="drawJob('${j.id}')">
+          <span class="title">${esc(j.title)}</span>
+          <p class="meta">${esc((JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'job')}${
+            j.due_on ? ' &middot; ' + esc(whenDue(daysTo(j.due_on))) : ''}</p></button></div>`).join('')
+        : `<p class="hint">Nothing open here.</p>`,
+      `<div class="actions" style="margin-top:.6rem">
+        <button class="add" onclick="addJobHere('${kind}','${id}')">Add a job here</button></div>`)}
+
+    ${def.holds.map(child => {
+      const rows = subjHolds(kind, id, child);
+      if (!rows.length) return '';
+      return sect(HOLD_LABEL[child] || child,
+        rows.map(r => tap(child, r.id, r.name || SUBJECT[child].what(r),
+          SUBJECT[child].what(r))).join(''));
+    }).join('')}
+
+    ${(() => {
+      /* What it is connected to, and what is connected to it. A shared well is
+         two facts from two directions, and the building that does not own it is
+         the one that needs telling -- at 11pm it is the pump in the other
+         building that has stopped. */
+      const fed = (DB.hookup || []).filter(h => h.structure_id === id && !h.ended_on);
+      const feeds = kind === 'asset'
+        ? (DB.hookup || []).filter(h => h.source_asset_id === id && !h.ended_on) : [];
+      if (!fed.length && !feeds.length) return '';
+      const asset = i => (DB.asset || []).find(x => x.id === i) || {};
+      const struct = i => (DB.structure || []).find(x => x.id === i) || {};
+      /* One link is not the answer. Power reaching a shed from the barn by way
+         of the pump house is three buildings, and the breaker that matters at
+         11pm may be two of them back. So the chain is walked: source thing, the
+         building it stands in, that building's hookup for the same utility,
+         again. Capped, because somebody will eventually wire a loop. */
+      const upstream = h => {
+        const out = [], seen = new Set([id]);
+        let cur = h;
+        while (cur && out.length < 6) {
+          const a2 = asset(cur.source_asset_id); if (!a2.id) break;
+          const inSt = a2.structure_id;
+          out.push(inSt && inSt !== id ? struct(inSt).name : null);
+          if (!inSt || seen.has(inSt)) break;
+          seen.add(inSt);
+          cur = (DB.hookup || []).find(x => x.structure_id === inSt
+            && x.utility === h.utility && !x.ended_on);
+        }
+        return out.filter(Boolean);
+      };
+      return sect('Fed by',
+        fed.map(h => { const a2 = asset(h.source_asset_id);
+          const chain = upstream(h);
+          return `<div class="card tap"><button onclick="subject('asset','${a2.id}')">
+            <span class="title">${esc(a2.name || h.utility)}</span>
+            <p class="meta">${esc(String(h.utility || '').replace(/_/g, ' '))}${
+              chain.length ? ' &middot; ' + chain.map(esc).join(' &lsaquo; ') : ''}${
+              h.started_on ? '' : ' &middot; not live yet'}</p>
+          </button></div>`; }).join('')
+        + feeds.map(h => `<div class="card tap"><button onclick="subject('structure','${h.structure_id}')">
+            <span class="title">${esc(struct(h.structure_id).name || 'a building')}</span>
+            <p class="meta">runs on this${h.utility ? ' &middot; ' +
+              esc(String(h.utility).replace(/_/g, ' ')) : ''}</p></button></div>`).join(''));
+    })()}
+
+    ${rules.length ? sect('Comes round',
+      rules.map(r => `<div class="card tap"><button onclick="openSched('${r.id}')">
+        <span class="title">${esc(r.title)}</span>
+        <p class="meta">${r.every_n ? 'every ' + esc(r.every_n) + ' ' + esc(r.every_unit)
+          + (r.every_n > 1 ? 's' : '') : esc(r.kind || '')}${
+          r.next_due_on ? ' &middot; ' + esc(whenDue(daysTo(r.next_due_on))) : ''}</p>
+      </button></div>`).join('')) : ''}
+
+    ${spend.length ? sect('What it has cost',
+      `<div class="card"><span class="title">${esc(money(total) || 'nothing recorded')}</span>
+        <p class="meta">across ${spend.length} ${spend.length === 1 ? 'entry' : 'entries'}${
+          spend.filter(c => !c.cost).length
+            ? ' &middot; ' + spend.filter(c => !c.cost).length + ' with no figure' : ''}</p></div>`) : ''}
+
+    ${spend.length ? sect('Already done',
+      `<div class="rows">${spend.slice().sort((a, b) =>
+        String(b.done_on).localeCompare(String(a.done_on))).slice(0, 8)
+        .map(c => `<div class="row"><span>${esc(c.what || 'Done')}</span>
+          <span class="meta">${esc(c.done_on || '')}${c.cost ? ' &middot; ' + esc(money(c.cost)) : ''}</span>
+        </div>`).join('')}</div>`) : ''}
+
+    ${reads.length ? sect('Readings',
+      `<div class="rows">${reads.slice().sort((a, b) =>
+        String(b.taken_on).localeCompare(String(a.taken_on))).slice(0, 6)
+        .map(r => `<div class="row"><span>${esc(r.what || 'Reading')}</span>
+          <span class="meta">${esc(r.value != null ? r.value : (r.result || ''))} ${
+            esc(r.unit || '')} &middot; ${esc(r.taken_on || '')}</span></div>`).join('')}</div>`) : ''}
+
+    ${(MOVABLE.includes(kind) || kind === 'area') ? sect('On the shelf',
+      stock.map(x => `<div class="card tap"><button onclick="drawSupply('${x.id}')">
+        <span class="title">${esc(x.name)}${x.part_number
+          ? ` <span style="font-weight:400;color:var(--muted)">${esc(x.part_number)}</span>` : ''}</span>
+        <p class="meta">${esc(shelfLine(x))}${supplyLow(x)
+          ? ' <span class="chip soon">running low</span>' : ''}</p></button></div>`).join(''),
+      `<div class="actions" style="margin-top:.6rem">
+        <button class="add" onclick="drawSupply('', '${kind}', '${id}')">Something you keep</button></div>`)
+      : ''}
+
+    ${papers.length ? sect('Papers',
+      papers.map(d => `<div class="card tap"><button onclick="drawDoc('${d.id}')">
+        <span class="title">${esc(d.title || d.kind || 'Paper')}</span>
+        <p class="meta">${esc(d.expires_on ? 'expires ' + d.expires_on : (d.kind || ''))}</p>
+      </button></div>`).join('')) : ''}
+
+    ${(() => {
+      const been = (DB.placement || []).filter(pl => pl[def.fk] === id && pl.left_on);
+      if (!been.length) return '';
+      const where = pl => ((DB.area || []).find(x => x.id === pl.area_id) || {}).name
+        || ((DB.structure || []).find(x => x.id === pl.structure_id) || {}).name || 'somewhere';
+      return sect('Where it has been',
+        `<div class="rows">${been.slice().sort((x, y) =>
+          String(y.arrived_on).localeCompare(String(x.arrived_on))).map(pl =>
+          `<div class="row"><span>${esc(where(pl))}</span>
+            <span class="meta">${esc(pl.arrived_on || '')}&ndash;${esc(pl.left_on || '')}</span>
+          </div>`).join('')}</div>`);
+    })()}
+
+    <div class="actions" style="margin-top:1.6rem">
+      ${MOVABLE.includes(kind) ? `<button class="ghost"
+        onclick="drawThingTo('${kind}','${id}')">Move it</button>` : ''}
+      <button class="ghost" onclick="show('home')">Home</button>
+    </div>`;
+  window.scrollTo(0, 0);
+}
+const HOLD_LABEL = { area:'Rooms and areas', asset:'Things', animal:'Animals',
+  vehicle:'Vehicles', structure:'Buildings' };
+/* A room does not move and a property does not move. Everything else can. */
+const MOVABLE = ['asset', 'animal', 'vehicle'];
+/* Back goes where you came from, which on a drill-down is up the chain rather
+   than out to the home screen. A trail of one is still a trail. */
+let SUBJ_TRAIL = [];
+function subjBack() {
+  SUBJ_TRAIL.pop();                     // the one we are on
+  const prev = SUBJ_TRAIL.pop();
+  return prev ? subject(prev[0], prev[1]) : show('home');
+}
+/* A job added from a thing already knows what it is about -- which is the
+   whole reason to add it from there rather than from the Add tab, where you
+   would have to say it again. Same writer as newJob(): the row goes down first
+   and the screen opens on a real job, because a form backed by nothing is how
+   you lose what somebody typed into it. */
+async function addJobHere(kind, id) {
+  const fk = SUBJECT[kind].fk;
+  const j = { id:uid(), property_id:(prop || {}).id, kind:'task', title:'',
+    source:'owner', status:'open', column:'todo' };
+  if (fk && kind !== 'property') j[fk] = id;
+  try { await DwelLogs.write([{ op:'upsert', table:'job', record:j }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await reload();
+  drawJob(j.id);
+  say('Give it a name. It is already against ' + (subjName(kind, id) || 'this') + '.');
 }
 
 function drawJob(id) {
@@ -2953,9 +3969,37 @@ function drawJob(id) {
   app.innerHTML = `<button class="back" onclick="show('home')">&lsaquo; Back</button>
     <p class="step">${esc((JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'Job')}</p>
     <h1>${esc(j.title || 'A new job')}</h1>
-    <p class="sub">${esc(jobAbout(j))}${sched ? ' &middot; from a rule' : ''}</p>
+    <p class="sub">${(() => {
+      /* What it is about is a place you can go, not a word. Reading "Dishwasher"
+         and wanting to know what else it has needed is the same impulse as
+         tapping it. */
+      const at = JOB_AT.map(([k, f]) => [k, j[f]]).find(([, v]) => v);
+      const nm = jobAbout(j);
+      return at && subjRow(at[0], at[1])
+        ? `<button class="skiplink" onclick="subject('${at[0]}','${at[1]}')">${esc(nm)}</button>`
+        : esc(nm);
+    })()}${sched ? ' &middot; from a rule' : ''}</p>
 
     ${jobFields(j, true, id)}
+
+    ${(() => {
+      /* "Replace the water filter" is not an instruction, it is a shopping trip
+         somebody reconstructs from memory twice a year. What the thing keeps on
+         the shelf belongs here, at the moment of doing it, rather than two
+         screens away under the thing it is for. */
+      const at = JOB_AT.map(([k, f]) => [k, j[f]]).find(([, v]) => v);
+      if (!at) return '';
+      const fk = (SUBJECT[at[0]] || {}).fk;
+      const mine = (DB.supply || []).filter(x => x.status !== 'archived' && x[fk] === at[1]);
+      if (!mine.length) return '';
+      return `<h2>What it takes</h2>` + mine.map(x =>
+        `<div class="card tap"><button onclick="drawSupply('${x.id}')">
+          <span class="title">${esc(x.name)}${x.part_number
+            ? ` <span style="font-weight:400;color:var(--muted)">${esc(x.part_number)}</span>` : ''}</span>
+          <p class="meta">${esc(shelfLine(x))}${supplierName(x) ? ' · ' + esc(supplierName(x)) : ''}${
+            supplyLow(x) ? ' <span class="chip soon">running low</span>' : ''}</p>
+        </button></div>`).join('');
+    })()}
 
     ${(() => {
       const mine = j.claimed_by_id === me.id, since = sinceWords(j.claimed_at);
@@ -4210,6 +5254,8 @@ function keepAnimalNames() {
   const ticked = c => [...document.querySelectorAll(c)].filter(e => e.checked).map(e => e.value);
   if (document.querySelector('.an-p')) draft.an.produces = ticked('.an-p');
   if (document.querySelector('.an-h')) draft.an.helps_with = ticked('.an-h');
+  if (draft.an.names.some(Boolean) || (draft.an.produces || []).length
+      || (draft.an.helps_with || []).length) draft.an.touched = true;
 }
 /* Both of these rebuild the name boxes, and both are wired to a change event,
    which fires on BLUR. Tapping from the count straight into a name box would
@@ -4219,7 +5265,7 @@ function keepAnimalNames() {
    actually changed, do nothing at all. */
 function anKind(t) {
   if (!draft.an || draft.an.type === t) return;
-  keepAnimalNames(); draft.an.type = t;
+  keepAnimalNames(); draft.an.type = t; draft.an.touched = true;
   const box = $('#an-names'); if (box) box.innerHTML = animalNames();
 }
 function anCount(v) {
@@ -4231,7 +5277,7 @@ function anCount(v) {
      mid-keystroke fights the typist. Junk gets normalised when they leave. */
   if (want === draft.an.n) { if (q && !typing && q.value !== String(want)) q.value = String(want); return; }
   keepAnimalNames();
-  draft.an.n = want;
+  draft.an.n = want; draft.an.touched = true;
   if (q && !typing) q.value = String(want);
   const box = $('#an-names'); if (box) box.innerHTML = animalNames();
   const h2 = box && box.previousElementSibling;
@@ -4264,6 +5310,115 @@ async function saveAnimal() {
   await boot();
   say(n > 1 ? n + ' ' + unitNoun(t) + 's are on the list.'
             : (first || ('The ' + t)) + ' is on the list.');
+}
+/* ---- vehicles -----------------------------------------------------------
+   A vehicle is the one thing here that wears by use rather than by time. A car
+   doing three thousand miles a year and one doing thirty thousand want the same
+   oil change at very different moments, and a schedule that only knows about
+   months is wrong for both. So the meter's unit is asked once, here, and a rule
+   can then be due at a distance instead of on a date.
+
+   It is also, unlike a dishwasher, a thing whose papers expire on somebody
+   else's calendar -- and a car up on stands still gets billed for both unless
+   somebody says it is off the road. Which is why that question is asked at all:
+   not to categorise it, but to stop the app nagging about a test on something
+   that has not turned a wheel in two years. */
+const VEHICLE_LABEL = { suv:'SUV', utv:'UTV', atv:'ATV' };
+const vLabel = k => VEHICLE_LABEL[k] || String(k || '').replace(/_/g, ' ');
+const ROAD_LABEL = { roadworthy:'on the road', off_road:'off the road, declared',
+  project:'a project', laid_up:'laid up', not_sure_yet:'not sure yet' };
+const ROLE_LABEL = { daily:'the daily driver', second:'a second car', project:'a project',
+  seasonal:'seasonal', work:'work', spare:'a spare', for_sale:'for sale' };
+const UNIT_LABEL = { mile:'miles', km:'kilometres', hour:'hours' };
+function drawVehicle(id) {
+  $('#tabs').hidden = true;
+  const v = id ? (DB.vehicle || []).find(x => x.id === id) : null;
+  const people = (DB.person || []).filter(p => p.role !== 'provider' && p.status !== 'archived');
+  const places = (DB.structure || []).filter(x => x.status !== 'archived');
+  const areas = (DB.area || []).filter(x => x.status !== 'archived');
+  const opt = (list, cur, label) => list.map(x =>
+    `<option value="${esc(x)}"${cur === x ? ' selected' : ''}>${esc(label ? label(x) : x)}</option>`).join('');
+  const g = v || {};
+  app.innerHTML = `<button class="back" onclick="show('home')">&lsaquo; Back</button>
+    <h1>${v ? 'Edit ' + esc(g.name || vLabel(g.kind)) : 'Add a vehicle'}</h1>
+    <p class="sub">Something you drive. A camper you sleep in is a building &mdash;
+      it raises questions about water and waste, not about tyres.</p>
+
+    <label for="v-k">What is it?</label>
+    <select id="v-k">${opt(VEHICLE_KINDS, g.kind || 'car', vLabel)}</select>
+
+    <label for="v-n">Call it <span style="font-weight:400;color:var(--muted)">&mdash; optional</span></label>
+    <input id="v-n" value="${esc(g.name || '')}" placeholder="the 442, the red truck">
+
+    <div class="counts" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="count"><span>Year</span>
+        <input id="v-y" inputmode="numeric" value="${esc(g.year || '')}" placeholder="1969"></div>
+      <div class="count"><span>Make</span>
+        <input id="v-mk" value="${esc(g.make || '')}" placeholder="Oldsmobile"></div>
+      <div class="count"><span>Model</span>
+        <input id="v-md" value="${esc(g.model || '')}" placeholder="Cutlass"></div>
+    </div>
+
+    <label for="v-r">Kept as</label>
+    <select id="v-r">${opt(VEHICLE_ROLES, g.role || 'daily', x => ROLE_LABEL[x] || x)}</select>
+    ${tip('A project does not want an oil change every six months &mdash; it wants the list of what is ' +
+      'left before it runs. This decides what gets suggested and nothing else.', 'Why we ask what it is for')}
+
+    <label for="v-rs">On the road?</label>
+    <select id="v-rs">${opt(ROAD_STATUS, g.road_status || 'roadworthy', x => ROAD_LABEL[x] || x)}</select>
+
+    <div class="counts">
+      <div class="count"><span>Runs on</span>
+        <select id="v-f">${opt(VEHICLE_FUEL, g.fuel || 'gasoline', x => x.replace(/_/g,' '))}</select></div>
+      <div class="count"><span>Meter reads in</span>
+        <select id="v-u">${opt(USAGE_UNITS, g.usage_unit || 'mile', x => UNIT_LABEL[x] || x)}</select></div>
+    </div>
+
+    <label for="v-s">Where does it live?</label>
+    <select id="v-s"><option value="">Nowhere in particular</option>
+      ${places.map(x => `<option value="${x.id}"${g.structure_id === x.id ? ' selected' : ''}
+        >${esc(x.name)}</option>`).join('')}</select>
+    ${areas.length ? `<label for="v-a">Or which area?</label>
+      <select id="v-a"><option value="">&mdash;</option>
+        ${areas.map(x => `<option value="${x.id}"${g.area_id === x.id ? ' selected' : ''}
+          >${esc(x.name)}</option>`).join('')}</select>` : ''}
+
+    <label for="v-o">Whose is it?</label>
+    <select id="v-o"><option value="">It belongs to the place</option>
+      ${people.map(pp => `<option value="${pp.id}"${g.owner_id === pp.id ? ' selected' : ''}
+        >${esc(pp.name)}</option>`).join('')}</select>
+
+    <details class="disclose"><summary>VIN and plate</summary>
+      <label for="v-vin">VIN or serial</label>
+      <input id="v-vin" value="${esc(g.vin || '')}" placeholder="what a parts counter asks for">
+      <label for="v-p">Plate</label>
+      <input id="v-p" value="${esc(g.plate || '')}"></details>
+
+    <div class="actions">
+      <button class="primary" onclick="saveVehicle('${v ? v.id : ''}')">${v ? 'Save' : 'Add'}</button>
+      <button class="ghost" onclick="show('home')">Cancel</button>
+    </div>`;
+}
+async function saveVehicle(id) {
+  const val = i => (($('#' + i) || {}).value || '').trim();
+  const kind = val('v-k') || 'car';
+  const rec = { id: id || uid(), property_id:prop.id,
+    name: val('v-n') || [val('v-y'), val('v-mk'), val('v-md')].filter(Boolean).join(' ')
+          || uniqueName(vLabel(kind), (DB.vehicle || []).map(x => x.name)),
+    kind, make:val('v-mk'), model:val('v-md'), year:val('v-y'),
+    vin:val('v-vin'), plate:val('v-p'),
+    structure_id:val('v-s'), area_id:val('v-a'),
+    role:val('v-r') || 'daily', road_status:val('v-rs'), fuel:val('v-f'),
+    usage_unit:val('v-u') || 'mile', owner_id:val('v-o') };
+  if (!id) rec.acquired_on = '';
+  const writes = [{ op:'upsert', table:'vehicle', record:rec }];
+  if (!id) writes.push({ op:'upsert', table:'placement', record:{ id:uid(), vehicle_id:rec.id,
+    property_id:prop.id, structure_id:rec.structure_id || '', area_id:rec.area_id || '',
+    arrived_on:today() } });
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  await boot();
+  subject('vehicle', rec.id);
+  say(esc(rec.name) + (id ? ' saved.' : ' is on the list.'));
 }
 function drawMoved(stId) {
   const list = movers();
@@ -4362,10 +5517,26 @@ function wipe() {
   DB = null; me = null; prop = null;
   boot();
 }
+/* A smoke detector is replaced after ten years, which is right, and the card
+   read "in 3652 days", which nobody has ever counted. Days are how the app
+   stores a distance, not how a person says one: past a fortnight it is weeks,
+   past a couple of months it is months, and past two years it is years. */
+function whenDue(d) {
+  if (d == null) return 'no date yet';
+  const n = Math.abs(d);
+  const unit = n < 14 ? [n, 'day']
+    : n < 70 ? [Math.round(n / 7), 'week']
+    : n < 330 ? [Math.round(n / 30.44), 'month']
+    : [Math.round(n / 365.25), 'year'];
+  const said = unit[0] + ' ' + unit[1] + (unit[0] === 1 ? '' : 's');
+  if (d < 0) return said + ' late';
+  if (d === 0) return 'today';
+  if (d === 1) return 'tomorrow';
+  return 'in ' + said;
+}
 const card = s => `<div class="card tap"><button onclick="openSched('${s.id}')">
   <span class="title">${esc(s.title)}</span>
-  <p class="meta">${esc(s.thing)} · ${s.d == null ? 'no date yet'
-    : s.d < 0 ? Math.abs(s.d) + ' days late' : s.d === 0 ? 'today' : 'in ' + s.d + ' days'}
+  <p class="meta">${esc(s.thing)} · ${whenDue(s.d)}
     <span class="chip ${s.state}">${{ attn:'needs you', soon:'due soon', ok:'fine' }[s.state]}</span></p>
 </button></div>`;
 
@@ -4445,13 +5616,32 @@ function drawAdd() {
       <select id="a-bk" onchange="otherKind(this)">${kindOptions('shed')}</select>
       <div id="a-bk-other" hidden><label for="a-bko">What is it?</label>
         <input id="a-bko" placeholder="in your own words"></div></div>
+    <div id="a-arw"><label for="a-ar">Which room or area
+        <span style="font-weight:400;color:var(--muted)">&mdash; optional</span></label>
+      <select id="a-ar"><option value="">Somewhere in the building</option></select></div>
     <label for="a-t">What kind of thing?</label>
     <select id="a-t">${types.map(([c, n]) =>
       `<option value="${esc(n)}">${esc(n)} — ${esc(c)}</option>`).join('')}</select>
     <label for="a-n">Call it <span style="font-weight:400;color:var(--muted)">— optional</span></label>
     <input id="a-n" placeholder="leave it and we will use what it is">
     <div class="actions"><button class="primary" onclick="addThing()">Add</button></div>`;
-  $('#a-s').onchange = e => { $('#a-newb').hidden = e.target.value !== '__new'; };
+  /* The rooms offered are the rooms in the building chosen, because a list that
+     offers the barn's stalls while you are adding something to the house is a
+     list that will eventually be believed. */
+  const fillAreas = () => {
+    const sel = $('#a-s').value, box = $('#a-ar');
+    const mine = (DB.area || []).filter(a => a.structure_id === sel && a.status !== 'archived');
+    /* Every area in the building, nested ones included -- an extinguisher goes
+       in the electrical room, not vaguely on the ground floor. The parent rides
+       along in the label because "Open room" on its own names nothing. */
+    const up = a => ((DB.area || []).find(x => x.id === a.parent_area_id) || {}).name;
+    box.innerHTML = `<option value="">Somewhere in the building</option>`
+      + mine.map(a => `<option value="${a.id}">${esc(a.name)}${
+          up(a) ? esc(' — in ' + up(a)) : ''}</option>`).join('');
+    $('#a-arw').hidden = !mine.length;
+  };
+  $('#a-s').onchange = e => { $('#a-newb').hidden = e.target.value !== '__new'; fillAreas(); };
+  fillAreas();
 }
 async function addThing() {
   const type = $('#a-t').value;
@@ -4471,22 +5661,14 @@ async function addThing() {
       name:bn, kind: bk === '__other' ? 'other' : bk,
       kind_other: bk === '__other' ? ($('#a-bko').value || '').trim() : '' } });
   }
-  const t = (DB.asset_type || []).filter(x => x.name === type)[0];
-  const assetId = uid();
-  writes.push({ op:'upsert', table:'asset', record:{ id:assetId, property_id:prop.id,
-    structure_id:structId, asset_type_id:(t || {}).id, name, status:'active', installed_on:today() } });
-  const tmpl = Object.values(STARTER).flat().filter(x => x[0] === type)[0];
-  tmpl[1].forEach(([title, n, unit]) => {
-    const due = new Date();
-    if (unit === 'month') due.setMonth(due.getMonth() + n); else due.setFullYear(due.getFullYear() + n);
-    writes.push({ op:'upsert', table:'schedule', record:{ id:uid(), asset_id:assetId, title,
-      kind:'interval', every_n:n, every_unit:unit, responsibility:'owner', cost_source:'entered',
-      next_due_on:due.toISOString().slice(0, 10) } });
-  });
+  const t = thingWrites(type, { structId, name, installed:today(),
+    areaId: structId === '__new' ? '' : (($('#a-ar') || {}).value || '') });
+  if (!t.id) return say('That one has no template yet.');
+  t.writes.forEach(w => writes.push(w));
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
   DB = (await DwelLogs.load()).db;
   show('home');
-  say(name + ' added, with ' + tmpl[1].length + ' check-up' + (tmpl[1].length === 1 ? '' : 's') + '.');
+  say(name + ' added, with ' + t.checks + ' check-up' + (t.checks === 1 ? '' : 's') + '.');
 }
 
 /* ---------------------------------------------------------------- readings

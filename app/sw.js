@@ -17,7 +17,7 @@
    immediately, and offline still works completely. Revisit once the update
    path has been proven in the field.  */
 
-const STAMP = '0fe55de02e';
+const STAMP = '3dec59e827';
 const CACHE = 'dwellogs-' + STAMP;
 const SHELL = ['./', 'index.html', 'api.js?v=' + STAMP, 'manifest.webmanifest',
                'icon-192.png', 'icon-512.png'];

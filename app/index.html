@@ -281,7 +281,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=a33a0513a1"></script>
+<script src="api.js?v=acefb31ecd"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -2982,30 +2982,71 @@ const MOTIF = {
 const AMP = { attn: 30, soon: 18, ok: 9 };
 
 function pulsePath(width) {
-  const things = (DB.asset || []).filter(a => a.status !== 'archived');
-  if (!things.length) {
-    // An empty place has a heartbeat, not a flat line. It is alive and there is
-    // simply nothing on it yet.
-    const m = width / 2;
-    return `M0 0 L${m - 14} 0 L${m - 8} -4 L${m - 2} 14 L${m + 4} -22 L${m + 10} 8 L${m + 16} 0 L${width} 0`;
-  }
+  /* The place's line is the same line, rolled up -- every beat under it, on the
+     same axis. It used to be one blip per asset in the order they were added,
+     which sat a smoke detector due in a decade beside a filter due Tuesday and
+     said they were the same kind of event. The property is its buildings and
+     their things; its pulse should be theirs. */
+  if (prop) { const d = pulseUnder('property', prop.id, width); if (d) return d; }
+  // An empty place has a heartbeat, not a flat line. It is alive and there is
+  // simply nothing on it yet.
+  const m = width / 2;
+  return `M0 0 L${m - 14} 0 L${m - 8} -4 L${m - 2} 14 L${m + 4} -22 L${m + 10} 8 L${m + 16} 0 L${width} 0`;
+}
+/* A thing's own pulse. On a single thing the axis is TIME -- the coming year,
+   left to right -- and every beat is a moment this thing will want you. Which
+   makes it say what a list of dates does not: a dishwasher with a quarterly
+   filter beats four times and a smoke detector due in ten years is a flat line,
+   and that is the difference between owning the two. Height is urgency.
+   Overdue beats sit at the left edge, because they have not gone anywhere. */
+function pulseUnder(kind, id, width) {
+  const HORIZON = 365, BACK = 30;
   const byType = Object.fromEntries((DB.asset_type || []).map(t => [t.id, t]));
   const byCat  = Object.fromEntries((DB.category || []).map(c => [c.id, c.name]));
-  const worst = {};
-  schedules().forEach(s => {
-    const r = { attn: 3, soon: 2, ok: 1 }[s.state] || 1;
-    if (!worst[s.asset_id] || r > worst[s.asset_id]) worst[s.asset_id] = r;
+  const catOf = x => {
+    const a2 = (DB.asset || []).find(y => y.id === x.asset_id);
+    const t = a2 && byType[a2.asset_type_id];
+    return t ? byCat[t.category_id] : null;
+  };
+  const beats = [];
+  descendants(kind, id).forEach(([k, i]) => {
+    const fk = (SUBJECT[k] || {}).fk; if (!fk) return;
+    (DB.schedule || []).filter(x => x.status !== 'archived' && x.muted !== 'TRUE'
+      && x[fk] === i).forEach(x => {
+      let d = daysTo(x.next_due_on); if (d == null) return;
+      const n = Number(x.every_n) || 0;
+      const step = { day:n, week:n * 7, month:n * 30.44, year:n * 365.25 }[x.every_unit] || 0;
+      const cat = catOf(x);
+      let guard = 0;
+      while (d <= HORIZON && guard++ < 40) {
+        if (d >= -BACK) beats.push({ d, cat });
+        if (step < 1) break;
+        d += step;
+      }
+    });
   });
-  const shown = things.slice(0, 9);
-  const w = width / shown.length;
-  let d = 'M0 0 ';
-  shown.forEach((a, i) => {
-    const t = byType[a.asset_type_id], cat = t ? byCat[t.category_id] : null;
-    const draw = MOTIF[cat] || MOTIF._default;
-    const state = { 3:'attn', 2:'soon', 1:'ok' }[worst[a.id] || 1];
-    d += draw(i * w, w, AMP[state]) + ' ';
+  if (!beats.length) return null;
+  beats.sort((x, y) => x.d - y.d);
+  const span = HORIZON + BACK;
+  let d2 = 'M0 0 ', end = 0;
+  beats.slice(0, 26).forEach(bt => {
+    const w = 24;
+    // Never stepping backwards, or the line doubles over itself and stops
+    // reading as a trace. A dense cluster becomes a run of beats, which is what
+    // a busy month feels like anyway.
+    const x = Math.max(end, ((bt.d + BACK) / span) * (width - w));
+    if (x > width - w) return;
+    const state = bt.d <= 0 ? 'attn' : bt.d <= 14 ? 'soon' : 'ok';
+    d2 += (MOTIF[bt.cat] || MOTIF._default)(x, w, AMP[state]) + ' ';
+    end = x + w;
   });
-  return d + `L${width} 0`;
+  return d2 + `L${width} 0`;
+}
+function pulseSvgFor(kind, id) {
+  const W = 320, d = pulseUnder(kind, id, W);
+  if (!d) return '';
+  return `<div class="pulse" aria-hidden="true"><svg viewBox="0 -34 ${W} 60"
+    preserveAspectRatio="none" role="presentation"><path d="${d}"/></svg></div>`;
 }
 function pulseSvg() {
   const W = 320;
@@ -4260,6 +4301,29 @@ function historyUnder(kind, id) {
   return out.sort((a2, b2) => String(b2.on || '').localeCompare(String(a2.on || '')));
 }
 
+/* What it has cost, anywhere under here. Same walk as the work, because the
+   question is the same question: standing on the place you want the place's
+   spend, and narrowing to the barn should narrow it. Deduped, because a
+   completion naming the dishwasher AND the job on the dishwasher is one
+   payment, and counting it twice would make the screen a liar about the only
+   number on it nobody can check by eye. */
+const COST_WINDOWS = [['all','All time'], ['y1','Last 12 months'], ['q','Last 3 months']];
+function spendUnder(kind, id, win) {
+  const ids = new Set(descendants(kind, id).map(([, i]) => i));
+  const jobIds = new Set(jobsUnder(kind, id).map(j => j.id));
+  const cut = win === 'y1' ? -365 : win === 'q' ? -92 : null;
+  const seen = new Set(), out = [];
+  (DB.completion || []).forEach(c => {
+    if (seen.has(c.id)) return;
+    const mine = SUBJ_FKS.some(f => c[f] && ids.has(c[f])) || (c.job_id && jobIds.has(c.job_id));
+    if (!mine) return;
+    if (cut != null) { const d = daysTo(c.done_on); if (d == null || d < cut) return; }
+    seen.add(c.id); out.push(c);
+  });
+  return out;
+}
+const spendTotal = rows => rows.reduce((a, c) => a + (Number(c.cost) || 0), 0);
+
 /* Work pointing at this subject. A person's is the work they hold or were
    meant for; everything else is the column with its name on it. */
 function subjJobs(kind, id) {
@@ -4308,7 +4372,7 @@ function subjWhere(kind, row) {
   return out.filter((x, i) => !i || x[2] !== out[i - 1][2]);
 }
 
-let SUBJ_TAB = 'todo', SUBJ_Q = '', SUBJ_SORT = 'date';
+let SUBJ_TAB = 'todo', SUBJ_Q = '', SUBJ_SORT = 'date', SUBJ_WIN = 'all';
 /* One thing, and the four questions somebody actually arrives with: where did I
    leave off, what is next, what am I doing, and what does it need before I can
    start. Two tabs because those are two different jobs -- To do is a list you
@@ -4369,14 +4433,70 @@ function subject(kind, id, tab) {
     </button></div>`;
   };
 
-  const tabs = `<div class="pick" style="grid-template-columns:1fr 1fr;margin:.9rem 0 .2rem">
+  const spend = spendUnder(kind, id, SUBJ_WIN);
+  const tabs = `<div class="pick" style="grid-template-columns:1fr 1fr 1fr;margin:.9rem 0 .2rem">
       <button type="button" aria-pressed="${SUBJ_TAB === 'todo'}"
         onclick="SUBJ_TAB='todo';${here}"><span class="cap">To do${
         open.length ? ' · ' + open.length : ''}</span></button>
       <button type="button" aria-pressed="${SUBJ_TAB === 'past'}"
         onclick="SUBJ_TAB='past';${here}"><span class="cap">History${
         past.length ? ' · ' + past.length : ''}</span></button>
+      <button type="button" aria-pressed="${SUBJ_TAB === 'cost'}"
+        onclick="SUBJ_TAB='cost';${here}"><span class="cap">Costs${
+        spendTotal(spend) ? ' · ' + esc(money(spendTotal(spend))) : ''}</span></button>
     </div>`;
+
+  /* Costs drill the way work drills: this level, then what it splits into,
+     down to one job. The split is what makes it worth opening -- a number for
+     the place tells you nothing you can act on, and "the barn, £340" tells you
+     where to look next. */
+  const costs = () => {
+    const total = spendTotal(spend);
+    const win = `<div class="chips" style="margin:.6rem 0 .2rem">
+      ${COST_WINDOWS.map(([k2, l]) => `<button type="button" aria-pressed="${SUBJ_WIN === k2}"
+        onclick="SUBJ_WIN='${k2}';${here}">${l}</button>`).join('')}</div>`;
+    if (!spend.length) return win + `<p class="hint" style="margin-top:.8rem">Nothing recorded${
+      SUBJ_WIN === 'all' ? ' here yet' : ' in that window'}.</p>`;
+    const noFig = spend.filter(c => !c.cost).length;
+    const head = `<div class="card"><span class="title" style="font-size:1.4rem">${
+      esc(money(total) || 'nothing recorded')}</span>
+      <p class="meta">${spend.length} ${spend.length === 1 ? 'entry' : 'entries'}${
+        noFig ? ' · ' + noFig + ' with no figure' : ''}</p></div>`;
+    /* Blank is not zero. A place whose spend is mostly unpriced should say so
+       rather than quietly reading as cheap. */
+    /* Only the outermost children. A property holds its structures AND, by
+       property_id, every animal and asset on it -- so a vet bill in the barn
+       came out under the barn and again under Bessie, and the percentages
+       summed past a hundred. A row is dropped when it already lives inside
+       another row on the same list. */
+    let kids = def.holds.map(child => subjHolds(kind, id, child)
+      .map(r => ({ child, r, n: spendTotal(spendUnder(child, r.id, SUBJ_WIN)) })))
+      .flat().filter(x => x.n > 0);
+    const inside = new Set();
+    kids.forEach(x => descendants(x.child, x.r.id)
+      .forEach(([, i]) => { if (i !== x.r.id) inside.add(i); }));
+    kids = kids.filter(x => !inside.has(x.r.id)).sort((a3, b3) => b3.n - a3.n);
+    const split = kids.length ? `<h3 style="font-size:.95rem;color:var(--muted);margin:1.1rem 0 .4rem"
+      >Where it went</h3>` + kids.map(x => `<div class="card tap">
+        <button onclick="SUBJ_TAB='cost';subject('${x.child}','${x.r.id}')">
+          <span class="title">${esc(x.r.name || SUBJECT[x.child].what(x.r))}</span>
+          <p class="meta">${esc(money(x.n))}${total ? ' · ' + Math.round(x.n / total * 100) + '%' : ''}</p>
+        </button></div>`).join('') : '';
+    const rest = total - kids.reduce((a3, x) => a3 + x.n, 0);
+    const here2 = kids.length && rest > 0
+      ? `<div class="card"><span class="title">${esc(money(rest))}</span>
+         <p class="meta">on ${esc(name)} itself</p></div>` : '';
+    const lines = `<h3 style="font-size:.95rem;color:var(--muted);margin:1.1rem 0 .4rem"
+      >Every entry</h3><div class="rows">${spend.slice()
+      .sort((a3, b3) => String(b3.done_on).localeCompare(String(a3.done_on)))
+      .map(c => `<div class="row">
+        <span>${esc(c.what || 'Done')}${c.job_id
+          ? ` <button class="skiplink" onclick="drawJob('${c.job_id}')">the job</button>` : ''}</span>
+        <span class="meta">${[c.cost ? money(c.cost) : 'no figure',
+          agoWords(daysTo(c.done_on))].filter(Boolean).map(esc).join(' · ')}</span>
+      </div>`).join('')}</div>`;
+    return win + head + split + here2 + lines;
+  };
 
   const search = `<input id="sq" placeholder="search ${esc(name)}" value="${esc(SUBJ_Q)}"
     onchange="SUBJ_Q=this.value;${here};queueMicrotask(()=>{const e=$('#sq');if(e){e.focus();
@@ -4511,6 +4631,7 @@ function subject(kind, id, tab) {
     ${where.length ? `<p class="sub">${where.map(([k2, i2, n]) =>
       `<button class="skiplink" onclick="subject('${k2}','${i2}')">${esc(n)}</button>`)
       .join(' <span aria-hidden="true">&rsaquo;</span> ')}</p>` : ''}
+    ${pulseSvgFor(kind, id)}
     ${worst ? `<p style="margin:.4rem 0 0"><span class="chip ${
       worst.state === 'intermittent' ? 'soon' : 'attn'}">${
       esc({ unusable:'not working', degraded:'not right',
@@ -4521,7 +4642,7 @@ function subject(kind, id, tab) {
     ${tabs}
     ${(SUBJ_TAB === 'past' ? past.length : all.length + stock.length + papers.length) >= 3
       || SUBJ_Q ? search : ''}
-    ${SUBJ_TAB === 'past' ? sortBar + past2() : todo()}
+    ${SUBJ_TAB === 'past' ? sortBar + past2() : SUBJ_TAB === 'cost' ? costs() : todo()}
     <div class="actions" style="margin-top:1.6rem">
       ${MOVABLE.includes(kind) ? `<button class="ghost"
         onclick="drawThingTo('${kind}','${id}')">Move it</button>` : ''}

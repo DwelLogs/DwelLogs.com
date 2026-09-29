@@ -281,7 +281,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=719e379bb0"></script>
+<script src="api.js?v=4936704567"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -345,10 +345,37 @@ window.addEventListener('unhandledrejection', e => {
   if (m) say(m.length > 160 ? 'Could not save that.' : m);
 });
 const uid = () => 'loc-' + Math.random().toString(36).slice(2, 10);
-const today = () => new Date().toISOString().slice(0, 10);
-const inMonths = n => { const d = new Date(); d.setMonth(d.getMonth() + n);
-                        return d.toISOString().slice(0, 10); };
-const daysTo = d => d ? Math.round((new Date(d) - new Date()) / 864e5) : null;
+/* Every date in this app is a day on a calendar -- the day you did it, the day
+   it is next wanted -- and `toISOString()` is not that. It is the UTC instant,
+   so at 6pm in California it already says tomorrow: finish a job on Tuesday
+   evening and the history has it on Wednesday. Days are formatted from the
+   LOCAL clock, everywhere, and `ymd` is the only place that decides how. */
+const ymd = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'),
+                  String(d.getDate()).padStart(2, '0')].join('-');
+const today = () => ymd(new Date());
+const inMonths = n => { const d = new Date(); d.setMonth(d.getMonth() + n); return ymd(d); };
+/* Randi, 2026-09-29: "the day late is still wrong - it has no date only a
+   every 3 months on it." It had a date, and the date was TODAY.
+
+   `new Date('2026-09-29')` is midnight UTC. `new Date()` is right now, where
+   she is. Subtract them at 6:32am in California and you get minus thirteen and
+   a half hours; round that and today becomes "1 day late". Every rule due
+   today read as late from 5am onwards, for everybody west of Greenwich, and
+   the further west the earlier it started.
+
+   A due date is a day on a calendar, not an instant. So both sides are
+   flattened to a local calendar day first and the subtraction is between two
+   midnights -- which is a whole number of days before anything rounds it. */
+const daysTo = d => {
+  if (!d) return null;
+  const s = String(d).trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  const due = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
+  if (isNaN(due)) return null;
+  const now = new Date();
+  return Math.round((Date.UTC(due.getFullYear(), due.getMonth(), due.getDate())
+    - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
+};
 
 let DB = null, me = null, prop = null, screen = 'home', behind = false;
 
@@ -2678,7 +2705,7 @@ function thingWrites(typeName, o) {
       if (unit === 'month') due.setMonth(due.getMonth() + n);
       else due.setFullYear(due.getFullYear() + n);
       Object.assign(rec, { kind:'interval', every_n:n, every_unit:unit,
-        next_due_on:due.toISOString().slice(0, 10) });
+        next_due_on:ymd(due) });
     }
     writes.push({ op:'upsert', table:'schedule', record:rec });
   });
@@ -5419,7 +5446,7 @@ async function finishJob(id) {
     ({ day:() => d.setDate(d.getDate() + n), week:() => d.setDate(d.getDate() + n * 7),
        month:() => d.setMonth(d.getMonth() + n), year:() => d.setFullYear(d.getFullYear() + n)
      }[sc.every_unit] || (() => d.setMonth(d.getMonth() + n)))();
-    const next = d.toISOString().slice(0, 10);
+    const next = ymd(d);
     writes.push({ op:'upsert', table:'schedule', record:{ ...sc, next_due_on: next } });
     writes.push({ op:'upsert', table:'job', record:{ id:uid(), property_id:prop.id, kind:j.kind,
       title:j.title, source:'schedule', schedule_id:sc.id, asset_id:j.asset_id || '',
@@ -6312,7 +6339,7 @@ async function revoke(id) {
   await DwelLogs.write([{ op:'upsert', table:'invite', record:{ ...inv, state:'revoked' } }]);
   await boot(); drawInvite(); say('Revoked. That code opens nothing now.');
 }
-function inDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); }
+function inDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); }
 
 /* ONE animal form. There were three: this one, and two copies inside the setup
    flow that still asked for a name first, still explained in a label AND a
@@ -6751,12 +6778,12 @@ async function logDone(id) {
       { op:'upsert', table:'completion', record:{ id:uid(), schedule_id:s.id, asset_id:s.asset_id,
           done_on:when, what:s.title, by_person_id:me.id, origin:'planned',
           cost: cost === '' ? '' : cost } },
-      { op:'upsert', table:'schedule', record:{ id:s.id, next_due_on:next.toISOString().slice(0,10) } }
+      { op:'upsert', table:'schedule', record:{ id:s.id, next_due_on:ymd(next) } }
     ]);
   } catch (e) { return say('Could not save: ' + e.message); }
   DB = (await DwelLogs.load()).db;
   show('home');
-  say('Logged. Next one due ' + next.toISOString().slice(0, 10) + '.');
+  say('Logged. Next one due ' + ymd(next) + '.');
 }
 
 function drawAdd() {
@@ -7034,7 +7061,7 @@ async function saveReading() {
       title: (sc || {}).title || ('Check ' + subjectWords(rec)),
       asset_id: rec.asset_id, animal_id: rec.animal_id, area_id: rec.area_id,
       structure_id: rec.structure_id, every_n: every, every_unit: unit,
-      next_due_on: d.toISOString().slice(0, 10) };
+      next_due_on: ymd(d) };
     writes.push({ op:'upsert', table:'schedule', record:rule });
     rec.schedule_id = rule.id;
     sc = null;                      // already rolled, do not roll it twice
@@ -7052,7 +7079,7 @@ async function saveReading() {
        month:() => d.setMonth(d.getMonth() + n), year:() => d.setFullYear(d.getFullYear() + n)
      }[sc.every_unit] || (() => d.setMonth(d.getMonth() + n)))();
     writes.push({ op:'upsert', table:'schedule',
-      record:{ ...sc, next_due_on: d.toISOString().slice(0, 10) } });
+      record:{ ...sc, next_due_on: ymd(d) } });
   }
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
   const said = readingWords(rec), about = subjectWords(rec);

@@ -281,7 +281,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=4aac0cf35a"></script>
+<script src="api.js?v=ad2f3d0170"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -306,8 +306,44 @@ const $ = s => document.querySelector(s);
 const app = $('#app');
 const say = m => { const e = $('#say'); e.textContent = m;
   clearTimeout(say._t); if (m) say._t = setTimeout(() => e.textContent = '', 6000); };
-const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
-  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+/* The apostrophe is in here for a reason worth keeping. Half the markup in this
+   file interpolates into a SINGLE-quoted attribute -- onclick="go('${id}')" --
+   and escaping only the double quote leaves that half open. It cost an evening
+   once already, as a bug rather than an attack: capJobs('${redraw}') worked on
+   the home screen and broke on subject('asset','x1'), because the value's own
+   quotes closed the attribute early. Same hole, and the polite version of it
+   shows up first. */
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+/* Stored addresses are rendered as links, and "javascript:" is a perfectly
+   good thing to type into a spreadsheet cell. api.js refuses one at the door;
+   this is the second lock, on the one screen that makes a link clickable. */
+const safeUrl = u => /^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '';
+
+/* A save that fails should never be silent. Most save paths catch and say so,
+   but not all of them do, and the ones that do not are the ones that looked
+   too simple to fail -- which is exactly where a rejected write disappears and
+   the screen just sits there having apparently worked. The net is here so that
+   the answer to "did that save?" is never nothing at all. */
+/* Said in columns, not in counts: "3 values" tells nobody where to look, and
+   "reading.value_num" tells them exactly which cell to go and fix. */
+function readReport(r) {
+  const bits = [];
+  if (r.unreadableN)
+    bits.push(r.unreadableN + ' value' + (r.unreadableN === 1 ? '' : 's')
+      + " in the sheet could not be read (" + (r.unreadable || []).join(', ')
+      + ') — shown blank here, still in the sheet.');
+  if (r.dropped)
+    bits.push(r.dropped + ' row' + (r.dropped === 1 ? '' : 's')
+      + ' had no usable id and ' + (r.dropped === 1 ? 'was' : 'were') + ' skipped.');
+  return bits.join(' ');
+}
+
+window.addEventListener('unhandledrejection', e => {
+  const m = (e.reason && e.reason.message) || String(e.reason || '');
+  console.error('[DwelLogs] unhandled:', e.reason);
+  if (m) say(m.length > 160 ? 'Could not save that.' : m);
+});
 const uid = () => 'loc-' + Math.random().toString(36).slice(2, 10);
 const today = () => new Date().toISOString().slice(0, 10);
 const inMonths = n => { const d = new Date(); d.setMonth(d.getMonth() + n);
@@ -1009,6 +1045,13 @@ async function boot() {
   prop = myPlaces().find(p => p.id === last) || myPlaces()[0] || (DB.property || [])[0] || null;
   if (prop) localStorage.setItem('dwellogs.place', prop.id);
   if (res.stale) say('Showing the last copy — could not reach the sheet.');
+  /* A sheet is a document, and a document gets edited by hand. Somebody types
+     "about 40" into a reading, drags a formula down a column of dates, or
+     empties an id cell. The app reads what it can and opens either way, and
+     this is the one line that stops the rest from being a mystery. */
+  const bad = res.read || {};
+  if (bad.dropped || bad.unreadableN)
+    say(readReport(bad));
   behind = !!res.needsMigration;
   // A link with an invite in it goes straight to the invite, skipping the name
   // screen and the fork — he was sent here for one thing.
@@ -5381,7 +5424,7 @@ const paperCard = p => `<div class="card"><span class="title">${esc(p.name)}</sp
   <p class="meta">${esc(p.about)} · ${p.d < 0 ? 'ran out ' + Math.abs(p.d) + ' days ago'
     : p.d === 0 ? 'runs out today' : 'good for ' + p.d + ' more days'}
     <span class="chip ${p.state}">${{ attn:'ran out', soon:'running out', ok:'fine' }[p.state]}</span></p>
-  ${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">Open it</a>` : ''}</div>`;
+  ${safeUrl(p.url) ? `<a href="${esc(safeUrl(p.url))}" target="_blank" rel="noopener">Open it</a>` : ''}</div>`;
 
 function drawPhoto() {
   $('#tabs').hidden = true;
@@ -5759,7 +5802,18 @@ function zipOf(files) {
   return new Blob(parts.concat(cd, [end]), { type:'application/zip' });
 }
 const csvCell = v => {
-  const t = v == null ? '' : String(v);
+  let t = v == null ? '' : String(v);
+  /* A cell that opens with = + @ or a control character is a FORMULA to Excel,
+     Sheets and Numbers -- so a goat named =HYPERLINK("http://…","click") is a
+     live link in the file, and worse is available. The whole point of this
+     export is that somebody opens it in a spreadsheet, and the names in it can
+     be typed by anybody you invited, so the two facts meet here.
+
+     A leading quote defuses it and is the convention every spreadsheet knows.
+     Minus is deliberately NOT guarded on its own, because -40 is a temperature
+     somebody meant; it is guarded only when what follows is not a number, which
+     is the shape an injection takes. */
+  if (/^[=+@\t\r]/.test(t) || (/^-/.test(t) && !/^-?\d*\.?\d+$/.test(t))) t = "'" + t;
   return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
 };
 function csvOf(rows) {

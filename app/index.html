@@ -281,7 +281,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=71cf31c5b1"></script>
+<script src="api.js?v=a33a0513a1"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -4205,12 +4205,23 @@ function descendants(kind, id) {
   return out;
 }
 const SUBJ_FKS = ['asset_id','area_id','structure_id','animal_id','vehicle_id','supply_id'];
-/* The work anywhere under here. */
+const stepWhere = st => ((DB.area || []).find(x => x.id === st.area_id) || {}).name
+  || ((DB.structure || []).find(x => x.id === st.structure_id) || {}).name || '';
+/* The work anywhere under here -- including a round that merely STOPS here. A
+   watering job hung off the property with a stop in the greenhouse is work in
+   the greenhouse, and standing in there is exactly when you want to know. */
 function jobsUnder(kind, id) {
   const seen = new Set(), out = [];
+  const ids = new Set(descendants(kind, id).map(([, i]) => i));
   descendants(kind, id).forEach(([k, i]) => subjJobs(k, i).forEach(j => {
     if (seen.has(j.id)) return; seen.add(j.id); out.push(j);
   }));
+  (DB.step || []).forEach(st => {
+    if (!ids.has(st.area_id) && !ids.has(st.structure_id)) return;
+    const j = jobById(st.job_id);
+    if (!j || seen.has(j.id)) return;
+    seen.add(j.id); out.push(j);
+  });
   return out;
 }
 /* whenDue() is for something coming. A thing that already happened is not
@@ -4345,9 +4356,14 @@ function subject(kind, id, tab) {
     const at = JOB_AT.map(([k2, f]) => [k2, j[f]]).find(([, v]) => v);
     const about = at && at[1] !== id ? subjName(at[0], at[1]) : '';
     const stop = blockers(j);
+    /* A round that merely calls here is not ABOUT here, and saying so is the
+       difference between "water the greenhouse" and "watering comes through". */
+    const via = !at || at[1] !== id
+      ? (DB.step || []).find(st => st.job_id === j.id
+          && (st.area_id === id || st.structure_id === id)) : null;
     return `<div class="card tap"><button onclick="drawJob('${j.id}')">
       <span class="title">${esc(j.title || 'A job')}</span>
-      <p class="meta">${about ? esc(about) + ' &middot; ' : ''}${esc(jobMeta(j))}${
+      <p class="meta">${via ? 'comes through &middot; ' : about ? esc(about) + ' &middot; ' : ''}${esc(jobMeta(j))}${
         j.claimed_by_id ? ' &middot; ' + esc((((DB.person || []).find(p => p.id === j.claimed_by_id)) || {}).name || 'taken') : ''}
         ${stop.length ? `<span class="chip soon">${esc(stop[0])}</span>` : ''}</p>
     </button></div>`;
@@ -4747,10 +4763,28 @@ function jobFields(j, live, id) {
       <label class="tick" style="flex:1;min-width:0">
         <input type="checkbox" ${isDone(st) ? 'checked' : ''}
           onchange="${live ? `tickStep('${st.id}','${id}',this.checked)` : `tickStepDraft(${n},this.checked)`}">
-        <span${isDone(st) ? ' style="text-decoration:line-through;color:var(--muted)"' : ''}>${esc(st.text)}</span>
+        <span${isDone(st) ? ' style="text-decoration:line-through;color:var(--muted)"' : ''}>${esc(st.text)}${
+          stepWhere(st) ? ` <span class="meta">&middot; ${esc(stepWhere(st))}</span>` : ''}</span>
       </label>
       <button class="quiet" style="min-height:2rem;padding:.25rem .6rem"
         onclick="${live ? `dropStep('${st.id}','${id}')` : `dropStepDraft(${n})`}">Remove</button></div>`).join('')}</div>` : ''}
+    ${live ? (() => {
+      /* A round -- watering, wasp checks, closing up for winter -- is ONE job
+         with several stops. You set out once, so it is one job; the stops are
+         steps. Letting a stop name its place is what makes the round show up in
+         each place it visits, instead of somebody having to remember that
+         "water" covers the greenhouse. */
+      const places = (DB.structure || []).filter(x => x.status !== 'archived');
+      const areas = (DB.area || []).filter(x => x.status !== 'archived');
+      if (!places.length && !areas.length) return '';
+      const up = a2 => ((DB.structure || []).find(x => x.id === a2.structure_id) || {}).name;
+      return `<select id="jb-stw" style="margin-top:.5rem">
+        <option value="">Anywhere in particular?</option>
+        ${places.map(x => `<option value="s:${x.id}">${esc(x.name)}</option>`).join('')}
+        ${areas.map(x => `<option value="a:${x.id}">${esc(x.name)}${
+          up(x) ? esc(' — ' + up(x)) : ''}</option>`).join('')}
+      </select>`;
+    })() : ''}
     <input id="jb-step" placeholder="add a step &mdash; borrow the ladder"
       onkeydown="if(event.key==='Enter'){event.preventDefault();${stepGo}}">
     <div class="actions" style="margin-top:.5rem">
@@ -4947,8 +4981,11 @@ async function addStep(id) {
   const el = $('#jb-step'), t = (el.value || '').trim();
   if (!t) return say('Type the step first.');
   const n = stepsOf(id).length;
+  const w = (($('#jb-stw') || {}).value || '');
   await DwelLogs.write([{ op:'upsert', table:'step',
-    record:{ id:uid(), job_id:id, text:t, position:n + 1, done:'' } }]);
+    record:{ id:uid(), job_id:id, text:t, position:n + 1, done:'',
+      structure_id: w.startsWith('s:') ? w.slice(2) : '',
+      area_id: w.startsWith('a:') ? w.slice(2) : '' } }]);
   await reload(); drawJob(id);
 }
 async function tickStep(stepId, jobId, on) {

@@ -126,6 +126,28 @@ if (location.search.indexOf('fresh=1') > -1) {
   .chip.attn { color:var(--attn); background:var(--attn-bg); border-color:var(--attn); }
   .chip.soon { color:var(--soon); background:var(--soon-bg); border-color:var(--soon); }
   .chip.ok   { color:var(--ok);   background:var(--ok-bg);   border-color:var(--ok); }
+  /* Slide a card left to get at Remove. The button stays under it rather than
+     replacing it: a gesture nobody discovers must not be the only way, and on a
+     desktop there is no swipe at all. */
+  .swipe { position:relative; overflow:hidden; border-radius:var(--r, .7rem);
+           margin-bottom:.6rem; }
+  /* The card carries the gap between cards, so leaving it on would leave the
+     panel underneath showing through as a pink sliver below every row. */
+  .swipe > .card { position:relative; z-index:1; margin-bottom:0;
+                   transition:transform .18s ease; touch-action:pan-y; }
+  .swipe.open > .card { transform:translateX(-6rem); }
+  .swipe > .under { position:absolute; inset:0 0 0 auto; width:6rem; border:0;
+    background:var(--attn-bg); color:var(--attn); font-weight:600; font-size:.95rem;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  /* Ten outdoor kinds rendered through icon() came out as ten identical houses,
+     because the glyph map falls back to one. A wrong picture is worse than no
+     picture, so these are words. */
+  .chips { display:flex; flex-wrap:wrap; gap:.4rem; }
+  .chips button { border:1px solid var(--line); background:var(--card); color:var(--ink);
+    border-radius:999px; padding:.45rem .8rem; font-size:.92rem; font-weight:500;
+    min-height:2.4rem; }
+  .chips button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent);
+    font-weight:600; box-shadow:inset 0 0 0 1px var(--accent); }
   .big { font-size:2.6rem; font-weight:700; line-height:1; display:block; }
   nav.tabs { position:fixed; inset:auto 0 0 0; background:var(--card); border-top:1px solid var(--line);
     display:flex; padding:.4rem .4rem calc(.4rem + env(safe-area-inset-bottom,0px)); }
@@ -254,7 +276,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=533a1cae05"></script>
+<script src="api.js?v=9553631c1b"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -359,8 +381,51 @@ const CLIMATE = [
 const HAZARD = [
   ['wildfire','wildfire'], ['flood','flooding'], ['earthquake','earthquakes'],
   ['hurricane','hurricanes'], ['tornado','tornadoes'], ['ice_storm','ice storms'],
-  ['drought','drought'], ['hail','hail']
+  ['drought','drought'], ['hail','hail'], ['landslide','landslides']
 ];
+const hazLabel = h => ((HAZARD.find(x => x[0] === h) || [])[1] || h);
+/* Where it sits implies what can happen, and the app has always known it: the
+   tip under "where it sits" says a lake or river means flooding, in as many
+   words. What it has never done is act on that.
+
+   The obvious version is to tick the box for them, and the field note says why
+   not -- hazards are "suggested from the region, ticked by a person". That is
+   not fussiness, it has a failure this app has already had once: this step is
+   skippable, skipping runs take(), and take() reads whatever is ticked. Somebody
+   who said "on a creek" and then tapped skip would carry flooding on their
+   record having never seen it, quietly turning on emergency plans and seasonal
+   packs nobody chose. So it is offered, in their own words, and one tap takes
+   it. Same outcome when they agree, and an honest record of who decided. */
+const HAZARD_FROM = {
+  coastal:      ['flood', 'hurricane'],
+  lakeside:     ['flood'],
+  riverside:    ['flood'],
+  valley_floor: ['flood'],
+  mountain:     ['landslide'],
+  wooded:       ['wildfire'],
+  open_plain:   ['hail']
+};
+const WHY_HAZARD = {
+  flood:     'water finds the low ground',
+  hurricane: 'the sea brings the wind with it',
+  landslide: 'ground moves downhill when it is wet enough',
+  wildfire:  'trees carry it',
+  hail:      'nothing in the way'
+};
+function hazardHints() {
+  const have = new Set(draft.hazards || []), out = [];
+  (draft.terrain || []).forEach(t => (HAZARD_FROM[t] || []).forEach(h => {
+    if (have.has(h) || out.some(x => x.h === h)) return;
+    out.push({ h, from:(TERRAIN.find(x => x[0] === t) || [])[1] || t });
+  }));
+  return out;
+}
+function takeHazard(h) {
+  const box = document.querySelector('.hz[value="' + h + '"]');
+  if (box) box.checked = true;
+  syncStep(); drawFirst();
+  say(hazLabel(h) + ' is on the list.');
+}
 
 /* Every extensible list ends with this. The list is never going to be complete
    — an attached greenhouse, a cistern, a swamp buggy — and the fastest way to
@@ -1281,6 +1346,11 @@ const PLACE = [
         <label style="margin-top:1.2rem">What can happen here</label>
         <div class="opts">${HAZARD
           .map(([h, l]) => tick('hz', h, draft.hazards.includes(h), l)).join('')}</div>
+        ${hazardHints().map(x => `<div class="card" style="margin-top:.6rem">
+          <span class="title">${esc(hazLabel(x.h))}?</span>
+          <p class="meta">You said ${esc(x.from)}${
+            WHY_HAZARD[x.h] ? ' — ' + esc(WHY_HAZARD[x.h]) : ''}.</p>
+          <button class="ghost" onclick="takeHazard('${x.h}')">Add it</button></div>`).join('')}
         ${tip('Ticking one offers you a plan for it later. It creates nothing now.')}
 
         ${otherBox('property.climate', 'Something about the weather here we did not ask?')}`;
@@ -1396,9 +1466,10 @@ const PLACE = [
           <input id="mr-n" value="${esc(draft.mainRoom || 'Main room')}">
           <label style="margin-top:1rem">What is in it?</label>
           ${(draft.namedRooms || []).map((c, i) => [c, i])
-            .filter(([c]) => roomUnder(c)).map(([c, i]) => `<div class="card">
+            .filter(([c]) => roomUnder(c)).map(([c, i]) => swipe(`<div class="card">
             <span class="title">${esc(roomLabel(c))}</span>
-            <button class="quiet" onclick="dropNamedRoom(${i})">Remove</button></div>`).join('')}
+            <button class="quiet" onclick="dropNamedRoom(${i})">Remove</button></div>`,
+            `dropNamedRoom(${i})`)).join('')}
           <input id="cn-n" placeholder="bed, kitchen, eating area…">
           <div class="actions" style="margin-top:.6rem">
             <button class="add" onclick="addCorner()">Add</button></div>
@@ -1430,10 +1501,11 @@ const PLACE = [
           <p class="hint">Rough is fine. Blank is fine.</p>
 
           <label style="margin-top:1.2rem">A room we did not list?</label>
-          ${(draft.namedRooms || []).map((r, i) => `<div class="card">
+          ${(draft.namedRooms || []).map((r, i) => swipe(`<div class="card">
             <span class="title">${esc(roomLabel(r))}</span>
             ${roomUnder(r) ? `<p class="meta">in ${esc(roomUnder(r))}</p>` : ''}
-            <button class="quiet" onclick="dropNamedRoom(${i})">Remove</button></div>`).join('')}
+            <button class="quiet" onclick="dropNamedRoom(${i})">Remove</button></div>`,
+            `dropNamedRoom(${i})`)).join('')}
           <input id="nr-n" placeholder="craft room, tack room, second floor"
             onkeydown="if(event.key==='Enter'){event.preventDefault();addNamedRoom()}">
           ${(() => {
@@ -1495,8 +1567,10 @@ const PLACE = [
           'Which “here”?')}
 
         <label style="margin-top:1.3rem">Anybody you want on the log?</label>
-        ${draft.household.map((h, i) => `<div class="card"><span class="title">${esc(h)}</span>
-          <button class="quiet" onclick="dropPerson(${i})">Remove</button></div>`).join('')}
+        ${draft.household.map((h, i) => swipe(`<div class="card">
+          <span class="title">${esc(h)}</span>
+          <button class="quiet" onclick="dropPerson(${i})">Remove</button></div>`,
+          `dropPerson(${i})`)).join('')}
         <input id="hh-n" placeholder="a name — you can invite them properly later">
         <div class="actions" style="margin-top:.6rem">
           <button class="add" onclick="addPerson()">Add person</button></div>
@@ -1505,9 +1579,11 @@ const PLACE = [
           'This is not an invite')}
 
         <label style="margin-top:1.3rem">Animals?</label>
-        ${draft.animals.map((a, i) => `<div class="card"><span class="title">${esc(a.name || a.type)}</span>
-          <p class="meta">${esc(a.type)}</p>
-          <button class="quiet" onclick="dropAnimal(${i})">Remove</button></div>`).join('')}
+        ${draft.animals.map((a, i) => swipe(`<div class="card">
+          <span class="title">${esc(a.name || a.type)}</span>
+          <p class="meta">${esc(typeLabel(a.type))}</p>
+          <button class="quiet" onclick="dropAnimal(${i})">Remove</button></div>`,
+          `dropAnimal(${i})`)).join('')}
         ${animalCore()}
         <div class="actions" style="margin-top:.6rem">
           <button class="add" onclick="addAnimal()">Add animal</button></div>
@@ -1590,17 +1666,32 @@ const PLACE = [
     },
     take: () => { takePicks(); return true; } },
 
-  { t:'Any other buildings?',
-    s: () => 'Besides ' + (draft.building || 'that one') + '. Sheds, barns, decks, the garage — or leave it.',
+  { t:'What else is on the place?',
+    s: () => 'Besides ' + (draft.building || 'that one') + '. Sheds, barns, the garage — and the yard, the garden, the paddock.',
     skippable:true,
     body: () => {
       draft.more = draft.more || [];
-      const rows = draft.more.map((b, i) => `<div class="card">
-        <span class="title">${esc(b.name)}</span>
-        <p class="meta">${esc((b.kind || '').replace(/_/g,' '))}${
-          b.attached ? ' · attached to ' + esc(draft.building) : ''}${
-          b.theirs ? ' · somebody else&rsquo;s' : ''}</p>
-        <button class="quiet" onclick="dropBuilding(${i})">Remove</button></div>`).join('');
+      const rows = draft.more.map((b, i) => draft.editMore === i
+        ? `<div class="card">
+            <label for="me-n">Call it</label>
+            <input id="me-n" value="${esc(b.name)}">
+            <label for="me-k">What is it?</label>
+            <select id="me-k">${kindOptions(b.kind || 'shed')}</select>
+            <label class="tick"><input type="checkbox" id="me-a"${b.attached ? ' checked' : ''}>
+              It is attached to ${esc(draft.building)}</label>
+            <label class="tick"><input type="checkbox" id="me-o"${b.theirs ? ' checked' : ''}>
+              It belongs to somebody else</label>
+            <div class="actions" style="margin-top:.6rem">
+              <button class="ghost" onclick="saveMore(${i})">Save</button>
+              <button class="quiet" onclick="draft.editMore=null;drawFirst()">Cancel</button>
+            </div></div>`
+        : swipe(`<div class="card tap"><button onclick="draft.editMore=${i};drawFirst()">
+            <span class="title">${esc(b.name)}</span>
+            <p class="meta">${esc(kindLabel(b.kind) || (b.kind || '').replace(/_/g,' '))}${
+              b.attached ? ' · attached to ' + esc(draft.building) : ''}${
+              b.theirs ? ' · somebody else&rsquo;s' : ''}</p></button>
+            <button class="quiet" onclick="dropBuilding(${i})">Remove</button></div>`,
+            `dropBuilding(${i})`)).join('');
       // The main building got its kind from the place kind rather than from a
       // question, so arriving here at a "what kind?" dropdown reads as a
       // question you were never asked about the house. Same form, already
@@ -1620,14 +1711,28 @@ const PLACE = [
         ${rows}
         <label for="mb-n" style="margin-top:1.2rem">Call it
           <span style="font-weight:400;color:var(--muted)">— optional</span></label>
-        <input id="mb-n" placeholder="leave it and we will use what it is">
+        <input id="mb-n" value="${esc(draft.mbName || '')}"
+          oninput="draft.mbName=this.value"
+          placeholder="leave it and we will use what it is">
         <label>What kind?</label>
         <div class="pick">${[['shed','Shed'],['barn','Barn'],['detached_garage','Garage'],
           ['workshop','Workshop'],['greenhouse','Greenhouse'],['coop','Coop'],
           ['deck','Deck'],['studio','Studio'],['pool_house','Pool house'],
           ['pump_house','Pump house']].map(([v, l]) => `<button type="button"
-          aria-pressed="${(draft.mbKind || 'shed') === v}" onclick="draft.mbKind='${v}';draft.mbTouched=true;drawFirst()">
+          aria-pressed="${(draft.mbKind || 'shed') === v}" onclick="keepMbName();draft.mbKind='${v}';draft.mbTouched=true;drawFirst()">
           ${icon(v, 30)}<span class="cap">${esc(l)}</span></button>`).join('')}</div>
+        <!-- A yard is not a building and it is somewhere things happen: the
+             mower lives in it, the fence line runs along it, the septic field is
+             under it. These kinds existed and were reachable only through a
+             "Something else" dropdown on a screen headed "any other BUILDINGS",
+             which nobody opens looking for a garden. -->
+        <label style="margin-top:1.2rem">Or outside</label>
+        <div class="chips">${[['yard','Yard'],['garden','Garden'],['pasture','Pasture'],
+          ['orchard','Orchard'],['driveway','Driveway'],['pool_area','Pool area'],
+          ['dock','Dock'],['well_site','Well site'],['septic_field','Septic field'],
+          ['fence_line','Fence line']].map(([v, l]) => `<button type="button"
+          aria-pressed="${draft.mbKind === v}" onclick="keepMbName();draft.mbKind='${v}';draft.mbTouched=true;drawFirst()"
+          >${esc(l)}</button>`).join('')}</div>
         <details class="disclose"><summary>Something else</summary>
           <select id="mb-k2" onchange="draft.mbKind=this.value;draft.mbTouched=true">${kindOptions(draft.mbKind || 'shed')}</select>
         </details>
@@ -2010,9 +2115,9 @@ const STEPS = () => (flow === 'join' ? JOIN : PLACE).filter(x => !x.when || x.wh
    which is the only progress indicator that is honest — "not set" is a state,
    not a failure. */
 const HUB = [
-  { id:'Any other buildings?', icon:'buildings', label:'Buildings',
+  { id:'What else is on the place?', icon:'buildings', label:'Buildings and land',
     state: () => (draft.more || []).length
-      ? (1 + draft.more.length) + ' buildings' : 'just ' + (draft.building || 'the one') },
+      ? (1 + draft.more.length) + ' on the place' : 'just ' + (draft.building || 'the one') },
   { id:'Where is it?', icon:'location', label:'Where it is',
     state: () => draft.place && (draft.city || draft.region)
       ? [draft.city, draft.region].filter(Boolean).join(', ')
@@ -2254,6 +2359,7 @@ function saveMain() {
 function takeBuilding(force) {
   const el = $('#mb-n'); if (!el) return null;
   const typed = (el.value || '').trim();
+  draft.mbName = '';
   if (!force && !typed && !draft.mbTouched) return null;
   draft.more = draft.more || [];
   const kind = draft.mbKind || 'shed';
@@ -2265,6 +2371,25 @@ function takeBuilding(force) {
   // will not add a fourth nobody asked for.
   el.value = ''; draft.mbTouched = false;
   return name + ' added.';
+}
+/* Editing one you already added. The main building has had this since the day
+   somebody arrived at a kind dropdown for a house nobody asked them about; the
+   ones you add yourself had Remove and nothing else, so a name typed wrong meant
+   deleting it and starting again. */
+/* Anything that redraws this step has to keep the half-typed name on it. The
+   kind chips redraw, and the name box had no value bound, so typing "The barn"
+   and then tapping Barn threw the name away and called it Barn. */
+function keepMbName() { const e = $('#mb-n'); if (e) draft.mbName = e.value; }
+function saveMore(i) {
+  const b = (draft.more || [])[i]; if (!b) return;
+  const kind = $('#me-k').value;
+  const taken = [draft.building].concat(draft.more.filter((x, n) => n !== i).map(x => x.name));
+  b.name = uniqueName(($('#me-n').value || '').trim() || kindLabel(kind), taken);
+  b.kind = kind;
+  b.attached = $('#me-a').checked;
+  b.theirs = $('#me-o').checked;
+  draft.editMore = null;
+  drawFirst(); say(b.name + ' · ' + (kindLabel(kind) || kind));
 }
 function addBuilding() {
   syncStep();
@@ -2484,10 +2609,18 @@ async function createEverything() {
         hazards:(draft.hazards || []).join(', '),
         terrain:(draft.terrain || []).join(', '),
         elevation: draft.elevation == null ? '' : draft.elevation,
-        // Confirmed only when a person actually said so. Unknown gets a date
-        // to be asked again, not a blank that nags every time the app opens.
-        profile_confirmed_on: draft.freezes === 'not_sure_yet' ? '' : today(),
-        profile_review_on: draft.freezes === 'not_sure_yet' ? inMonths(4) : '' } },
+        /* Confirmed only when a person actually said so. Unknown gets a date to
+           be asked again, not a blank that nags every time the app opens.
+
+           It used to turn on `freezes` -- and freezes is one of the fields the
+           region GUESS fills in, so the guess confirmed itself. Type a state,
+           never scroll down, leave: three hazards on the record and a date
+           saying somebody agreed to them. `profileTouched` is the only value
+           here that means a person went near the screen. */
+        profile_confirmed_on:
+          draft.profileTouched && draft.freezes !== 'not_sure_yet' ? today() : '',
+        profile_review_on:
+          draft.profileTouched && draft.freezes !== 'not_sure_yet' ? '' : inMonths(4) } },
     { op:'upsert', table:'membership', record:{ id:uid(), property_id:propId,
         person_id:personId, access:'owner' } });
   // Nothing on it yet means no building row. An empty lot with a phantom
@@ -3090,7 +3223,7 @@ async function saveStep(stepId) {
     rec.spaces = (draft.spaces || []).join(', ');
     writes.push({ op:'upsert', table:'structure', record:rec });
     areaWrites(stId).forEach(w => writes.push(w));
-  } else if (stepId === 'Any other buildings?') {
+  } else if (stepId === 'What else is on the place?') {
     (draft.more || []).forEach(b2 => writes.push({ op:'upsert', table:'structure',
       record:{ id:uid(), property_id:(prop || {}).id, name:b2.name,
         kind:b2.kind === '__other' ? 'other' : b2.kind,
@@ -3113,6 +3246,40 @@ async function saveStep(stepId) {
         : 'Noted.');
 }
 
+/* Sliding a card left to remove it. Wrapped rather than built into the card so
+   any list can opt in, and the Remove button underneath is the same call the
+   visible one makes -- one handler, two ways to reach it, which is the only
+   arrangement where the two cannot drift.
+
+   Deliberately not a swipe-to-delete: past the threshold it OPENS, it does not
+   act. Something removed by a thumb that brushed the screen is the app doing
+   work nobody asked for, and the undo for it does not exist. */
+const swipe = (inner, go) => `<div class="swipe" ontouchstart="swStart(event,this)"
+  ontouchmove="swMove(event,this)" ontouchend="swEnd(event,this)">
+  <button class="under" onclick="${go}">Remove</button>${inner}</div>`;
+let SW = null;
+function swClose() { document.querySelectorAll('.swipe.open').forEach(e => e.classList.remove('open')); }
+function swStart(e, el) {
+  const t = e.touches[0];
+  SW = { x:t.clientX, y:t.clientY, el, moved:false };
+}
+function swMove(e, el) {
+  if (!SW || SW.el !== el) return;
+  const t = e.touches[0], dx = t.clientX - SW.x, dy = t.clientY - SW.y;
+  // Vertical wins: the list has to stay scrollable, and a thumb travelling down
+  // the screen is not reaching for Remove.
+  if (Math.abs(dy) > Math.abs(dx)) { SW = null; return; }
+  if (Math.abs(dx) > 8) SW.moved = true;
+  if (SW.moved) e.preventDefault();
+}
+function swEnd(e, el) {
+  if (!SW || SW.el !== el) return;
+  const dx = (e.changedTouches[0].clientX) - SW.x;
+  const wasOpen = el.classList.contains('open');
+  swClose();
+  if (dx < -50 && !wasOpen) el.classList.add('open');
+  SW = null;
+}
 /* Which building? -- asked by every screen whose answers are per-building, and
    written once because three copies of it is three chances to disagree about
    which buildings count. */

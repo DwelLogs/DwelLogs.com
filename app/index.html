@@ -281,7 +281,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=ad2f3d0170"></script>
+<script src="api.js?v=719e379bb0"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -2926,7 +2926,12 @@ async function createEverything() {
         asset_id: key ? (units[key] || '') : '', structure_id:structId, title:j.title,
         kind: j.answer === 'reading' ? 'reading' : 'interval',
         every_n: j.every_n || 6, every_unit: j.every_unit || 'month',
-        next_due_on: j.due_on || today() } });
+        /* NOT `|| today()`. Saying a thing repeats is not saying when it is
+           first wanted, and filling that in for them makes the app produce a
+           date nobody chose -- which reads as late the following morning. An
+           undated rule sits under "No date" until it is dated or done once;
+           doing it once is what anchors "every six months" anyway. */
+        next_due_on: j.due_on || '' } });
     }
     writes.push({ op:'upsert', table:'job', record:{ id:jid, property_id:propId,
       kind: j.kind || 'task', title:j.title, notes:j.notes || '',
@@ -3128,8 +3133,11 @@ function drawHome() {
     <h1>${esc(prop.name)}</h1>
     ${pulseSvg()}
     <p class="sub">${esc(prop.city || '')}${prop.city ? ' · ' : ''}${
-      things.length ? things.length + ' thing' + (things.length === 1 ? '' : 's') + ' tracked'
-                    : 'nothing tracked yet'}</p>
+      /* It counted assets only, so a place with four buildings, two animals
+         and a truck on it said "nothing tracked yet" directly underneath a
+         list of them. Everything with a name and a screen counts. */
+      tracked() ? tracked() + ' thing' + (tracked() === 1 ? '' : 's') + ' tracked'
+                : 'nothing tracked yet'}</p>
     <span class="big">${now.length}</span>
     <p class="title">${now.length === 1 ? 'thing needs you now' : 'things need you now'}</p>
     ${(() => {
@@ -3179,46 +3187,25 @@ function drawHome() {
     ${(() => { const p = papers().filter(x => x.state !== 'ok');
       return p.length ? `<h2>Papers running out</h2>` + p.map(paperCard).join('') : ''; })()}
     ${(() => {
-      /* The way into everything, and it was a tile called "Look around"
-         thirteenth in a grid at the bottom. Four buildings, their rooms, what
-         runs them, what is in them -- all of it reachable only if you went
-         looking for a verb. It is the place: it goes on the place's screen. */
-      const list = buildings();
-      if (!list.length) return '';
-      const inside = x => !['land'].includes(kgroup(x.kind));
-      const row = x => {
-        const rooms = (DB.area || []).filter(a => a.structure_id === x.id).length;
-        const kit = (DB.asset || []).filter(a => a.structure_id === x.id
-          && a.status !== 'archived').length;
-        const bits = [];
-        if (rooms) bits.push(rooms + (rooms === 1 ? ' room' : ' rooms'));
-        if (kit) bits.push(kit + (kit === 1 ? ' thing' : ' things'));
-        return `<div class="card tap"><button onclick="subject('structure','${x.id}')">
-          <span class="title">${esc(x.name)}</span>
-          <p class="meta">${esc(kindLabel(x.kind) || '')}${
-            bits.length ? ' · ' + bits.join(' · ') : ''}</p></button></div>`;
-      };
-      const home = list.filter(inside), land = list.filter(x => !inside(x));
-      /* Anything you can stand in front of belongs here. Buildings were on this
-         screen and animals and vehicles were not, so the only way to the 442 was
-         to go through the property -- which is two taps for a thing you own and
-         look at. */
-      const kids = (k, heading) => {
-        const rows = (DB[SUBJECT[k].table] || [])
-          .filter(r => r.status !== 'archived' && r.property_id === (prop || {}).id);
-        if (!rows.length) return '';
-        return `<h3 style="font-size:.95rem;color:var(--muted);margin:.9rem 0 .4rem"
-          >${esc(heading)}</h3>` + rows.map(r => {
-          const n = jobsUnder(k, r.id).filter(openJob).length;
-          return `<div class="card tap"><button onclick="subject('${k}','${r.id}')">
-            <span class="title">${esc(r.name || SUBJECT[k].what(r))}</span>
-            <p class="meta">${esc(SUBJECT[k].what(r))}${
-              n ? ' &middot; ' + n + ' to do' : ''}</p></button></div>`; }).join('');
-      };
-      return `<h2>The place</h2>${home.map(row).join('')}${
-        land.length ? `<h3 style="font-size:.95rem;color:var(--muted);margin:.9rem 0 .4rem"
-          >Outside</h3>` + land.map(row).join('') : ''}
-        ${kids('animal', 'Animals')}${kids('vehicle', 'Vehicles')}
+      /* Randi, 2026-09-29: "the way it is now seems like more to scroll."
+         It was: every building a card, then the animals, then the vehicles,
+         the whole inventory stacked on the screen you open to see what needs
+         you. Each of those is now a door with a count on it, and behind the
+         door is the same list one scope wider. A menu, not an inventory. */
+      const tiles = Object.keys(GROUP).filter(k => groupRoots(k).length);
+      if (!tiles.length) return '';
+      return `<h2>The place</h2>
+        <div class="pick">${tiles.map(k => {
+          const g = GROUP[k], roots = groupRoots(k);
+          const jobs = g.feeds ? [] : across(roots, jobsUnder).filter(openJob);
+          /* Late colours the count, because "4 to do" and "4 to do, one of
+             them late" are not the same sentence. Nothing late stays quiet. */
+          const late = jobs.filter(j => { const d = daysTo(j.due_on); return d != null && d < 0; });
+          return `<button type="button" onclick="group('${k}')">${icon(g.icon, 26)}
+            <span class="cap">${esc(g.label)}${jobs.length
+              ? `<br><span class="chip ${late.length ? 'attn' : 'ok'}">${jobs.length} to do</span>`
+              : ''}</span></button>`;
+        }).join('')}</div>
         <div class="actions" style="margin-top:.4rem">
           <button class="ghost" onclick="subject('property','${(prop || {}).id}')"
             >All of ${esc((prop || {}).name || 'it')}</button></div>`;
@@ -3425,6 +3412,13 @@ function sysSaid(st) {
   return n ? n + ' of ' + SYSTEMS.length + ' answered' : 'nothing said yet';
 }
 const buildings = () => (DB.structure || []).filter(x => x.status !== 'archived');
+/* Everything on the place that has a name and a screen. The walk down from the
+   property is the same one the drill-down uses, so the count and the tiles can
+   never disagree -- and it dedupes, so a thing in a room of a building is one
+   thing. Minus one for the property itself, which is not on itself. */
+function tracked() {
+  return prop ? Math.max(0, descendants('property', prop.id).length - 1) : 0;
+}
 function drawSystems(stId) {
   const list = buildings();
   if (stId) return reopen('What does it run on?', stId);
@@ -4704,7 +4698,197 @@ let SUBJ_TRAIL = [];
 function subjBack() {
   SUBJ_TRAIL.pop();                     // the one we are on
   const prev = SUBJ_TRAIL.pop();
-  return prev ? subject(prev[0], prev[1]) : show('home');
+  if (!prev) return show('home');
+  /* A group is a scope, not a row, so it rides the same trail under a name no
+     table uses. Without it, backing out of the barn landed on the home screen
+     and the list of buildings you were working through was gone. */
+  return prev[0] === '#group' ? group(prev[1]) : subject(prev[0], prev[1]);
+}
+
+/* ---- one scope wider than a thing ---------------------------------------
+   Randi, 2026-09-29: "I want to see the buildings as an icon I can click into,
+   the animals an icon I can click into etc. The way it is now seems like more
+   to scroll. I thought buildings - click - all buildings with tasks for all.
+   Click a building - tasks for it."
+
+   The home screen had quietly become the whole inventory: every building a
+   card, then the animals, then the vehicles, stacked above the thing you
+   opened the app to see. That is a list doing a menu's job. A tile is a door,
+   and behind this one is the subject screen at one scope wider -- every
+   building's work in one list, with the buildings underneath to narrow it.
+   Same tabs, same cards, same drill. One step out.                        */
+const GROUP = {
+  buildings:{ label:'Buildings',      icon:'buildings', kinds:['structure'],
+              sub:'Everything you can stand in, and what each one needs.' },
+  rooms:    { label:'Rooms & things', icon:'rooms',     kinds:['area','asset'],
+              sub:'Rooms, and the things in them.' },
+  animals:  { label:'Animals',        icon:'animal',    kinds:['animal'],
+              sub:'Feed, papers, vet trips — the same machinery, pointed at something with a pulse.' },
+  vehicles: { label:'Vehicles',       icon:'things',    kinds:['vehicle'],
+              sub:'Anything you drive and do not sleep in.' },
+  feeds:    { label:'What feeds it',  icon:'systems',   kinds:['structure'], feeds:true,
+              sub:'Water, waste, power, heat — per building, because they differ.' }
+};
+/* Everything of one kind actually on this place. Walked down from the property
+   rather than filtered on property_id, because a room hangs off a building and
+   a thing off a room -- neither carries the property on it -- and the walk
+   already dedupes. */
+const placeRows = k => prop
+  ? descendants('property', prop.id).filter(([kk]) => kk === k)
+      .map(([, i]) => subjRow(k, i)).filter(Boolean)
+  : [];
+const groupRoots = key => (GROUP[key].kinds || [])
+  .map(k => placeRows(k).map(r => [k, r])).flat();
+/* The union of what each root holds, deduped by id. A fire extinguisher in a
+   room of a building is reachable two ways and is still one extinguisher. */
+const across = (roots, fn) => {
+  const seen = new Set(), out = [];
+  roots.forEach(([k, r]) => fn(k, r.id).forEach(x => {
+    if (seen.has(x.id)) return; seen.add(x.id); out.push(x); }));
+  return out;
+};
+/* Only the outermost rows get listed. The same containment rule the costs
+   split uses: a thing that already sits inside a room on this list is not a
+   second entry beside it. */
+const outermost = pairs => {
+  const inside = new Set();
+  pairs.forEach(([k, r]) => descendants(k, r.id)
+    .forEach(([, i]) => { if (i !== r.id) inside.add(i); }));
+  return pairs.filter(([, r]) => !inside.has(r.id));
+};
+const fedWith = st => (DB.hookup || [])
+  .filter(h => h.structure_id === st.id && !h.ended_on)
+  .map(h => String(h.utility || '').replace(/_/g, ' '));
+
+function group(key, tab) {
+  const g = GROUP[key]; if (!g || !prop) return show('home');
+  $('#tabs').hidden = true;
+  const last = SUBJ_TRAIL[SUBJ_TRAIL.length - 1];
+  if (!last || last[0] !== '#group' || last[1] !== key) {
+    SUBJ_TRAIL.push(['#group', key]); SUBJ_Q = '';
+  }
+  if (tab) SUBJ_TAB = tab;
+  const here = `group('${key}')`;
+  const roots = groupRoots(key), rows = outermost(roots);
+  const all = across(roots, jobsUnder), open = all.filter(openJob);
+  const past = across(roots, historyUnder)
+    .sort((a, b) => String(b.on || '').localeCompare(String(a.on || '')));
+  const spend = across(roots, (k, i) => spendUnder(k, i, SUBJ_WIN));
+  const total = spendTotal(spend);
+  const q = SUBJ_Q.toLowerCase();
+  const hit = (...bits) => !q || bits.filter(Boolean).join(' ').toLowerCase().includes(q);
+
+  const rowCard = ([k, r]) => {
+    const n = jobsUnder(k, r.id).filter(openJob).length;
+    const title = subjName(k, r.id);
+    /* An unnamed building is called what it is, and so is the line under it --
+       which came out as "Barn" above "Barn". Say a thing once. */
+    let what = g.feeds ? (fedWith(r).join(' · ') || 'nothing wired up yet')
+                       : SUBJECT[k].what(r);
+    if (!g.feeds && String(what).toLowerCase() === String(title).toLowerCase()) what = '';
+    const meta = [what, n && !g.feeds ? n + ' to do' : ''].filter(Boolean);
+    return `<div class="card tap"><button onclick="subject('${k}','${r.id}')">
+      <span class="title">${esc(title)}</span>
+      ${meta.length ? `<p class="meta">${meta.map(esc).join(' &middot; ')}</p>` : ''}
+    </button></div>`;
+  };
+  const list = rows.filter(([k, r]) => hit(subjName(k, r.id), SUBJECT[k].what(r)));
+  const listed = list.length ? list.map(rowCard).join('')
+    : `<p class="hint" style="margin-top:.8rem">${rows.length
+        ? 'Nothing matches.' : 'Nothing here yet.'}</p>`;
+
+  /* "What feeds it" is not work, so it gets no to-do list and no tabs -- it is
+     a reading of how the place is plumbed and wired, one building at a time. */
+  if (g.feeds) {
+    app.innerHTML = `<button class="back" onclick="subjBack()">&lsaquo; Back</button>
+      <h1>${esc(g.label)}</h1><p class="sub">${esc(g.sub)}</p>${listed}
+      <div class="actions" style="margin-top:1.6rem">
+        <button class="ghost" onclick="drawSystems()">Change what it runs on</button>
+        <button class="ghost" onclick="show('home')">Home</button></div>`;
+    return window.scrollTo(0, 0);
+  }
+
+  const tabs = `<div class="pick" style="grid-template-columns:1fr 1fr 1fr;margin:.9rem 0 .2rem">
+      <button type="button" aria-pressed="${SUBJ_TAB === 'todo'}"
+        onclick="SUBJ_TAB='todo';${here}"><span class="cap">To do${
+        open.length ? ' · ' + open.length : ''}</span></button>
+      <button type="button" aria-pressed="${SUBJ_TAB === 'past'}"
+        onclick="SUBJ_TAB='past';${here}"><span class="cap">History${
+        past.length ? ' · ' + past.length : ''}</span></button>
+      <button type="button" aria-pressed="${SUBJ_TAB === 'cost'}"
+        onclick="SUBJ_TAB='cost';${here}"><span class="cap">Costs${
+        total ? ' · ' + esc(money(total)) : ''}</span></button>
+    </div>`;
+
+  const jcard = j => {
+    const at = JOB_AT.map(([k2, f]) => [k2, j[f]]).find(([, v]) => v);
+    const about = at ? subjName(at[0], at[1]) : '';
+    return `<div class="card tap"><button onclick="drawJob('${j.id}')">
+      <span class="title">${esc(j.title || 'A job')}</span>
+      <p class="meta">${about ? esc(about) + ' &middot; ' : ''}${esc(jobMeta(j))}</p>
+    </button></div>`;
+  };
+  const todo = () => {
+    const rowsJ = orderJobs(open.filter(j => hit(j.title, jobAbout(j))));
+    return (open.length > 2 ? jobBar(here) : '')
+      + (rowsJ.length ? rowsJ.map(jcard).join('')
+         : `<p class="hint" style="margin-top:.8rem">${open.length
+             ? 'Nothing on the list fits that.' : 'Nothing to do here.'}</p>`);
+  };
+  const history = () => {
+    const rowsH = past.filter(r => hit(r.what, r.about, r.by, r.extra));
+    if (!rowsH.length) return `<p class="hint" style="margin-top:1rem">${
+      past.length ? 'Nothing matches.' : 'Nothing has happened here yet.'}</p>`;
+    return `<div class="rows" style="margin-top:.6rem">${rowsH.map(r =>
+      `<div class="row"><span>${esc(r.what)}${
+        r.kind === 'read' ? ' <span class="chip ok">reading</span>'
+        : r.kind === 'bought' ? ' <span class="chip ok">bought</span>' : ''}</span>
+        <span class="meta">${[r.about, r.extra, r.by,
+          r.on ? agoWords(daysTo(r.on)) + ' · ' + r.on : ''].filter(Boolean).map(esc).join(' · ')}</span>
+      </div>`).join('')}</div>`;
+  };
+  /* Split the same way the subject screen does: this scope, then which of them
+     it went on, then into that one. A number for "buildings" tells you nothing
+     to act on; "the barn, $340" tells you where to look next. */
+  const costs = () => {
+    const win = `<div class="chips" style="margin:.6rem 0 .2rem">
+      ${COST_WINDOWS.map(([k2, l]) => `<button type="button" aria-pressed="${SUBJ_WIN === k2}"
+        onclick="SUBJ_WIN='${k2}';${here}">${l}</button>`).join('')}</div>`;
+    if (!spend.length) return win + `<p class="hint" style="margin-top:.8rem">Nothing recorded${
+      SUBJ_WIN === 'all' ? ' here yet' : ' in that window'}.</p>`;
+    const noFig = spend.filter(c => !c.cost).length;
+    const head = `<div class="card"><span class="title" style="font-size:1.4rem">${
+      esc(money(total) || 'nothing recorded')}</span>
+      <p class="meta">${spend.length} ${spend.length === 1 ? 'entry' : 'entries'}${
+        noFig ? ' · ' + noFig + ' with no figure' : ''}</p></div>`;
+    const kids = rows.map(([k, r]) => ({ k, r, n: spendTotal(spendUnder(k, r.id, SUBJ_WIN)) }))
+      .filter(x => x.n > 0).sort((a, b) => b.n - a.n);
+    const split = kids.length ? `<h3 style="font-size:.95rem;color:var(--muted);margin:1.1rem 0 .4rem"
+      >Where it went</h3>` + kids.map(x => `<div class="card tap">
+        <button onclick="SUBJ_TAB='cost';subject('${x.k}','${x.r.id}')">
+          <span class="title">${esc(subjName(x.k, x.r.id))}</span>
+          <p class="meta">${esc(money(x.n))}${total ? ' · ' + Math.round(x.n / total * 100) + '%' : ''}</p>
+        </button></div>`).join('') : '';
+    return win + head + split;
+  };
+
+  const search = `<input id="g-q" value="${esc(SUBJ_Q)}" placeholder="search ${esc(
+      g.label.toLowerCase())}" oninput="SUBJ_Q=this.value;clearTimeout(window._gq);
+      window._gq=setTimeout(()=>{${here};const e=$('#g-q');if(e){e.focus();
+      e.setSelectionRange(e.value.length,e.value.length);}},260)">`;
+
+  app.innerHTML = `<button class="back" onclick="subjBack()">&lsaquo; Back</button>
+    <h1>${esc(g.label)}</h1>
+    <p class="sub">${esc(g.sub)}</p>
+    ${tabs}
+    ${(SUBJ_TAB === 'past' ? past.length : all.length + rows.length) >= 3 || SUBJ_Q ? search : ''}
+    ${SUBJ_TAB === 'past' ? history() : SUBJ_TAB === 'cost' ? costs() : todo()}
+    <h2 style="margin-top:1.6rem">${esc(g.label)}${rows.length ? ' · ' + rows.length : ''}</h2>
+    <p class="hint" style="margin:-.2rem 0 .6rem">Open one to narrow all of this to it.</p>
+    ${listed}
+    <div class="actions" style="margin-top:1.6rem">
+      <button class="ghost" onclick="show('home')">Home</button></div>`;
+  window.scrollTo(0, 0);
 }
 /* A job added from a thing already knows what it is about -- which is the
    whole reason to add it from there rather than from the Add tab, where you
@@ -5195,7 +5379,10 @@ async function saveJob(id) {
       structure_id:j.structure_id || '', area_id:j.area_id || '', animal_id:j.animal_id || '',
       title: rec.title, kind: f.answer === 'reading' ? 'reading' : 'interval',
       every_n: f.every_n, every_unit: f.every_unit,
-      next_due_on: rec.due_on || today() };
+      /* Same rule as the setup path: a repeat is a cadence, not a start date.
+         Defaulting to today was an invented number, which is the one thing
+         this app is not allowed to do. */
+      next_due_on: rec.due_on || '' };
     writes.push({ op:'upsert', table:'schedule', record:rule });
     rec.schedule_id = rule.id;
   } else if (sc) {
@@ -6487,7 +6674,11 @@ function wipe() {
    stores a distance, not how a person says one: past a fortnight it is weeks,
    past a couple of months it is months, and past two years it is years. */
 function whenDue(d) {
-  if (d == null) return 'no date yet';
+  /* A dash, and it stays a dash. No date is not a date the app is allowed to
+     fill in, and it is not a distance it can measure from -- so it says so
+     with the same mark it uses everywhere else it has no answer, and nothing
+     downstream counts days from nothing. */
+  if (d == null) return '—';
   const n = Math.abs(d);
   const unit = n < 14 ? [n, 'day']
     : n < 70 ? [Math.round(n / 7), 'week']
@@ -6499,9 +6690,11 @@ function whenDue(d) {
   if (d === 1) return 'tomorrow';
   return 'in ' + said;
 }
+/* `A check-up` matches what jobCard already does with a nameless job. A card
+   whose title rendered as an empty span was a tappable blank rectangle. */
 const card = s => `<div class="card tap"><button onclick="openSched('${s.id}')">
-  <span class="title">${esc(s.title)}</span>
-  <p class="meta">${esc(s.thing)} · ${whenDue(s.d)}
+  <span class="title">${esc(s.title || 'A check-up')}</span>
+  <p class="meta">${s.thing === '—' ? '' : esc(s.thing) + ' · '}${whenDue(s.d)}
     <span class="chip ${s.state}">${{ attn:'needs you', soon:'due soon', ok:'fine' }[s.state]}</span></p>
 </button></div>`;
 

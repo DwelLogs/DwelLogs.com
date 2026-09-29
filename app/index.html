@@ -187,7 +187,12 @@ if (location.search.indexOf('fresh=1') > -1) {
   .count { display:flex; flex-direction:column; justify-content:space-between }
   .count span { display:block; font-size:.82rem; color:var(--muted); margin-bottom:.25rem }
   .count input { width:100%; margin:0 }
-  .other { margin-top:.9rem; padding-top:.7rem; border-top:1px dashed var(--line) }
+  /* It belongs to the question ABOVE it. A rule across the top said the
+     opposite -- it read as the start of the next section, so "Something else?"
+     looked like it was asking about the question underneath. Hung off the left
+     instead, which attaches rather than divides. */
+  .other { margin:.45rem 0 .2rem; padding:.1rem 0 .1rem .75rem;
+           border-left:2px solid var(--line) }
   .other label { font-weight:400; color:var(--muted); font-size:.9rem }
   /* Reasoning belongs one tap away, not in front of somebody who just wants to
      answer the question. Native <details>, so it works with no JS and reads
@@ -276,7 +281,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=9553631c1b"></script>
+<script src="api.js?v=71cf31c5b1"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -525,6 +530,28 @@ const LANDISH  = ['garden','orchard','pasture','yard','driveway','dock','pool_ar
                   'septic_field','well_site','fence_line'];
 /* The group the later screens filter by. A bare lot has no building at all, so
    the building kind cannot answer it — the place kind has to. */
+/* The systems screen talks about ONE building at a time. '' is the main one,
+   otherwise an index into draft.more. */
+function sysOf() {
+  if (draft.sysFor == null || draft.sysFor === '') return (draft.sys = draft.sys || {});
+  const b = (draft.more || [])[draft.sysFor];
+  if (!b) { draft.sysFor = ''; return (draft.sys = draft.sys || {}); }
+  return (b.sys = b.sys || {});
+}
+function sysName() {
+  const b = (draft.more || [])[draft.sysFor];
+  return b ? b.name : (draft.building || 'It');
+}
+/* What a shed can physically have is not what a house can, so the option filter
+   follows the building on screen rather than the one the place started as. */
+function sysGroup() {
+  const b = (draft.more || [])[draft.sysFor];
+  return b ? kgroup(b.kind) : flowGroup();
+}
+const sysSaidDraft = v => {
+  const o = (v === '' || v == null) ? (draft.sys || {}) : (((draft.more || [])[v] || {}).sys || {});
+  return Object.keys(o).length > 0;
+};
 function flowGroup() {
   if (['land','lot'].includes(draft.pkind)) return 'land';
   return kgroup(draft.bkind);
@@ -542,6 +569,10 @@ function kgroup(k) {
    {only:[groups]}. Anything that creates no asset creates no asset: city water
    is a true fact with nothing to service, and inventing a row for it would be
    a lie about what you own. */
+/* What the "something else" box under each one is asking about. Generic on a
+   screen with six of them reads as a seventh question. */
+const SYS_NOUN = { water:'water source', waste:'way waste leaves', power:'power source',
+  heat:'kind of heat', cooling:'kind of cooling', hot_water:'way water is heated' };
 const SYSTEMS = [
   { k:'water', multi:true, q:'Where does the water come from?', off:['land'], o:[
     ['hookup','Whatever I am parked next to',['Inline hookup filter'],{only:['wheels','floating']}],
@@ -1371,14 +1402,25 @@ const PLACE = [
                   return true; } },
 
   { t:'What does it run on?',
-    s: () => (draft.building || 'It') + ' — tick what it has. Not sure yet is a real answer.',
+    s: () => sysName() + ' — tick what it has. Not sure yet is a real answer.',
     skippable:true,
     body: () => {
-      const g = flowGroup();
-      draft.sys = draft.sys || {};
-      return SYSTEMS.filter(sys => !(sys.off || []).includes(g)).map(sys => {
+      const g = sysGroup();
+      const cur0 = sysOf();
+      const others = draft.more || [];
+      /* A shed on its own tank is not on the house system, and this screen only
+         ever asked about the main building -- the others existed in the draft
+         with nowhere to put an answer. One row of names, because a barn with a
+         sub-panel and an ADU with a water heater under the sink are ordinary. */
+      const picker = others.length ? `<div class="chips" style="margin:.2rem 0 1rem">
+        ${[['', draft.building || 'the main one']].concat(others.map((b2, i) => [String(i), b2.name]))
+          .map(([v, l]) => `<button type="button" aria-pressed="${String(draft.sysFor || '') === v}"
+            onclick="syncStep();draft.sysFor='${v}';drawFirst()">${esc(l)}${
+            sysSaidDraft(v) ? '' : ' ·'}</button>`).join('')}</div>
+        <p class="hint" style="margin:-.6rem 0 1rem">Each one gets its own answers.</p>` : '';
+      return picker + SYSTEMS.filter(sys => !(sys.off || []).includes(g)).map(sys => {
         const { keep, rest } = splitByKind(sys.o, g, o => o[3]);
-        const cur = draft.sys[sys.k];
+        const cur = cur0[sys.k];
         const one = (o, hidden) => sys.multi
           ? `<label class="tick${hidden ? ' extra' : ''}"${hidden ? ' hidden' : ''}><input type="checkbox"
                class="sy-${sys.k}" value="${o[0]}"${(cur || []).includes(o[0]) ? ' checked' : ''}> ${esc(o[1])}</label>`
@@ -1388,7 +1430,7 @@ const PLACE = [
           <div class="opts">${keep.map(o => one(o, false)).join('')}
           ${rest.length ? rest.map(o => one(o, true)).join('') +
             `<button class="ghost" onclick="showRest(this)">Show the rest</button>` : ''}</div>
-          ${otherBox('structure.' + sys.k, 'Something else?')}`;
+          ${otherBox('structure.' + sys.k, 'Another ' + SYS_NOUN[sys.k] + '?')}`;
       }).join('')
         + (['wheels','floating'].includes(g)
           ? tip('A house that moves does not have well water or city water — it has a hose, and what ' +
@@ -1404,11 +1446,15 @@ const PLACE = [
         'behind <i>show the rest</i> rather than removed — if yours is unusual, it is still there.',
         'Why some are hidden');
     },
-    take: () => { takeOther(); const g = flowGroup(); draft.sys = {};
+    take: () => { takeOther(); const g = sysGroup(), into = {};
       SYSTEMS.filter(sys => !(sys.off || []).includes(g)).forEach(sys => {
         const picked = [...document.querySelectorAll('.sy-' + sys.k + ':checked')].map(e => e.value);
-        if (picked.length) draft.sys[sys.k] = sys.multi ? picked : picked[0];
+        if (picked.length) into[sys.k] = sys.multi ? picked : picked[0];
       });
+      // Only the building on screen. Writing into draft.sys regardless is how
+      // the shed's answers would land on the house.
+      if (draft.sysFor == null || draft.sysFor === '') draft.sys = into;
+      else { const b2 = (draft.more || [])[draft.sysFor]; if (b2) b2.sys = into; }
       return true; } },
 
   /* Only for something that moves. A house on a foundation is parked where it
@@ -1470,9 +1516,12 @@ const PLACE = [
             <span class="title">${esc(roomLabel(c))}</span>
             <button class="quiet" onclick="dropNamedRoom(${i})">Remove</button></div>`,
             `dropNamedRoom(${i})`)).join('')}
-          <input id="cn-n" placeholder="bed, kitchen, eating area…">
+          <input id="cn-n" value="${esc(draft.cnName || '')}"
+            oninput="draft.cnName=this.value;addLabel('cn-go',typedBtn(this.value,'Add'))"
+            placeholder="bed, kitchen, eating area…">
           <div class="actions" style="margin-top:.6rem">
-            <button class="add" onclick="addCorner()">Add</button></div>
+            <button class="add" id="cn-go" onclick="addCorner()">${
+              esc(typedBtn(draft.cnName, 'Add'))}</button></div>
           ${tip('One long room with a bed at one end and a kitchen at the other is one room, not ' +
             'three, and not a studio apartment with the walls missing. Each corner is kept inside ' +
             'the room rather than beside it, so a leak under the sink lands in the kitchen corner ' +
@@ -1506,7 +1555,9 @@ const PLACE = [
             ${roomUnder(r) ? `<p class="meta">in ${esc(roomUnder(r))}</p>` : ''}
             <button class="quiet" onclick="dropNamedRoom(${i})">Remove</button></div>`,
             `dropNamedRoom(${i})`)).join('')}
-          <input id="nr-n" placeholder="craft room, tack room, second floor"
+          <input id="nr-n" value="${esc(draft.nrName || '')}"
+            placeholder="craft room, tack room, second floor"
+            oninput="draft.nrName=this.value;addLabel('nr-go',typedBtn(this.value,'Add a room'))"
             onkeydown="if(event.key==='Enter'){event.preventDefault();addNamedRoom()}">
           ${(() => {
             /* A barn is two floors before it is any rooms. Naming the floor and
@@ -1521,7 +1572,8 @@ const PLACE = [
               : '';
           })()}
           <div class="actions" style="margin-top:.6rem">
-            <button class="add" onclick="addNamedRoom()">Add room</button></div>
+            <button class="add" id="nr-go" onclick="addNamedRoom()">${
+              esc(typedBtn(draft.nrName, 'Add a room'))}</button></div>
           ${tip('Each one becomes a room you can file a leak or a smoke detector against. ' +
             'Nothing more is assumed about it. Name a floor and then put rooms inside it — ' +
             'a floor is a room with rooms in it, and the barn reads the way you would say it.')}` : ''}`;
@@ -1571,9 +1623,12 @@ const PLACE = [
           <span class="title">${esc(h)}</span>
           <button class="quiet" onclick="dropPerson(${i})">Remove</button></div>`,
           `dropPerson(${i})`)).join('')}
-        <input id="hh-n" placeholder="a name — you can invite them properly later">
+        <input id="hh-n" value="${esc(draft.hhName || '')}"
+          oninput="draft.hhName=this.value;addLabel('hh-go',typedBtn(this.value,'Add a person'))"
+          placeholder="a name — you can invite them properly later">
         <div class="actions" style="margin-top:.6rem">
-          <button class="add" onclick="addPerson()">Add person</button></div>
+          <button class="add" id="hh-go" onclick="addPerson()">${
+            esc(typedBtn(draft.hhName, 'Add a person'))}</button></div>
         ${tip('This only puts their name on the list so an entry can say who did it. It does not ' +
           'give them the app — that is an invite, and it is a separate decision you make later.',
           'This is not an invite')}
@@ -1586,7 +1641,7 @@ const PLACE = [
           `dropAnimal(${i})`)).join('')}
         ${animalCore()}
         <div class="actions" style="margin-top:.6rem">
-          <button class="add" onclick="addAnimal()">Add animal</button></div>
+          <button class="add" id="an-add" onclick="addAnimal()">${esc(animalBtn())}</button></div>
         ${tip('Feed runs out, papers expire and a vet charges by the trip — all the same machinery ' +
           'as a propane tank, pointed at something with a pulse.', 'Why animals are here')}`;
     },
@@ -1712,7 +1767,7 @@ const PLACE = [
         <label for="mb-n" style="margin-top:1.2rem">Call it
           <span style="font-weight:400;color:var(--muted)">— optional</span></label>
         <input id="mb-n" value="${esc(draft.mbName || '')}"
-          oninput="draft.mbName=this.value"
+          oninput="draft.mbName=this.value;addLabel('mb-go',mbBtn())"
           placeholder="leave it and we will use what it is">
         <label>What kind?</label>
         <div class="pick">${[['shed','Shed'],['barn','Barn'],['detached_garage','Garage'],
@@ -1744,7 +1799,7 @@ const PLACE = [
           'more when they join.<br><br>The rule in one line: <b>the connection crosses, the contents ' +
           'do not.</b>', 'Somebody else’s building')}
         <div class="actions" style="margin-top:.8rem">
-          <button class="add" onclick="addBuilding()">Add</button>
+          <button class="add" id="mb-go" onclick="addBuilding()">${esc(mbBtn())}</button>
         </div>
         ${tip('Attached still means its own building. A wrap-around deck gets sealed and a ' +
           'greenhouse gets glazing, and neither belongs on the house&rsquo;s list.')}`;
@@ -1931,7 +1986,7 @@ const JOIN = [
       return `${rows}
         ${animalCore()}
         <div class="actions" style="margin-top:.8rem">
-          <button class="add" onclick="addAnimal()">Add animal</button>
+          <button class="add" id="an-add" onclick="addAnimal()">${esc(animalBtn())}</button>
         </div>
         ${tip('Whose it is and where it lives are kept apart on purpose. Move out and it moves with ' +
           'you — the record follows the person, not the address.')}`;
@@ -1951,6 +2006,13 @@ function lookupInvite(code) {
 function syncStep() {
   const step = STEPS()[fs];
   if (step && step.take) { try { step.take(); } catch (e) {} }
+  /* The animal name boxes are a sub-widget with its own keeper, and take() had
+     never heard of it. So every redraw of this step -- adding a person,
+     removing a row, ticking anything -- rebuilt the boxes from a draft that had
+     not seen what was typed into them, and two named cats came out as "cat 1"
+     and "cat 2". This function IS "keep what is on the screen"; anything that
+     keeps state belongs in it rather than beside it. */
+  try { keepAnimalNames(); } catch (e) {}
 }
 /* Typing a name into the box and then pressing Next is somebody answering the
    question. The old form threw it away without a word -- a whole household and
@@ -1974,7 +2036,7 @@ function takeHousePerson() {
   const el = $('#hh-n'), v = ((el || {}).value || '').trim();
   if (!v) return null;
   draft.household = draft.household || []; draft.household.push(v);
-  el.value = '';
+  el.value = ''; draft.hhName = '';
   return v + ' is on the list.';
 }
 function addPerson() {
@@ -2098,6 +2160,9 @@ function picked(type, title) {
 function takePicks() {
   draft.picks = draft.picks || {};
   document.querySelectorAll('.pk').forEach(e => { draft.picks[e.dataset.k] = e.checked; });
+  // This only runs when that screen is on the glass, which is the honest test
+  // of whether anybody was actually shown the list.
+  if (document.querySelector('.pk')) draft.picksSeen = true;
 }
 
 /* "Pantries" does not singularise by dropping an s, so a room may carry its
@@ -2183,13 +2248,7 @@ function drawHub() {
 
    So the hub finishes THROUGH it when there is anything to show. It costs one
    tap, because it is already answered. */
-function hubFinish() {
-  if (plannedTypes().length && !draft.picksSeen) {
-    draft.finishing = true;
-    return openStep('What should it watch for you?');
-  }
-  return finishFirst();
-}
+function hubFinish() { return finishFirst(); }
 /* An explicit Save. Saving on blur is invisible — you cannot tell whether it
    took, and tapping anything else while the box is open becomes a save you did
    not ask for. */
@@ -2315,7 +2374,7 @@ function takeCorner() {
   if (!v) return null;
   draft.namedRooms = draft.namedRooms || [];
   draft.namedRooms.push({ name:v, parent: draft.mainRoom || 'Main room' });
-  el.value = '';
+  el.value = ''; draft.cnName = '';
   return v + ' added.';
 }
 function addCorner() {
@@ -2332,7 +2391,7 @@ function takeNamedRoom() {
   if (!t) return null;
   draft.namedRooms = draft.namedRooms || [];
   draft.namedRooms.push({ name:t, parent: (($('#nr-p') || {}).value) || '' });
-  el.value = '';
+  el.value = ''; draft.nrName = '';
   return t + ' is on the list.';
 }
 const roomLabel = r => typeof r === 'string' ? r : r.name;
@@ -2369,7 +2428,7 @@ function takeBuilding(force) {
   // The kind stays selected -- three barns is three taps of Add, not three
   // hunts down the list. What it was FOR is spent, so the sweep on the way out
   // will not add a fourth nobody asked for.
-  el.value = ''; draft.mbTouched = false;
+  el.value = ''; draft.mbTouched = false; draft.mbName = '';
   return name + ' added.';
 }
 /* Editing one you already added. The main building has had this since the day
@@ -2380,6 +2439,27 @@ function takeBuilding(force) {
    kind chips redraw, and the name box had no value bound, so typing "The barn"
    and then tapping Barn threw the name away and called it Barn. */
 function keepMbName() { const e = $('#mb-n'); if (e) draft.mbName = e.value; }
+/* "Add animal" under a form you have just filled in reads as ADD ANOTHER, so
+   somebody fills it in and then cannot tell whether pressing it is required or
+   whether it starts a second one. The button says what it will do with what is
+   actually in front of it: "Add an animal" while the form is untouched, "Add
+   the 4 chickens" once it is not. Nothing is lost either way -- the sweep on
+   the way out commits it regardless -- but a button that reads ambiguously
+   makes somebody stop and work that out, and that is the whole cost. */
+function addLabel(id, txt) { const e = $('#' + id); if (e) e.textContent = txt; }
+function animalBtn() {
+  const a = draft.an || {};
+  if (!a.touched) return 'Add an animal';
+  const n = a.n || 1, first = ((a.names || [])[0] || '').trim();
+  return n > 1 ? 'Add the ' + n + ' ' + unitNoun(a.type) + 's'
+               : 'Add ' + (first || 'the ' + typeLabel(a.type));
+}
+const typedBtn = (v, empty, verb) => {
+  v = (v || '').trim();
+  return v ? (verb || 'Add') + ' ' + v : empty;
+};
+const mbBtn = () => typedBtn(draft.mbName, draft.mbTouched
+  ? 'Add the ' + String(kindLabel(draft.mbKind || 'shed') || '').toLowerCase() : 'Add');
 function saveMore(i) {
   const b = (draft.more || [])[i]; if (!b) return;
   const kind = $('#me-k').value;
@@ -2413,7 +2493,7 @@ function doneStep() {
   // is no setup hub to return to.
   if (draft.reopened) return saveStep(step && step.t);
   // Came here on the way out of the hub: answering it IS finishing.
-  if (draft.finishing) { draft.finishing = false; draft.picksSeen = true; return finishFirst(); }
+  if (draft.finishing) { draft.finishing = false; return finishFirst(); }
   hubStep = null; drawHub();
 }
 function skipFirst() {
@@ -2442,6 +2522,16 @@ async function nextFirst() {
   return finishFirst();
 }
 async function finishFirst() {
+  /* Every way out of setup ends here -- "Take me in" from the hub, "Set it up"
+     at the end of the walk, "Finish later" and "Skip and finish" from any
+     optional step. The opt-in guard was on the hub button only, so the other
+     three wrote every check-up on the place without ever showing them. One
+     choke point: if there is something to be asked and nobody has been asked,
+     ask first. It costs one tap, because it is already answered. */
+  if (plannedTypes().length && !draft.picksSeen) {
+    draft.finishing = true;
+    return openStep('What should it watch for you?');
+  }
   app.innerHTML = `<h1>Setting it up…</h1><p class="sub">Writing the first rows.</p>`;
   try { await createEverything(); } catch (e) { return say('Could not save: ' + e.message); }
   await boot();
@@ -2632,8 +2722,10 @@ async function createEverything() {
       kind: draft.bkind === '__other' ? 'other' : draft.bkind,
       kind_other: draft.bkindOther || '' } });
 
-  (draft.more || []).forEach(b => {
-    writes.push({ op:'upsert', table:'structure', record:{ id:uid(), property_id:propId,
+  const moreIds = [];
+  (draft.more || []).forEach((b, i) => {
+    const id2 = uid(); moreIds[i] = id2;
+    writes.push({ op:'upsert', table:'structure', record:{ id:id2, property_id:propId,
       name:b.name, kind: b.kind === '__other' ? 'other' : b.kind,
       attached_to_id: b.attached ? structId : '',
       // Opt-in, not opt-out. Somebody else's building starts closed and they
@@ -2697,6 +2789,37 @@ async function createEverything() {
     picked.forEach(val => {
       const o = q.o.find(x => x[0] === val); if (!o) return;
       o[2].forEach(tn => addThing(tn, null, q.k === 'heat' ? val : ''));
+    });
+  });
+  /* The other buildings answered for themselves. Their answers go on their own
+     rows, and what those answers imply -- a holding tank, a heater under the
+     sink -- is made against that building rather than thrown on the house. The
+     dedupe is per building on purpose: two buildings really do have two water
+     heaters, and the one thing nobody has is two of them in the same shed. */
+  (draft.more || []).forEach((b, i) => {
+    const own = b.sys;
+    if (!own || !Object.keys(own).length || !moreIds[i]) return;
+    const rec2 = (writes.find(w => w.table === 'structure'
+      && w.record.id === moreIds[i]) || {}).record;
+    if (!rec2) return;
+    const g2 = kgroup(b.kind);
+    SYSTEMS.filter(q => !(q.off || []).includes(g2)).forEach(q => {
+      const v = own[q.k];
+      rec2[q.k] = v == null ? 'not_sure_yet' : (q.multi ? v.join(', ') : v);
+    });
+    rec2.heated = (own.heat || []).some(h => h !== 'none') ? 'TRUE' : '';
+    const seen = new Set();
+    SYSTEMS.forEach(q => {
+      const v = own[q.k]; if (!v) return;
+      (q.multi ? v : [v]).forEach(val => {
+        const o = q.o.find(x => x[0] === val); if (!o) return;
+        o[2].forEach(tn => {
+          if (seen.has(tn)) return; seen.add(tn);
+          thingWrites(tn, { typeIds, propId, structId:moreIds[i],
+            powered: q.k === 'heat' ? val : '', keep:picked })
+            .writes.forEach(w => writes.push(w));
+        });
+      });
     });
   });
   if (draft.parkedAt || draft.stayKind || Object.values(draft.here || {}).some(v => v.length))
@@ -2925,8 +3048,27 @@ function drawHome() {
                     : 'nothing tracked yet'}</p>
     <span class="big">${now.length}</span>
     <p class="title">${now.length === 1 ? 'thing needs you now' : 'things need you now'}</p>
-    ${now.concat(soon).map(card).join('') ||
-      `<div class="empty">Nothing due. That is a real state, not an empty one.</div>`}
+    ${(() => {
+      /* Flat, sorted by date, with "in 4 weeks" on each card -- which is the
+         right number and the wrong shape. The question somebody opens this
+         screen with is "what am I doing today", and answering it by date
+         arithmetic on eight cards is work the app should have done. Horizons,
+         and an empty one does not appear at all. */
+      const band = [
+        ['Late',       x => x.d != null && x.d < 0],
+        ['Today',      x => x.d === 0],
+        ['This week',  x => x.d > 0 && x.d <= 7],
+        ['Next week',  x => x.d > 7 && x.d <= 14],
+        ['This month', x => x.d > 14 && x.d <= 31],
+        ['Later',      x => x.d > 31],
+        ['No date',    x => x.d == null]
+      ];
+      const out = band.map(([label, test]) => {
+        const rows = sch.filter(test);
+        return rows.length ? `<h2>${label}</h2>` + rows.map(card).join('') : '';
+      }).join('');
+      return out || `<div class="empty">Nothing due. That is a real state, not an empty one.</div>`;
+    })()}
     ${(() => {
       /* Jobs that are not a rule coming due \u2014 what somebody typed in, or a fault
          they logged. Without this they are written and then invisible, which is
@@ -2952,6 +3094,51 @@ function drawHome() {
     })()}
     ${(() => { const p = papers().filter(x => x.state !== 'ok');
       return p.length ? `<h2>Papers running out</h2>` + p.map(paperCard).join('') : ''; })()}
+    ${(() => {
+      /* The way into everything, and it was a tile called "Look around"
+         thirteenth in a grid at the bottom. Four buildings, their rooms, what
+         runs them, what is in them -- all of it reachable only if you went
+         looking for a verb. It is the place: it goes on the place's screen. */
+      const list = buildings();
+      if (!list.length) return '';
+      const inside = x => !['land'].includes(kgroup(x.kind));
+      const row = x => {
+        const rooms = (DB.area || []).filter(a => a.structure_id === x.id).length;
+        const kit = (DB.asset || []).filter(a => a.structure_id === x.id
+          && a.status !== 'archived').length;
+        const bits = [];
+        if (rooms) bits.push(rooms + (rooms === 1 ? ' room' : ' rooms'));
+        if (kit) bits.push(kit + (kit === 1 ? ' thing' : ' things'));
+        return `<div class="card tap"><button onclick="subject('structure','${x.id}')">
+          <span class="title">${esc(x.name)}</span>
+          <p class="meta">${esc(kindLabel(x.kind) || '')}${
+            bits.length ? ' · ' + bits.join(' · ') : ''}</p></button></div>`;
+      };
+      const home = list.filter(inside), land = list.filter(x => !inside(x));
+      /* Anything you can stand in front of belongs here. Buildings were on this
+         screen and animals and vehicles were not, so the only way to the 442 was
+         to go through the property -- which is two taps for a thing you own and
+         look at. */
+      const kids = (k, heading) => {
+        const rows = (DB[SUBJECT[k].table] || [])
+          .filter(r => r.status !== 'archived' && r.property_id === (prop || {}).id);
+        if (!rows.length) return '';
+        return `<h3 style="font-size:.95rem;color:var(--muted);margin:.9rem 0 .4rem"
+          >${esc(heading)}</h3>` + rows.map(r => {
+          const n = jobsUnder(k, r.id).filter(openJob).length;
+          return `<div class="card tap"><button onclick="subject('${k}','${r.id}')">
+            <span class="title">${esc(r.name || SUBJECT[k].what(r))}</span>
+            <p class="meta">${esc(SUBJECT[k].what(r))}${
+              n ? ' &middot; ' + n + ' to do' : ''}</p></button></div>`; }).join('');
+      };
+      return `<h2>The place</h2>${home.map(row).join('')}${
+        land.length ? `<h3 style="font-size:.95rem;color:var(--muted);margin:.9rem 0 .4rem"
+          >Outside</h3>` + land.map(row).join('') : ''}
+        ${kids('animal', 'Animals')}${kids('vehicle', 'Vehicles')}
+        <div class="actions" style="margin-top:.4rem">
+          <button class="ghost" onclick="subject('property','${(prop || {}).id}')"
+            >All of ${esc((prop || {}).name || 'it')}</button></div>`;
+    })()}
     ${(() => { const low = lowStock();
       return low.length ? `<h2>Running low</h2>` + low.map(x =>
         `<div class="card tap"><button onclick="drawSupply('${x.id}')">
@@ -2960,8 +3147,8 @@ function drawHome() {
           <p class="meta">${esc(shelfLine(x))}${x.about ? ' · for ' + esc(x.about) : ''}${
             supplierName(x) ? ' · ' + esc(supplierName(x)) : ''}</p>
         </button></div>`).join('') : ''; })()}
-    ${sch.length ? `<h2>Everything else</h2>` +
-      sch.filter(x => x.state === 'ok').map(card).join('') : ''}
+    <!-- "Everything else" listed the same rules a second time once the bands
+         above started showing all of them. One list. -->
     <p class="meta" style="margin-top:1.4rem">${DwelLogs.raw === null ? '' :
       (localStorage.getItem('dwellogs.url') ? 'Saving to your sheet.' : 'Saving on this device only.')}
       <button class="ghost" style="min-height:2rem;padding:.2rem .5rem" onclick="connect()">change</button></p>
@@ -2986,7 +3173,6 @@ function drawHome() {
 
     <h2>Anything else</h2>
     <div class="pick">${[
-      ['buildings','Look around',"subject('property', prop.id)"],
       ['gauge','Take a reading',"drawReading()"],
       ['bell','When to tell me','drawTell()'],
       ['camera','Add a photo','drawPhoto()'],
@@ -3074,12 +3260,17 @@ function todo() {
   /* Any building, not just the first. A place whose ADU has never been asked
      what it runs on still has something to fill in, and the old test only ever
      looked at structure[0]. */
-  if (buildings().some(x => unset(x.water) || unset(x.power) || unset(x.heat)))
-    out.push({ icon:'systems', label:'What it runs on', go:'drawSystems()' });
+  const noSys = buildings().filter(x => unset(x.water) || unset(x.power) || unset(x.heat));
+  if (noSys.length) out.push({ icon:'systems',
+    label: noSys.length === buildings().length ? 'What it runs on'
+      : 'What ' + noSys[0].name + ' runs on', go:'drawSystems()' });
   if (!(DB.asset || []).length)
     out.push({ icon:'things', label:"What's in it", go:"show('add')" });
-  if (buildings().some(x => !(DB.area || []).some(a => a.structure_id === x.id)))
-    out.push({ icon:'rooms', label:'Rooms', go:'drawRooms()' });
+  const noRooms = buildings().filter(x => kgroup(x.kind) !== 'land'
+    && !(DB.area || []).some(a => a.structure_id === x.id));
+  if (noRooms.length) out.push({ icon:'rooms',
+    label: noRooms.length === buildings().filter(x => kgroup(x.kind) !== 'land').length
+      ? 'Rooms' : 'Rooms in ' + noRooms[0].name, go:'drawRooms()' });
   if (!(DB.animal || []).length) out.push({ icon:'animal', label:'Animals', go:'drawAnimal()' });
   if (!(DB.invite || []).length && (DB.membership || []).length < 2)
     out.push({ icon:'invite', label:'Somebody else', go:'drawInvite()' });
@@ -3648,9 +3839,10 @@ function drawWhoElse(stId) {
     <label style="margin-top:1.3rem">Anybody you want on the log?</label>
     ${logPeople().map(p => `<div class="card"><span class="title">${esc(p.name)}</span>
       <button class="quiet" onclick="dropLogPerson('${p.id}','${st.id}')">Remove</button></div>`).join('')}
-    <input id="hh-n" placeholder="a name — you can invite them properly later">
+    <input id="hh-n" placeholder="a name — you can invite them properly later"
+      oninput="addLabel('hh-go',typedBtn(this.value,'Add a person'))">
     <div class="actions" style="margin-top:.6rem">
-      <button class="add" onclick="addLogPerson('${st.id}')">Add person</button></div>
+      <button class="add" id="hh-go" onclick="addLogPerson('${st.id}')">Add a person</button></div>
     ${tip('This only puts their name on the list so an entry can say who did it. It does not ' +
       'give them the app — that is an invite, and it is a separate decision you make later.',
       'This is not an invite')}
@@ -3819,9 +4011,25 @@ const JOB_KIND = [
 ];
 const JOB_STATE = [['works','It works'],['intermittent','It works sometimes'],
   ['degraded','It works, badly'],['unusable','It does not work at all']];
+/* The same four states, said about something with a pulse. A cow is not
+   "working badly" and a hive does not "work sometimes" -- and a form that says
+   so about an animal somebody is worried about reads as though nobody thought
+   about it. Plain observations, not diagnoses: what a person can see from the
+   gate is what they are being asked for, and the app has no business implying
+   more than that. */
+const LIVING_STATE = [['works','It seems fine'],['intermittent','Off and on'],
+  ['degraded','Not right'],['unusable','In a bad way']];
 const SAFETY = [['none','Nothing special'],['gas','Gas'],['fire','Fire'],
   ['carbon_monoxide','Carbon monoxide'],['electrical','Electrical'],['water','Water'],
-  ['structural','Structural'],['fall','Working at height']];
+  ['structural','Structural'],['fall','Working at height'],
+  ['handling','It kicks, butts or bites']];
+/* Reorder, never remove -- the rule the whole app follows about kind. A barn
+   fire is real and stays on the list for a goat; it just does not come first
+   when the thing in front of you weighs half a ton. */
+const LIVING_SAFETY = [['none','Nothing special'],['handling','It kicks, butts or bites'],
+  ['fall','Working at height'],['fire','Fire'],['gas','Gas'],
+  ['carbon_monoxide','Carbon monoxide'],['electrical','Electrical'],['water','Water'],
+  ['structural','Structural']];
 const ANSWER_KIND = [['tick','Ticking it off'],['reading','Writing down a number']];
 const EVERY_UNIT = [['day','days'],['week','weeks'],['month','months'],['year','years']];
 
@@ -3978,6 +4186,69 @@ function subjHolds(kind, id, child) {
   }
   return live.filter(r => r[SUBJECT[kind].fk] === id);
 }
+/* Everything underneath a subject. A task list that shows only what points at
+   this exact row is the wrong list: standing on the property you want the
+   place's work, and narrowing to the barn should NARROW it rather than empty
+   it. The walk dedupes, because a fire extinguisher in a room of a building is
+   reachable two ways and is one extinguisher. */
+function descendants(kind, id) {
+  const seen = new Set([kind + ':' + id]), out = [[kind, id]];
+  (function walk(k, i) {
+    ((SUBJECT[k] || {}).holds || []).forEach(child => {
+      subjHolds(k, i, child).forEach(r => {
+        const key = child + ':' + r.id;
+        if (seen.has(key)) return;
+        seen.add(key); out.push([child, r.id]); walk(child, r.id);
+      });
+    });
+  })(kind, id);
+  return out;
+}
+const SUBJ_FKS = ['asset_id','area_id','structure_id','animal_id','vehicle_id','supply_id'];
+/* The work anywhere under here. */
+function jobsUnder(kind, id) {
+  const seen = new Set(), out = [];
+  descendants(kind, id).forEach(([k, i]) => subjJobs(k, i).forEach(j => {
+    if (seen.has(j.id)) return; seen.add(j.id); out.push(j);
+  }));
+  return out;
+}
+/* whenDue() is for something coming. A thing that already happened is not
+   "4 weeks late", it is 4 weeks ago, and reading the first on a history line
+   makes a finished job look overdue. */
+const agoWords = d => d == null ? '' : d === 0 ? 'today' : d === -1 ? 'yesterday'
+  : whenDue(d).replace(/ late$/, ' ago');
+const openJob = j => j.status !== 'done' && j.status !== 'archived' && j.status !== 'dropped';
+/* What has already happened under here -- completions and readings in one list,
+   because "when did I last do a mite check" and "what did it read" are the same
+   question asked two ways, and answering them from two lists interleaved by eye
+   is the app handing back work it was supposed to do. */
+function historyUnder(kind, id) {
+  const ids = new Set(descendants(kind, id).map(([, i]) => i));
+  const jobIds = new Set(jobsUnder(kind, id).map(j => j.id));
+  const mine = r => SUBJ_FKS.some(f => r[f] && ids.has(r[f]))
+    || (r.job_id && jobIds.has(r.job_id));
+  const name = i => {
+    for (const k of Object.keys(SUBJECT)) { const r = subjRow(k, i); if (r) return r.name || ''; }
+    return ((DB.supply || []).find(x => x.id === i) || {}).name || '';
+  };
+  const about = r => { const f = SUBJ_FKS.find(x => r[x]); return f ? name(r[f]) : ''; };
+  const who = i => ((DB.person || []).find(p => p.id === i) || {}).name || '';
+  const out = [];
+  (DB.completion || []).filter(mine).forEach(c => out.push({
+    id:c.id, kind: c.origin === 'purchase' ? 'bought' : 'done', on:c.done_on,
+    what:c.what || 'Done', about:about(c), by:who(c.by_person_id),
+    extra:[c.cost ? money(c.cost) : '', c.how_many ? c.how_many + ' in' : ''].filter(Boolean).join(' · '),
+    job:c.job_id || '' }));
+  (DB.reading || []).filter(r => r.status !== 'archived').filter(mine).forEach(r => out.push({
+    id:r.id, kind:'read', on:r.taken_on, what:r.what || 'Reading', about:about(r),
+    by:who(r.by_person_id),
+    extra:[(r.value_num != null && r.value_num !== '' ? r.value_num : r.value_flag || ''),
+           r.unit || ''].filter(Boolean).join(' '),
+    job:'' }));
+  return out.sort((a2, b2) => String(b2.on || '').localeCompare(String(a2.on || '')));
+}
+
 /* Work pointing at this subject. A person's is the work they hold or were
    meant for; everything else is the column with its name on it. */
 function subjJobs(kind, id) {
@@ -4026,174 +4297,215 @@ function subjWhere(kind, row) {
   return out.filter((x, i) => !i || x[2] !== out[i - 1][2]);
 }
 
-function subject(kind, id) {
+let SUBJ_TAB = 'todo', SUBJ_Q = '', SUBJ_SORT = 'date';
+/* One thing, and the four questions somebody actually arrives with: where did I
+   leave off, what is next, what am I doing, and what does it need before I can
+   start. Two tabs because those are two different jobs -- To do is a list you
+   act on, History is the same records with the inputs taken off. */
+function subject(kind, id, tab) {
   const def = SUBJECT[kind]; if (!def) return show('home');
   const row = subjRow(kind, id); if (!row) return show('home');
   $('#tabs').hidden = true;
   const last = SUBJ_TRAIL[SUBJ_TRAIL.length - 1];
-  if (!last || last[0] !== kind || last[1] !== id) SUBJ_TRAIL.push([kind, id]);
+  if (!last || last[0] !== kind || last[1] !== id) { SUBJ_TRAIL.push([kind, id]); SUBJ_Q = ''; }
   if (SUBJ_TRAIL.length > 20) SUBJ_TRAIL.shift();
+  if (tab) SUBJ_TAB = tab;
+  const here = `subject('${kind}','${id}')`;
   const name = subjName(kind, id);
-  const jobs = subjJobs(kind, id);
-  const open = jobs.filter(j => j.status !== 'done' && j.status !== 'archived');
-  const spend = subjSpend(kind, id);
-  const total = spend.reduce((a, c) => a + (Number(c.cost) || 0), 0);
-  const where = subjWhere(kind, row);
+  const all = jobsUnder(kind, id), open = all.filter(openJob);
+  const past = historyUnder(kind, id);
+  const where = subjWhere(kind, row).filter(x => x[2] !== name);
   const has = t => (DB[t] || []).filter(r => def.fk && r[def.fk] === id);
-  const papers = has('document'), stock = has('supply'), reads = has('reading');
+  const papers = has('document'), stock = has('supply');
   const rules = has('schedule').filter(r => r.muted !== 'TRUE');
+  const q = SUBJ_Q.toLowerCase();
+  const hit = (...bits) => !q || bits.filter(Boolean).join(' ').toLowerCase().includes(q);
 
   const sect = (title, body, add) => !body && !add ? '' :
     `<h2 style="margin-top:1.6rem">${esc(title)}</h2>${body || ''}${add || ''}`;
-  const tap = (k, i, label, meta) => `<div class="card tap"><button onclick="subject('${k}','${i}')">
-    <span class="title">${esc(label)}</span>${meta ? `<p class="meta">${esc(meta)}</p>` : ''}</button></div>`;
+
+  /* Before you can start. Prose in `prerequisites` cannot be checked against
+     anything; the rest can, and saying "waiting on Dave" or "no filter on the
+     shelf" on the card is the difference between a list and a plan. */
+  const blockers = j => {
+    const out = [];
+    if (j.blocked_on_person_id) out.push('waiting on '
+      + (((DB.person || []).find(p => p.id === j.blocked_on_person_id)) || {}).name || 'somebody');
+    if (j.depends_on_id) { const d = jobById(j.depends_on_id);
+      if (d && openJob(d)) out.push('after ' + (d.title || 'another job')); }
+    (DB.job_supply || []).filter(x => x.job_id === j.id).forEach(x => {
+      const sp = (DB.supply || []).find(y => y.id === x.supply_id); if (!sp) return;
+      const have = Number(sp.on_hand), need = Number(x.how_many) || 1;
+      if (!Number.isFinite(have) || have < need) out.push('needs ' + sp.name);
+    });
+    if (j.needs_decision) out.push('a decision first');
+    return out;
+  };
+  const jobCard = j => {
+    const at = JOB_AT.map(([k2, f]) => [k2, j[f]]).find(([, v]) => v);
+    const about = at && at[1] !== id ? subjName(at[0], at[1]) : '';
+    const stop = blockers(j);
+    return `<div class="card tap"><button onclick="drawJob('${j.id}')">
+      <span class="title">${esc(j.title || 'A job')}</span>
+      <p class="meta">${about ? esc(about) + ' &middot; ' : ''}${esc(jobMeta(j))}${
+        j.claimed_by_id ? ' &middot; ' + esc((((DB.person || []).find(p => p.id === j.claimed_by_id)) || {}).name || 'taken') : ''}
+        ${stop.length ? `<span class="chip soon">${esc(stop[0])}</span>` : ''}</p>
+    </button></div>`;
+  };
+
+  const tabs = `<div class="pick" style="grid-template-columns:1fr 1fr;margin:.9rem 0 .2rem">
+      <button type="button" aria-pressed="${SUBJ_TAB === 'todo'}"
+        onclick="SUBJ_TAB='todo';${here}"><span class="cap">To do${
+        open.length ? ' · ' + open.length : ''}</span></button>
+      <button type="button" aria-pressed="${SUBJ_TAB === 'past'}"
+        onclick="SUBJ_TAB='past';${here}"><span class="cap">History${
+        past.length ? ' · ' + past.length : ''}</span></button>
+    </div>`;
+
+  const search = `<input id="sq" placeholder="search ${esc(name)}" value="${esc(SUBJ_Q)}"
+    onchange="SUBJ_Q=this.value;${here};queueMicrotask(()=>{const e=$('#sq');if(e){e.focus();
+      e.setSelectionRange(e.value.length,e.value.length);}})" style="margin:.6rem 0 .2rem">`;
+
+  const todo = () => {
+    const shown = orderJobs(open.filter(j => hit(j.title, j.notes)));
+    /* The drill-down, and it carries the count -- narrowing blind is how you
+       tap into a room to find out it had nothing in it. */
+    const holds = def.holds.map(child => {
+      const rows = subjHolds(kind, id, child).filter(r => hit(r.name));
+      if (!rows.length) return '';
+      return sect(HOLD_LABEL[child] || child, rows.map(r => {
+        const n = jobsUnder(child, r.id).filter(openJob).length;
+        const inside = (SUBJECT[child].holds || [])
+          .reduce((t, c) => t + subjHolds(child, r.id, c).length, 0);
+        return `<div class="card tap"><button onclick="subject('${child}','${r.id}')">
+          <span class="title">${esc(r.name || SUBJECT[child].what(r))}</span>
+          <p class="meta">${esc(SUBJECT[child].what(r))}${
+            inside ? ' &middot; ' + inside + (inside === 1 ? ' thing inside' : ' things inside') : ''}${
+            n ? ' &middot; ' + n + (n === 1 ? ' to do' : ' to do') : ''}</p>
+        </button></div>`; }).join(''));
+    }).join('');
+    /* What is IN a place comes before what needs doing in it. On a property with
+       any real amount of work the buildings were below the fold, so the screen
+       for a place answered "what is outstanding" and never "what is here" --
+       which is the question you open a building with. A thing has nothing
+       inside it, so its work stays first. */
+    const box = ['property','structure','area'].includes(kind);
+    const work = sect('Needs doing',
+      open.length ? (open.length > 1 ? jobBar(here) : '')
+        + (shown.map(jobCard).join('') || `<p class="hint">Nothing matches.</p>`)
+        : `<p class="hint">Nothing open here.</p>`,
+      `<div class="actions" style="margin-top:.6rem">
+        <button class="add" onclick="addJobHere('${kind}','${id}')">Add a job here</button></div>`);
+    return (box ? holds + work : work + holds)
+      + (rules.length ? sect('Comes round', rules.filter(r => hit(r.title)).map(r =>
+        `<div class="card tap"><button onclick="openSched('${r.id}')">
+          <span class="title">${esc(r.title)}</span>
+          <p class="meta">${r.every_n ? 'every ' + esc(r.every_n) + ' ' + esc(r.every_unit)
+            + (r.every_n > 1 ? 's' : '') : esc(r.kind || '')}${
+            r.next_due_on ? ' &middot; ' + esc(whenDue(daysTo(r.next_due_on))) : ''}</p>
+        </button></div>`).join('')) : '')
+      + fedBy()
+      + (stock.length ? sect('On the shelf', stock.filter(x => hit(x.name, x.part_number)).map(x =>
+        `<div class="card tap"><button onclick="drawSupply('${x.id}')">
+          <span class="title">${esc(x.name)}${x.part_number
+            ? ` <span style="font-weight:400;color:var(--muted)">${esc(x.part_number)}</span>` : ''}</span>
+          <p class="meta">${esc(shelfLine(x))}${supplyLow(x)
+            ? ' <span class="chip soon">running low</span>' : ''}</p></button></div>`).join(''),
+        `<div class="actions" style="margin-top:.6rem">
+          <button class="add" onclick="drawSupply('', '${kind}', '${id}')">Something you keep</button></div>`)
+        : (MOVABLE.includes(kind) || kind === 'area' ? sect('On the shelf', '',
+          `<div class="actions"><button class="add"
+            onclick="drawSupply('', '${kind}', '${id}')">Something you keep</button></div>`) : ''))
+      + (papers.length ? sect('Papers', papers.filter(d => hit(d.title, d.kind)).map(d =>
+        `<div class="card tap"><button onclick="drawDoc('${d.id}')">
+          <span class="title">${esc(d.title || d.kind || 'Paper')}</span>
+          <p class="meta">${esc(d.expires_on ? 'expires ' + d.expires_on : (d.kind || ''))}</p>
+        </button></div>`).join('')) : '');
+  };
+
+  /* History is the to-do list with the inputs taken off -- same records, read
+     only. Sorted by when, or grouped by what it was about, because "when did I
+     last do a mite check" and "everything that ever happened to hive 2" are the
+     same rows asked for two different ways. */
+  const past2 = () => {
+    const rows = past.filter(r => hit(r.what, r.about, r.by, r.extra));
+    if (!rows.length) return `<p class="hint" style="margin-top:1rem">${
+      past.length ? 'Nothing matches.' : 'Nothing has happened here yet.'}</p>`;
+    const line = r => `<div class="row"><span>${esc(r.what)}${
+      r.kind === 'read' ? ' <span class="chip ok">reading</span>'
+      : r.kind === 'bought' ? ' <span class="chip ok">bought</span>' : ''}</span>
+      <span class="meta">${[r.about, r.extra, r.by,
+        r.on ? agoWords(daysTo(r.on)) + ' · ' + r.on : ''].filter(Boolean).map(esc).join(' · ')}</span>
+    </div>`;
+    if (SUBJ_SORT === 'thing') {
+      const by = {};
+      rows.forEach(r => { (by[r.about || name] = by[r.about || name] || []).push(r); });
+      return Object.keys(by).sort().map(k =>
+        `<h3 style="font-size:.95rem;color:var(--muted);margin:1rem 0 .3rem">${esc(k)}</h3>
+         <div class="rows">${by[k].map(line).join('')}</div>`).join('');
+    }
+    return `<div class="rows" style="margin-top:.6rem">${rows.map(line).join('')}</div>`;
+  };
+  const sortBar = past.length > 2 ? `<div class="chips" style="margin:.6rem 0 .2rem">
+      ${[['date','By when'], ['thing','By thing']].map(([k2, l]) =>
+        `<button type="button" aria-pressed="${SUBJ_SORT === k2}"
+          onclick="SUBJ_SORT='${k2}';${here}">${l}</button>`).join('')}</div>` : '';
+
+  function fedBy() {
+    const fed = (DB.hookup || []).filter(h => h.structure_id === id && !h.ended_on);
+    const feeds = kind === 'asset'
+      ? (DB.hookup || []).filter(h => h.source_asset_id === id && !h.ended_on) : [];
+    if (!fed.length && !feeds.length) return '';
+    const asset = i2 => (DB.asset || []).find(x => x.id === i2) || {};
+    const struct = i2 => (DB.structure || []).find(x => x.id === i2) || {};
+    const upstream = h => {
+      const out = [], seen = new Set([id]); let cur = h;
+      while (cur && out.length < 6) {
+        const a2 = asset(cur.source_asset_id); if (!a2.id) break;
+        const inSt = a2.structure_id;
+        out.push(inSt && inSt !== id ? struct(inSt).name : null);
+        if (!inSt || seen.has(inSt)) break;
+        seen.add(inSt);
+        cur = (DB.hookup || []).find(x => x.structure_id === inSt
+          && x.utility === h.utility && !x.ended_on);
+      }
+      return out.filter(Boolean);
+    };
+    return sect('Fed by',
+      fed.map(h => { const a2 = asset(h.source_asset_id), chain = upstream(h);
+        return `<div class="card tap"><button onclick="subject('asset','${a2.id}')">
+          <span class="title">${esc(a2.name || h.utility)}</span>
+          <p class="meta">${esc(String(h.utility || '').replace(/_/g, ' '))}${
+            chain.length ? ' &middot; ' + chain.map(esc).join(' &lsaquo; ') : ''}${
+            h.started_on ? '' : ' &middot; not live yet'}</p></button></div>`; }).join('')
+      + feeds.map(h => `<div class="card tap"><button onclick="subject('structure','${h.structure_id}')">
+          <span class="title">${esc(struct(h.structure_id).name || 'a building')}</span>
+          <p class="meta">runs on this${h.utility ? ' &middot; '
+            + esc(String(h.utility).replace(/_/g, ' ')) : ''}</p></button></div>`).join(''));
+  }
+
+  const worst = open.filter(j => ({ unusable:3, degraded:2, intermittent:1 })[j.state])
+    .sort((x, y) => ({ unusable:3, degraded:2, intermittent:1 })[y.state]
+                  - ({ unusable:3, degraded:2, intermittent:1 })[x.state])[0];
+  const leftOff = past[0];
 
   app.innerHTML = `<button class="back" onclick="subjBack()">&lsaquo; Back</button>
     <p class="step">${esc(String(def.what(row) || '').replace(/^./, c => c.toUpperCase()))}</p>
     <h1>${esc(name)}</h1>
-    ${where.filter(x => x[2] !== name).length ? `<p class="sub">${
-      where.filter(x => x[2] !== name).map(([k, i, n]) =>
-      `<button class="skiplink" onclick="subject('${k}','${i}')">${esc(n)}</button>`)
+    ${where.length ? `<p class="sub">${where.map(([k2, i2, n]) =>
+      `<button class="skiplink" onclick="subject('${k2}','${i2}')">${esc(n)}</button>`)
       .join(' <span aria-hidden="true">&rsaquo;</span> ')}</p>` : ''}
-
-    ${(() => {
-      /* A thing can be present and dead at the same time, and the two facts live
-         in different places on purpose: the building still says it has an attic
-         fan, because it does, and the fan says the motor has gone. Neither is
-         wrong and neither cancels the other -- but standing in front of the
-         thing you should not have to read the job list to learn it does not
-         work. Worst open fault wins; "works" is not a state worth a chip. */
-      const rank = { unusable:3, degraded:2, intermittent:1 };
-      const worst = open.filter(j => rank[j.state])
-        .sort((x, y) => rank[y.state] - rank[x.state])[0];
-      if (!worst) return '';
-      const word = { unusable:'not working', degraded:'not right',
-                     intermittent:'works sometimes' }[worst.state];
-      return `<p style="margin:.4rem 0 0"><span class="chip ${
-        worst.state === 'intermittent' ? 'soon' : 'attn'}">${esc(word)}</span></p>`;
-    })()}
-
-    ${sect('Needs doing',
-      open.length ? (open.length > 2 ? jobBar(`subject('${kind}','${id}')`) : '')
-        + (orderJobs(open).map(j => `<div class="card tap"><button onclick="drawJob('${j.id}')">
-          <span class="title">${esc(j.title)}</span>
-          <p class="meta">${esc((JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'job')}
-            &middot; ${esc(jobMeta(j))}</p></button></div>`).join('')
-          || `<p class="hint">Nothing that fits. Loosen it above.</p>`)
-        : `<p class="hint">Nothing open here.</p>`,
-      `<div class="actions" style="margin-top:.6rem">
-        <button class="add" onclick="addJobHere('${kind}','${id}')">Add a job here</button></div>`)}
-
-    ${def.holds.map(child => {
-      const rows = subjHolds(kind, id, child);
-      if (!rows.length) return '';
-      return sect(HOLD_LABEL[child] || child,
-        rows.map(r => tap(child, r.id, r.name || SUBJECT[child].what(r),
-          SUBJECT[child].what(r))).join(''));
-    }).join('')}
-
-    ${(() => {
-      /* What it is connected to, and what is connected to it. A shared well is
-         two facts from two directions, and the building that does not own it is
-         the one that needs telling -- at 11pm it is the pump in the other
-         building that has stopped. */
-      const fed = (DB.hookup || []).filter(h => h.structure_id === id && !h.ended_on);
-      const feeds = kind === 'asset'
-        ? (DB.hookup || []).filter(h => h.source_asset_id === id && !h.ended_on) : [];
-      if (!fed.length && !feeds.length) return '';
-      const asset = i => (DB.asset || []).find(x => x.id === i) || {};
-      const struct = i => (DB.structure || []).find(x => x.id === i) || {};
-      /* One link is not the answer. Power reaching a shed from the barn by way
-         of the pump house is three buildings, and the breaker that matters at
-         11pm may be two of them back. So the chain is walked: source thing, the
-         building it stands in, that building's hookup for the same utility,
-         again. Capped, because somebody will eventually wire a loop. */
-      const upstream = h => {
-        const out = [], seen = new Set([id]);
-        let cur = h;
-        while (cur && out.length < 6) {
-          const a2 = asset(cur.source_asset_id); if (!a2.id) break;
-          const inSt = a2.structure_id;
-          out.push(inSt && inSt !== id ? struct(inSt).name : null);
-          if (!inSt || seen.has(inSt)) break;
-          seen.add(inSt);
-          cur = (DB.hookup || []).find(x => x.structure_id === inSt
-            && x.utility === h.utility && !x.ended_on);
-        }
-        return out.filter(Boolean);
-      };
-      return sect('Fed by',
-        fed.map(h => { const a2 = asset(h.source_asset_id);
-          const chain = upstream(h);
-          return `<div class="card tap"><button onclick="subject('asset','${a2.id}')">
-            <span class="title">${esc(a2.name || h.utility)}</span>
-            <p class="meta">${esc(String(h.utility || '').replace(/_/g, ' '))}${
-              chain.length ? ' &middot; ' + chain.map(esc).join(' &lsaquo; ') : ''}${
-              h.started_on ? '' : ' &middot; not live yet'}</p>
-          </button></div>`; }).join('')
-        + feeds.map(h => `<div class="card tap"><button onclick="subject('structure','${h.structure_id}')">
-            <span class="title">${esc(struct(h.structure_id).name || 'a building')}</span>
-            <p class="meta">runs on this${h.utility ? ' &middot; ' +
-              esc(String(h.utility).replace(/_/g, ' ')) : ''}</p></button></div>`).join(''));
-    })()}
-
-    ${rules.length ? sect('Comes round',
-      rules.map(r => `<div class="card tap"><button onclick="openSched('${r.id}')">
-        <span class="title">${esc(r.title)}</span>
-        <p class="meta">${r.every_n ? 'every ' + esc(r.every_n) + ' ' + esc(r.every_unit)
-          + (r.every_n > 1 ? 's' : '') : esc(r.kind || '')}${
-          r.next_due_on ? ' &middot; ' + esc(whenDue(daysTo(r.next_due_on))) : ''}</p>
-      </button></div>`).join('')) : ''}
-
-    ${spend.length ? sect('What it has cost',
-      `<div class="card"><span class="title">${esc(money(total) || 'nothing recorded')}</span>
-        <p class="meta">across ${spend.length} ${spend.length === 1 ? 'entry' : 'entries'}${
-          spend.filter(c => !c.cost).length
-            ? ' &middot; ' + spend.filter(c => !c.cost).length + ' with no figure' : ''}</p></div>`) : ''}
-
-    ${spend.length ? sect('Already done',
-      `<div class="rows">${spend.slice().sort((a, b) =>
-        String(b.done_on).localeCompare(String(a.done_on))).slice(0, 8)
-        .map(c => `<div class="row"><span>${esc(c.what || 'Done')}</span>
-          <span class="meta">${esc(c.done_on || '')}${c.cost ? ' &middot; ' + esc(money(c.cost)) : ''}</span>
-        </div>`).join('')}</div>`) : ''}
-
-    ${reads.length ? sect('Readings',
-      `<div class="rows">${reads.slice().sort((a, b) =>
-        String(b.taken_on).localeCompare(String(a.taken_on))).slice(0, 6)
-        .map(r => `<div class="row"><span>${esc(r.what || 'Reading')}</span>
-          <span class="meta">${esc(r.value != null ? r.value : (r.result || ''))} ${
-            esc(r.unit || '')} &middot; ${esc(r.taken_on || '')}</span></div>`).join('')}</div>`) : ''}
-
-    ${(MOVABLE.includes(kind) || kind === 'area') ? sect('On the shelf',
-      stock.map(x => `<div class="card tap"><button onclick="drawSupply('${x.id}')">
-        <span class="title">${esc(x.name)}${x.part_number
-          ? ` <span style="font-weight:400;color:var(--muted)">${esc(x.part_number)}</span>` : ''}</span>
-        <p class="meta">${esc(shelfLine(x))}${supplyLow(x)
-          ? ' <span class="chip soon">running low</span>' : ''}</p></button></div>`).join(''),
-      `<div class="actions" style="margin-top:.6rem">
-        <button class="add" onclick="drawSupply('', '${kind}', '${id}')">Something you keep</button></div>`)
-      : ''}
-
-    ${papers.length ? sect('Papers',
-      papers.map(d => `<div class="card tap"><button onclick="drawDoc('${d.id}')">
-        <span class="title">${esc(d.title || d.kind || 'Paper')}</span>
-        <p class="meta">${esc(d.expires_on ? 'expires ' + d.expires_on : (d.kind || ''))}</p>
-      </button></div>`).join('')) : ''}
-
-    ${(() => {
-      const been = (DB.placement || []).filter(pl => pl[def.fk] === id && pl.left_on);
-      if (!been.length) return '';
-      const where = pl => ((DB.area || []).find(x => x.id === pl.area_id) || {}).name
-        || ((DB.structure || []).find(x => x.id === pl.structure_id) || {}).name || 'somewhere';
-      return sect('Where it has been',
-        `<div class="rows">${been.slice().sort((x, y) =>
-          String(y.arrived_on).localeCompare(String(x.arrived_on))).map(pl =>
-          `<div class="row"><span>${esc(where(pl))}</span>
-            <span class="meta">${esc(pl.arrived_on || '')}&ndash;${esc(pl.left_on || '')}</span>
-          </div>`).join('')}</div>`);
-    })()}
-
+    ${worst ? `<p style="margin:.4rem 0 0"><span class="chip ${
+      worst.state === 'intermittent' ? 'soon' : 'attn'}">${
+      esc({ unusable:'not working', degraded:'not right',
+            intermittent:'works sometimes' }[worst.state])}</span></p>` : ''}
+    ${leftOff ? `<p class="hint" style="margin:.5rem 0 0">Last: ${esc(leftOff.what)}${
+      leftOff.about && leftOff.about !== name ? ' on ' + esc(leftOff.about) : ''}${
+      leftOff.on ? ' &middot; ' + esc(agoWords(daysTo(leftOff.on))) : ''}</p>` : ''}
+    ${tabs}
+    ${(SUBJ_TAB === 'past' ? past.length : all.length + stock.length + papers.length) >= 3
+      || SUBJ_Q ? search : ''}
+    ${SUBJ_TAB === 'past' ? sortBar + past2() : todo()}
     <div class="actions" style="margin-top:1.6rem">
       ${MOVABLE.includes(kind) ? `<button class="ghost"
         onclick="drawThingTo('${kind}','${id}')">Move it</button>` : ''}
@@ -4408,7 +4720,8 @@ function jobFields(j, live, id) {
   const everyN = live ? ((sched || {}).every_n    || '6')     : (j.every_n    || '6');
   const everyU = live ? ((sched || {}).every_unit || 'month') : (j.every_unit || 'month');
   const kindGo = live ? `reKind('${id}', this.value)`               : 'reKindDraft(this.value)';
-  const repGo  = live ? `draft.rep = this.value; drawJob('${id}')`  : 'setRepDraft(this.value)';
+  const repGo  = live ? `syncJob('${id}');draft.rep = this.value; drawJob('${id}')`
+                      : 'setRepDraft(this.value)';
   const stepGo = live ? `addStep('${id}')`                          : 'addStepDraft()';
   const kind   = j.kind || 'task';
   /* Tyre pressure, vacuum, propane, mite counts: plenty of repeating jobs are
@@ -4422,7 +4735,7 @@ function jobFields(j, live, id) {
   return `
     <label for="jb-t">Name</label>
     <input id="jb-t" value="${esc(j.title || '')}" >
-    <label for="jb-k">What kind of thing is this?</label>
+    <label for="jb-k">What kind of job is this?</label>
     <select id="jb-k" onchange="${kindGo}">${optList(kind, JOB_KIND.map(k => [k[0], k[1]]))}</select>
     <p class="hint">${esc((JOB_KIND.find(k => k[0] === kind) || [])[2] || '')}</p>
 
@@ -4493,6 +4806,22 @@ function syncEntry() {
   draft.entry = readJobFields();
   draft.entry.steps = steps;
 }
+/* The live twin of syncEntry(). The setup form has kept what is typed across a
+   redraw since the day it dropped a half-typed row; the job screen redraws on
+   the same two controls -- the kind, and "does it come round again" -- and kept
+   nothing. Type a title, set it to repeat every six months, and the title went
+   with the redraw, which is precisely the task somebody stood in their bathroom
+   and decided to write down. Written onto the row in memory only: nothing is
+   saved until Save. */
+function syncJob(id) {
+  if (!$('#jb-t')) return;
+  const j = jobById(id); if (!j) return;
+  const f = readJobFields();
+  ['kind','title','notes','start_on','due_on','est_minutes','est_cost',
+   'prerequisites','safety','state','workaround','reported_on','reply','now','want']
+    .forEach(k => { if (f[k] !== undefined) j[k] = f[k]; });
+  draft.everyN = f.every_n; draft.everyU = f.every_unit; draft.answer = f.answer;
+}
 function reKindDraft(k)  { syncEntry(); draft.entry.kind = k; drawFirst(); }
 function setRepDraft(v)  { syncEntry(); draft.entry.rep = v;  drawFirst(); }
 function addStepDraft() {
@@ -4557,6 +4886,12 @@ function repOn(j) {
    "this needs a ladder" is how that detail never gets written down. */
 function moreSection(j, sel) {
   const fault = j.kind === 'fault', imp = j.kind === 'improvement';
+  /* The words follow what the job is ABOUT. All of this was written for a
+     boiler, and under a cow it asked whether she works, offered a workaround,
+     and listed carbon monoxide while saying nothing about being kicked. Shared
+     by the setup form and the job screen, so it is computed from the row rather
+     than from whichever screen is showing. */
+  const living = !!j.animal_id;
   return `<h2>What it takes</h2>
     <label for="jb-m">How long</label>
     <div class="counts">
@@ -4571,15 +4906,15 @@ function moreSection(j, sel) {
     <label for="jb-p">You need</label>
     <textarea id="jb-p" rows="2" placeholder="a ladder, and somebody to foot it">${esc(j.prerequisites || '')}</textarea>
     <label for="jb-sf">Anything to be careful of?</label>
-    <select id="jb-sf">${sel(j.safety || 'none', SAFETY)}</select>
-    
+    <select id="jb-sf">${sel(j.safety || 'none', living ? LIVING_SAFETY : SAFETY)}</select>
 
-    ${fault ? `<h2>What it is doing</h2>
-      <label for="jb-st">How is it?</label>
-      <select id="jb-st">${sel(j.state || 'degraded', JOB_STATE)}</select>
-      <label for="jb-wa">Workaround</label>
-      <textarea id="jb-wa" rows="2" placeholder="how you are getting by meanwhile">${esc(j.workaround || '')}</textarea>
-      <label for="jb-ro">Told somebody on</label>
+    ${fault ? `<h2>${living ? 'How it is' : 'What it is doing'}</h2>
+      <label for="jb-st">How is ${living ? esc(subjName('animal', j.animal_id) || 'it') : 'it'}?</label>
+      <select id="jb-st">${sel(j.state || 'degraded', living ? LIVING_STATE : JOB_STATE)}</select>
+      <label for="jb-wa">${living ? 'What you are doing meanwhile' : 'Workaround'}</label>
+      <textarea id="jb-wa" rows="2" placeholder="${living
+        ? 'kept her in, hand-feeding' : 'how you are getting by meanwhile'}">${esc(j.workaround || '')}</textarea>
+      <label for="jb-ro">${living ? 'Called the vet on' : 'Told somebody on'}</label>
       <input id="jb-ro" type="date" value="${esc(j.reported_on || '')}">
       <p class="hint">A date here is what a deposit argument turns on.</p>
       <label for="jb-rp">What they said</label>
@@ -4603,6 +4938,7 @@ function hoursWords(m) {
 }
 
 function reKind(id, k) {
+  syncJob(id);                                 // keep what is typed
   const j = jobById(id); if (j) j.kind = k;   // redraw only; saved on Save
   drawJob(id);
 }
@@ -5535,7 +5871,7 @@ function keepAnimalNames() {
    actually changed, do nothing at all. */
 function anKind(t) {
   if (!draft.an || draft.an.type === t) return;
-  keepAnimalNames(); draft.an.type = t; draft.an.touched = true;
+  keepAnimalNames(); draft.an.type = t; draft.an.touched = true; addLabel('an-add', animalBtn());
   const box = $('#an-names'); if (box) box.innerHTML = animalNames();
 }
 function anCount(v) {
@@ -5547,7 +5883,7 @@ function anCount(v) {
      mid-keystroke fights the typist. Junk gets normalised when they leave. */
   if (want === draft.an.n) { if (q && !typing && q.value !== String(want)) q.value = String(want); return; }
   keepAnimalNames();
-  draft.an.n = want; draft.an.touched = true;
+  draft.an.n = want; draft.an.touched = true; addLabel('an-add', animalBtn());
   if (q && !typing) q.value = String(want);
   const box = $('#an-names'); if (box) box.innerHTML = animalNames();
   const h2 = box && box.previousElementSibling;

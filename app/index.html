@@ -281,7 +281,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=acefb31ecd"></script>
+<script src="api.js?v=4aac0cf35a"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -4646,6 +4646,7 @@ function subject(kind, id, tab) {
     <div class="actions" style="margin-top:1.6rem">
       ${MOVABLE.includes(kind) ? `<button class="ghost"
         onclick="drawThingTo('${kind}','${id}')">Move it</button>` : ''}
+      <button class="ghost" onclick="exportSubject('${kind}','${id}')">Take a copy</button>
       <button class="ghost" onclick="show('home')">Home</button>
     </div>`;
   window.scrollTo(0, 0);
@@ -5711,6 +5712,147 @@ function startOnSheet() {
   say('Starting fresh. Your device copy is still on this device.');
 }
 
+/* ---- taking it with you --------------------------------------------------
+
+   "Move out, and your log moves with you" has been on the front page since the
+   start, and nothing in the app could do it. It belongs on the PERSON, not on
+   the place: a place cannot want to be taken away, and `membership` already
+   says which ones are yours.
+
+   One zip per place, one CSV per table, because the whole premise is that this
+   is your spreadsheet -- a JSON blob would be a thing only this app can read,
+   which is the opposite of the promise. The zip is written by hand (stored, no
+   compression) so the app stays self-contained: pulling in a library to leave
+   would be its own small joke. */
+const CRC = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0; }
+  return b => { let c = 0xFFFFFFFF;
+    for (let i = 0; i < b.length; i++) c = t[(c ^ b[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0; };
+})();
+function zipOf(files) {
+  const enc = new TextEncoder(), parts = [], dir = [];
+  let at = 0;
+  const u16 = n => [n & 255, (n >> 8) & 255];
+  const u32 = n => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+  files.forEach(([name, text]) => {
+    const nb = enc.encode(name), body = enc.encode(text), crc = CRC(body);
+    const head = [].concat([0x50,0x4b,0x03,0x04], u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(crc), u32(body.length), u32(body.length), u16(nb.length), u16(0));
+    parts.push(new Uint8Array(head), nb, body);
+    dir.push({ name:nb, crc, size:body.length, at });
+    at += head.length + nb.length + body.length;
+  });
+  const cd = [];
+  dir.forEach(f => {
+    const h = [].concat([0x50,0x4b,0x01,0x02], u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(f.crc), u32(f.size), u32(f.size), u16(f.name.length),
+      u16(0), u16(0), u16(0), u16(0), u32(0), u32(f.at));
+    cd.push(new Uint8Array(h), f.name);
+  });
+  const cdSize = cd.reduce((a2, b2) => a2 + b2.length, 0);
+  const end = new Uint8Array([].concat([0x50,0x4b,0x05,0x06], u16(0), u16(0),
+    u16(dir.length), u16(dir.length), u32(cdSize), u32(at), u16(0)));
+  return new Blob(parts.concat(cd, [end]), { type:'application/zip' });
+}
+const csvCell = v => {
+  const t = v == null ? '' : String(v);
+  return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+};
+function csvOf(rows) {
+  const cols = [];
+  rows.forEach(r => Object.keys(r).forEach(k => { if (cols.indexOf(k) < 0) cols.push(k); }));
+  return [cols.join(',')].concat(rows.map(r => cols.map(c => csvCell(r[c])).join(','))).join('\n');
+}
+/* What belongs under a subject. The whole place is the case the front page
+   promises -- move out and your log moves with you -- but it is the same act at
+   any size: a copy of the 442 goes with the car when somebody buys it, and a
+   copy of the barn goes with the barn. Same walk as the work and the money. */
+function rowsUnder(kind, id) {
+  const out = {}, ids = new Set();
+  const tables = Object.keys(DB || {});
+  tables.forEach(t => { out[t] = []; });
+  const seed = (t, r) => { if (out[t].indexOf(r) < 0) { out[t].push(r); ids.add(r.id); } };
+  descendants(kind, id).forEach(([k, i]) => {
+    const tab = (SUBJECT[k] || {}).table; if (!tab) return;
+    const r = (DB[tab] || []).find(x => x.id === i); if (r) seed(tab, r);
+  });
+  /* The place itself always comes, whatever level this started from: a box of
+     rows with no property in it cannot say where any of it was. But it goes in
+     the OUTPUT only, never into the walk set -- seeding it there made it a
+     magnet, and a copy of one car came out carrying the cow's vet bill and
+     every building on the place. */
+  if (prop) (DB.property || []).filter(r => r.id === prop.id)
+    .forEach(r => { if (out.property.indexOf(r) < 0) out.property.push(r); });
+  for (let pass = 0; pass < 5; pass++) {
+    let grew = false;
+    // Outward: a step on a job on an asset in a room comes too.
+    tables.forEach(t => {
+      if (t === 'property') return;
+      (DB[t] || []).forEach(r => {
+        if (out[t].indexOf(r) > -1) return;
+        const hit = Object.keys(r).some(k => k.endsWith('_id') && r[k] && ids.has(r[k]));
+        if (hit) { out[t].push(r); ids.add(r.id); grew = true; }
+      });
+    });
+    /* And inward, which the first version missed entirely: a person has no
+       column pointing at anything, so nobody came -- and an export where every
+       completion says who did it and no file says who that is answers the
+       question with a uuid. Anything an included row POINTS AT comes as well. */
+    const wanted = new Set();
+    tables.forEach(t => out[t].forEach(r => Object.keys(r).forEach(k => {
+      if (k.endsWith('_id') && r[k]) wanted.add(r[k]);
+    })));
+    tables.forEach(t => {
+      if (t === 'property') return;
+      (DB[t] || []).forEach(r => {
+        if (out[t].indexOf(r) > -1 || !wanted.has(r.id)) return;
+        out[t].push(r); ids.add(r.id); grew = true;
+      });
+    });
+    if (!grew) break;
+  }
+  return out;
+}
+async function exportPlace(propId) { return exportSubject('property', propId); }
+async function exportSubject(kind, id) {
+  const label = subjName(kind, id) || 'dwellogs';
+  say('Gathering it up…');
+  let rows;
+  try { rows = rowsUnder(kind, id); }
+  catch (e) { return say('Could not build the export: ' + e.message); }
+  const p = { name: label };
+  const files = [];
+  Object.keys(rows).sort().forEach(t => {
+    if (!rows[t].length) return;
+    files.push([t + '.csv', csvOf(rows[t])]);
+  });
+  if (!files.length) return say('Nothing to take yet.');
+  const n = files.reduce((a2, f) => a2 + rows[f[0].replace('.csv', '')].length, 0);
+  // A note in the box saying what this is, for the version of you that opens it
+  // in four years having forgotten the app existed.
+  files.push(['README.txt',
+    'DwelLogs export\n' + (p.name || 'A place') + '\n' + today() + '\n\n' +
+    'One CSV per table, exactly as the app holds it. Open any of them in a\n' +
+    'spreadsheet. The id columns join the files to each other.\n' +
+    (kind === 'property' ? '' :
+      '\nThis is a copy of one part of ' + ((prop || {}).name || 'the place') +
+      ', not the whole of it.\n')]);
+  const slug = String(p.name || 'dwellogs').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'dwellogs';
+  try {
+    const url = URL.createObjectURL(zipOf(files));
+    const a2 = document.createElement('a');
+    a2.href = url; a2.download = slug + '-' + today() + '.zip';
+    document.body.appendChild(a2); a2.click(); a2.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (e) { return say('Could not save the file: ' + e.message); }
+  say(n + ' rows in ' + (files.length - 1) + ' files. It is yours.');
+}
+
 function drawMe() {
   $('#tabs').hidden = true;
   const places = myPlaces();
@@ -5744,9 +5886,14 @@ function drawMe() {
           <b>${esc(p.name)}${p.id === prop.id ? ' &middot; open now' : ''}</b>
           <small>${esc(ACC[a] || a)}${st ? ' &middot; ' + st + ' building' + (st === 1 ? '' : 's') : ''}</small>
         </button>
+        <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+          onclick="exportPlace('${p.id}')">Take a copy</button>
         ${mine ? '' : `<button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
           onclick="leavePlace('${p.id}')">Leave</button>`}</div>`;
     }).join('') || ''}</div>
+    ${tip('A zip with one spreadsheet per table, exactly as the app holds it, and the id ' +
+      'columns join them to each other. It is a copy, not a handover — the place stays where it ' +
+      'is and nothing here stops working. Take one whenever you like.', 'What a copy is')}
     ${places.some(p => accessOf(p.id) === 'owner')
       ? tip('A place you own has no Leave, because leaving would strand it. Hand it to somebody ' +
           'else first, or start over from the home screen if you want it gone.', 'Why some have no Leave')

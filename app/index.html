@@ -288,7 +288,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=fb7cbf2e21"></script>
+<script src="api.js?v=6306df6477"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -559,6 +559,30 @@ function otherBox(key, label) {
    building; only the words were not. The key carries the building now, and
    the suggestion writer takes it back off, because what gets reported is that
    somebody typed "Wall unit" under cooling -- not which of their sheds. */
+/* The building switcher, written once. It is the same control on three
+   screens -- what it runs on, what it is made of, what is in it -- and the
+   first copy of it read `draft.more`, which only exists during first-run
+   setup. So the row vanished on every reopened screen, which is exactly where
+   somebody wants it: they are standing in the barn, not setting the place up.
+
+   Switching SAVES first. What is on screen is answers, not a scratchpad. */
+function bldChips(stepId, said) {
+  const back = draft.reopened; if (!back) return '';
+  const live = buildings().filter(x => !x.property_id || x.property_id === (prop || {}).id);
+  if (live.length < 2) return '';
+  return `<div class="chips" style="margin:.2rem 0 1rem">${live.map(b2 =>
+    `<button type="button" aria-pressed="${b2.id === back}"
+      onclick="syncStep();saveStep('${stepId}','${b2.id}')"
+      >${esc(b2.name || kindLabel(b2.kind) || 'a building')}${
+      said && said(b2) ? '' : ' \u00b7'}</button>`).join('')}</div>
+    <p class="hint" style="margin:-.6rem 0 1rem">Each one gets its own answers.
+      Switching saves this one first.</p>`;
+}
+const saidSystems = b2 => SYSTEMS.some(q => b2[q.k] && b2[q.k] !== 'not_sure_yet');
+const saidRooms   = b2 => (DB.area || []).some(a => a.structure_id === b2.id);
+const saidThings  = b2 => (DB.asset || []).some(a => a.structure_id === b2.id
+                                                  && a.status !== 'archived');
+
 const otherScope = () => draft.reopened ? '#' + draft.reopened
   : (draft.sysFor == null || draft.sysFor === '') ? '' : '#' + draft.sysFor;
 
@@ -1506,17 +1530,8 @@ const PLACE = [
          most, and changing the subject of the screen meant Done, home, back
          in, pick the other one. Off the real rows in that mode, and switching
          SAVES first, because the ticks already on screen are answers. */
-      const back = draft.reopened;
-      const live2 = back ? buildings().filter(x => !x.property_id
-        || x.property_id === (prop || {}).id) : [];
-      const picker = back
-        ? (live2.length > 1 ? `<div class="chips" style="margin:.2rem 0 1rem">
-            ${live2.map(b2 => `<button type="button" aria-pressed="${b2.id === back}"
-              onclick="syncStep();saveStep('What does it run on?','${b2.id}')"
-              >${esc(b2.name || kindLabel(b2.kind) || 'a building')}${
-              SYSTEMS.some(q => b2[q.k] && b2[q.k] !== 'not_sure_yet') ? '' : ' ·'}</button>`).join('')}</div>
-            <p class="hint" style="margin:-.6rem 0 1rem">Each one gets its own answers.
-              Switching saves this one first.</p>` : '')
+      const picker = draft.reopened
+        ? bldChips('What does it run on?', saidSystems)
         : others.length ? `<div class="chips" style="margin:.2rem 0 1rem">
         ${[['', draft.building || 'the main one']].concat(others.map((b2, i) => [String(i), b2.name]))
           .map(([v, l]) => `<button type="button" aria-pressed="${String(draft.sysFor || '') === v}"
@@ -1597,6 +1612,7 @@ const PLACE = [
     body: () => {
       const g = flowGroup();
       draft.spaces = draft.spaces || []; draft.rooms = draft.rooms || {};
+      const picker = bldChips('What is it made of?', saidRooms);
       const sp = splitByKind(SPACES, g, x => x[3]);
       const rm = ROOMS.filter(r => allowed(r[3], g));
       // A bathroom is its own room even in a tiny house. Beds and kitchens are
@@ -1604,7 +1620,7 @@ const PLACE = [
       const bathOnly = rm.filter(r => r[0] === 'bathrooms' || r[0] === 'half_baths');
       const box = (x, hidden) => `<label class="tick${hidden ? ' extra' : ''}"${hidden ? ' hidden' : ''}>
         <input type="checkbox" class="sp" value="${x[0]}"${draft.spaces.includes(x[0]) ? ' checked' : ''}> ${esc(x[1])}</label>`;
-      return `<label>Any of these?</label>
+      return picker + `<label>Any of these?</label>
         <div class="opts">${sp.keep.map(x => box(x, false)).join('')}
         ${sp.rest.length ? sp.rest.map(x => box(x, true)).join('') +
           `<button class="ghost" onclick="showRest(this)">Show the rest</button>` : ''}</div>
@@ -1762,7 +1778,8 @@ const PLACE = [
       draft.things = draft.things || {};
       const g = flowGroup();
       const groups = g === 'land' ? ['Safety'] : ['Appliances','Safety'];
-      return groups.map(cat => `<label style="margin-top:1.1rem">${esc(cat)}</label>
+      return bldChips('What else is in there?', saidThings)
+        + groups.map(cat => `<label style="margin-top:1.1rem">${esc(cat)}</label>
         <div class="counts">${STARTER[cat].map(([n]) => `<div class="count">
           <span>${esc(n)}</span>
           <input id="th-${esc(n).replace(/\W/g,'')}" data-n="${esc(n)}" class="th"
@@ -2714,6 +2731,8 @@ async function acceptInvite() {
    `typeIds` is for the first run only, where the catalogue is still sitting in
    the same unwritten batch and cannot be looked up yet. Everywhere else the
    catalogue is on the books and the name finds it. */
+const typeNameOf = a => ((DB.asset_type || [])
+  .find(t => t.id === a.asset_type_id) || {}).name || '';
 function thingWrites(typeName, o) {
   o = o || {};
   const tid = (o.typeIds || {})[typeName]
@@ -3397,8 +3416,16 @@ function todo() {
   if (noSys.length) out.push({ icon:'systems',
     label: noSys.length === buildings().length ? 'What it runs on'
       : 'What ' + noSys[0].name + ' runs on', go:'drawSystems()' });
-  if (!(DB.asset || []).length)
-    out.push({ icon:'things', label:"What's in it", go:"show('add')" });
+  /* This went to the Add tab -- a different screen with a different shape --
+     so "what's in it" was the only one of the three that did not open the
+     screen it names. Same door as rooms and systems now: pick a building,
+     count what is in it. */
+  const roofed = buildings().filter(x => kgroup(x.kind) !== 'land');
+  const noThings = roofed.filter(x => !(DB.asset || [])
+    .some(a => a.structure_id === x.id && a.status !== 'archived'));
+  if (noThings.length) out.push({ icon:'things',
+    label: noThings.length === roofed.length ? "What's in it"
+      : "What's in " + noThings[0].name, go:'drawStuff()' });
   const noRooms = buildings().filter(x => kgroup(x.kind) !== 'land'
     && !(DB.area || []).some(a => a.structure_id === x.id));
   if (noRooms.length) out.push({ icon:'rooms',
@@ -3431,7 +3458,7 @@ function hydrate(stId) {
     building: st.name, bkind: st.kind,
     people: st.people_living || null, kids: st.children_here || '',
     spaces: split(st.spaces),
-    sys: {}, rooms: {}, namedRooms: [], corners: [], more: [],
+    sys: {}, rooms: {}, namedRooms: [], corners: [], more: [], things: {},
     household: logPeople().map(p => p.name),
     animals: []
   };
@@ -3440,6 +3467,13 @@ function hydrate(stId) {
     if (!v || v === 'not_sure_yet') return;
     draft.sys[q.k] = q.multi ? split(v) : v;
   });
+  /* What is in it, counted the way the screen asks for it. Without this the
+     screen reopened empty on a building with three fridges in it, so the
+     honest reading of that screen was "nothing here" and typing 3 again would
+     have made three more. */
+  (DB.asset || []).filter(a => a.structure_id === st.id && a.status !== 'archived')
+    .forEach(a => { const tn = typeNameOf(a);
+      if (tn) draft.things[tn] = (draft.things[tn] || 0) + 1; });
   /* Counted rooms come back as counts, named ones as names, so the screen
      reads the way it was filled in. A room is "counted" when its name is the
      room type, on its own or numbered -- "Bedroom 2" is two bedrooms, "Tack
@@ -3499,6 +3533,18 @@ function drawRooms(stId) {
     meta: x => { const n = (DB.area || []).filter(a => a.structure_id === x.id).length;
       return n ? n + (n === 1 ? ' room' : ' rooms') : 'nothing yet'; } });
 }
+function drawStuff(stId) {
+  const list = buildings().filter(x => kgroup(x.kind) !== 'land');
+  if (stId) return reopen('What else is in there?', stId);
+  if (!list.length) return show('add');
+  if (list.length === 1) return reopen('What else is in there?', list[0].id);
+  return pickBuilding({ title:'Which building?',
+    sub:'A thing is in a building, so the question is asked about one at a time.',
+    list, go: x => `drawStuff('${x.id}')`,
+    meta: x => { const n = (DB.asset || []).filter(a => a.structure_id === x.id
+      && a.status !== 'archived').length;
+      return n ? n + (n === 1 ? ' thing' : ' things') : 'nothing yet'; } });
+}
 /* Open one of the setup screens on a place that is already set up. */
 function reopen(stepId, stId) {
   const id = hydrate(stId);
@@ -3554,6 +3600,24 @@ async function saveStep(stepId, goToStructId) {
     rec.spaces = (draft.spaces || []).join(', ');
     writes.push({ op:'upsert', table:'structure', record:rec });
     areaWrites(stId).forEach(w => writes.push(w));
+  } else if (stepId === 'What else is in there?') {
+    /* There was no branch here at all, so reopening this screen, typing 2
+       fridges and pressing Done saved nothing and said nothing -- it fell
+       through to "no writes" and went home looking like it had worked.
+
+       Additive, like the rooms: the count is how many there are NOW, so only
+       the shortfall is created. Lowering a number is not a disposal order --
+       getting rid of a thing is a decision made on the thing. */
+    const have = {};
+    (DB.asset || []).filter(a => a.structure_id === stId && a.status !== 'archived')
+      .forEach(a => { const tn = typeNameOf(a); if (tn) have[tn] = (have[tn] || 0) + 1; });
+    const taken = (DB.asset || []).map(a => a.name).filter(Boolean);
+    Object.entries(draft.things || {}).forEach(([tn, want]) => {
+      for (let i = (have[tn] || 0); i < want; i++) {
+        const nm = uniqueName(tn, taken); taken.push(nm);
+        thingWrites(tn, { structId:stId, name:nm }).writes.forEach(w => writes.push(w));
+      }
+    });
   } else if (stepId === 'What else is on the place?') {
     (draft.more || []).forEach(b2 => writes.push({ op:'upsert', table:'structure',
       record:{ id:uid(), property_id:(prop || {}).id, name:b2.name,
@@ -5167,6 +5231,11 @@ function jobFields(j, live, id) {
   return `
     <label for="jb-t">Name</label>
     <input id="jb-t" value="${esc(j.title || '')}" >
+    ${live ? `<label for="jb-ab">What is it about?</label>
+    <select id="jb-ab" onchange="setJobAbout('${id}', this.value)">${aboutOptions(j)}</select>
+    <p class="hint">Whatever you pick, this job shows up on its screen &mdash; and on
+      everything it is inside. A job on the dishwasher is also the kitchen's and the
+      house's.</p>` : ''}
     <label for="jb-k">What kind of job is this?</label>
     <select id="jb-k" onchange="${kindGo}">${optList(kind, JOB_KIND.map(k => [k[0], k[1]]))}</select>
     <p class="hint">${esc((JOB_KIND.find(k => k[0] === kind) || [])[2] || '')}</p>
@@ -5263,6 +5332,47 @@ function syncEntry() {
    with the redraw, which is precisely the task somebody stood in their bathroom
    and decided to write down. Written onto the row in memory only: nothing is
    saved until Save. */
+/* Randi, 2026-09-29: "the needs doing input screen is defaulted to the parent
+   property 'the ranch' instead of letting me add it to a thing - I'd have to
+   update it later to be added to a specific thing."
+
+   A job added from a thing's own screen already knew its subject; a job added
+   from anywhere else had no way to say one, so it landed on the place and
+   stayed there. One control, listing everything on the place, on the screen
+   where the job is being written. */
+function aboutOptions(j) {
+  const at = JOB_AT.map(([k, f]) => [k, j[f]]).find(([, v]) => v) || [];
+  const sel = at[1] ? at[0] + ':' + at[1] : '';
+  const opt = (v, l) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`;
+  return opt('', 'The whole place')
+    + [['structure','Buildings'], ['area','Rooms and areas'], ['asset','Things'],
+       ['animal','Animals'], ['vehicle','Vehicles']].map(([k, label]) => {
+      const rows = placeRows(k);
+      return rows.length ? `<optgroup label="${esc(label)}">${
+        rows.map(r => opt(k + ':' + r.id, subjName(k, r.id))).join('')}</optgroup>` : '';
+    }).join('');
+}
+async function setJobAbout(id, val) {
+  if (!jobById(id)) return;
+  syncJob(id);                       // whatever is typed on screen is not lost
+  const rec = { ...jobById(id) };
+  JOB_AT.forEach(([, f]) => { rec[f] = ''; });
+  if (val) { const [k, i] = String(val).split(':');
+    const f = (JOB_AT.find(x => x[0] === k) || [])[1]; if (f) rec[f] = i; }
+  const writes = [{ op:'upsert', table:'job', record:rec }];
+  /* A repeating job's rule carries the same columns. Moving the job and
+     leaving the rule behind is how the check-up keeps coming due on the wrong
+     thing for the next ten years. */
+  const sc = (DB.schedule || []).find(x => x.id === rec.schedule_id);
+  if (sc) { const s2 = { ...sc };
+    JOB_AT.forEach(([, f]) => { s2[f] = rec[f] || ''; });
+    writes.push({ op:'upsert', table:'schedule', record:s2 }); }
+  try { await DwelLogs.write(writes); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await reload(); drawJob(id);
+  say(val ? 'About ' + subjName(String(val).split(':')[0], String(val).split(':')[1]) + '.'
+          : 'About the whole place.');
+}
 function syncJob(id) {
   if (!$('#jb-t')) return;
   const j = jobById(id); if (!j) return;

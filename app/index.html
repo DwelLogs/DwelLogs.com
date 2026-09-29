@@ -254,7 +254,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=3dec59e827"></script>
+<script src="api.js?v=533a1cae05"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -2065,9 +2065,25 @@ function drawHub() {
       <small class="${h.state() === 'not set' || h.state() === 'nothing yet' ? '' : 'done'}"
         >${esc(h.state())}</small></button>`).join('')}</div>
     <div class="actions" style="margin-top:1.2rem">
-      <button class="primary" onclick="finishFirst()">Take me in</button>
+      <button class="primary" onclick="hubFinish()">Take me in</button>
     </div>
     <p class="hint">None of it is required.</p>`;
+}
+/* The hub is the flow -- you walk into any section in any order and leave when
+   you like -- and that is exactly how the one screen with consequences got
+   skipped. "What should it watch for you?" is a STEP, not a hub tile, so it was
+   only ever reachable by walking the linear order to the end, and "Take me in"
+   went straight to writing the rows. Everybody who set up from the hub landed on
+   a home screen full of check-ups they were never shown.
+
+   So the hub finishes THROUGH it when there is anything to show. It costs one
+   tap, because it is already answered. */
+function hubFinish() {
+  if (plannedTypes().length && !draft.picksSeen) {
+    draft.finishing = true;
+    return openStep('What should it watch for you?');
+  }
+  return finishFirst();
 }
 /* An explicit Save. Saving on blur is invisible — you cannot tell whether it
    took, and tapping anything else while the box is open becomes a save you did
@@ -2125,7 +2141,8 @@ function drawFirst() {
     ${f.topOut ? `<div class="actions" style="margin:0 0 1rem">${f.topOut}</div>` : ''}
     ${f.body()}
     <div class="actions">
-      ${hubStep ? `<button class="primary" onclick="doneStep()">Done</button>`
+      ${hubStep ? `<button class="primary" onclick="doneStep()">${
+        draft.finishing ? 'Set it up' : 'Done'}</button>`
       : f.noNext ? '' : `<button class="primary" onclick="nextFirst()">${
         fs === list.length - 1 ? (flow === 'join' ? 'Accept' : 'Set it up') : 'Next'}</button>
 
@@ -2270,6 +2287,8 @@ function doneStep() {
   // Reopened from the home screen, so Done goes back there and writes -- there
   // is no setup hub to return to.
   if (draft.reopened) return saveStep(step && step.t);
+  // Came here on the way out of the hub: answering it IS finishing.
+  if (draft.finishing) { draft.finishing = false; draft.picksSeen = true; return finishFirst(); }
   hubStep = null; drawHub();
 }
 function skipFirst() {
@@ -2783,14 +2802,20 @@ function drawHome() {
         && String(x.status) !== 'dropped' && !x.schedule_id);
       if (!loose.length) return '';
       const who = Object.fromEntries((DB.person || []).map(pp => [pp.id, pp.name]));
-      return `<h2>On your list</h2>` + loose.map(x => `<div class="card tap">
+      const shown = orderJobs(loose);
+      return `<h2>On your list</h2>`
+        + (loose.length > 2 ? jobBar("drawHome()") : '')
+        + (shown.map(x => `<div class="card tap">
         <button onclick="drawJob('${x.id}')">
           <span class="title">${esc(x.title)}</span>
-          <p class="meta">${esc((JOB_KIND.find(k => k[0] === x.kind) || [])[1] || 'Job')}${
-            x.due_on ? ' &middot; due ' + esc(x.due_on) : x.slot
-              ? ' &middot; ' + esc((WHENS.find(w => w[0] === x.slot) || [])[1] || x.slot) : ''}${
+          <p class="meta">${esc((JOB_KIND.find(k => k[0] === x.kind) || [])[1] || 'Job')}
+            &middot; ${esc(jobMeta(x))}${
             x.claimed_by_id ? ' &middot; ' + esc(who[x.claimed_by_id] || 'taken') + ' has it' : ''}
-          </p></button></div>`).join('');
+          </p></button></div>`).join('')
+          || `<div class="empty">Nothing on the list fits ${
+            JOB_CAP.mins != null ? JOB_CAP.mins + ' minutes' : ''}${
+            JOB_CAP.mins != null && JOB_CAP.cost != null ? ' and ' : ''}${
+            JOB_CAP.cost != null ? money(JOB_CAP.cost) : ''}.</div>`);
     })()}
     ${(() => { const p = papers().filter(x => x.state !== 'ok');
       return p.length ? `<h2>Papers running out</h2>` + p.map(paperCard).join('') : ''; })()}
@@ -3649,6 +3674,82 @@ function jobAbout(j) {
   return (at && subjName(at[0], at[1])) || (prop || {}).name || '';
 }
 
+/* ---- ordering work ------------------------------------------------------
+
+   The job table's own note says what this is for: one table so a board can ask
+   "what can I do this weekend with two hours and fifty dollars" across
+   everything at once. That was the argument for collapsing four tables into
+   one, and nothing had ever asked the question.
+
+   Three orders, because there are three reasons somebody opens a list of work:
+   it is overdue, I have an hour, or I have ten pounds.
+
+   Blank is not zero, and this is where that matters most. Most jobs carry no
+   estimate, and a "cheapest first" list that floats every unpriced job to the
+   top on the grounds that nothing costs nothing would be a list that lies to
+   you in the direction you most want to believe. Unknowns sort LAST in every
+   order and say so on the card. */
+let JOB_ORDER = 'due', JOB_CAP = {};
+const JOB_ORDERS = [['due','Soonest'], ['time','Quickest'], ['cost','Cheapest']];
+const numOr = v => { const n = Number(v); return Number.isFinite(n) && v !== '' && v !== null ? n : null; };
+function jobMetric(j, mode) {
+  if (mode === 'time') return numOr(j.est_minutes);
+  if (mode === 'cost') return numOr(j.est_cost);
+  return j.due_on ? daysTo(j.due_on) : null;
+}
+function orderJobs(list, mode) {
+  mode = mode || JOB_ORDER;
+  const cap = JOB_CAP;
+  const within = j => {
+    if (cap.mins != null) { const m = numOr(j.est_minutes); if (m == null || m > cap.mins) return false; }
+    if (cap.cost != null) { const c = numOr(j.est_cost); if (c == null || c > cap.cost) return false; }
+    return true;
+  };
+  return list.filter(within).slice().sort((a, b) => {
+    const x = jobMetric(a, mode), y = jobMetric(b, mode);
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;            // unknown goes last, never first
+    if (y == null) return -1;
+    return x - y;
+  });
+}
+/* What the card should say, given what the list is sorted by. */
+function jobMeta(j, mode) {
+  mode = mode || JOB_ORDER;
+  const v = jobMetric(j, mode);
+  if (mode === 'time') return v == null ? 'no estimate' : v < 60 ? v + ' min'
+    : (Math.round(v / 6) / 10) + ' hr';
+  if (mode === 'cost') return v == null ? 'not priced' : money(v) || 'free';
+  return v == null ? 'no date' : whenDue(v);
+}
+/* The control. Deliberately small: three words and a line you can open. */
+function jobBar(redraw) {
+  const cap = JOB_CAP, on = cap.mins != null || cap.cost != null;
+  return `<div class="pick" style="grid-template-columns:repeat(3,1fr);margin:.2rem 0 .8rem">
+      ${JOB_ORDERS.map(([k, l]) => `<button type="button" aria-pressed="${JOB_ORDER === k}"
+        onclick="JOB_ORDER='${k}';${redraw}"><span class="cap">${l}</span></button>`).join('')}
+    </div>
+    <details class="disclose"${on ? ' open' : ''}><summary>What can I do right now?</summary>
+      <div class="counts">
+        <div class="count"><span>Minutes I have</span>
+          <input id="cap-m" inputmode="numeric" value="${cap.mins != null ? cap.mins : ''}"
+            placeholder="any" onchange="capJobs();${redraw}"></div>
+        <div class="count"><span>Money I have</span>
+          <input id="cap-c" inputmode="decimal" value="${cap.cost != null ? cap.cost : ''}"
+            placeholder="any" onchange="capJobs();${redraw}"></div>
+      </div>
+      <p class="hint">Anything without an estimate is left out while these are set — it
+        cannot be promised to fit.</p>
+    </details>`;
+}
+/* The redraw is passed through unquoted and run by the handler itself. Wrapping
+   it in quotes and eval-ing it here looked tidier and was broken the moment the
+   caller was `subject('asset','x1')` -- its own quotes closed the attribute. */
+function capJobs() {
+  const m = numOr(($('#cap-m') || {}).value), c = numOr(($('#cap-c') || {}).value);
+  JOB_CAP = {}; if (m != null) JOB_CAP.mins = m; if (c != null) JOB_CAP.cost = c;
+}
+
 /* ---- the subject screen -------------------------------------------------
 
    Every thing in here is the same shape from a distance: it is somewhere, it
@@ -3806,10 +3907,12 @@ function subject(kind, id) {
     })()}
 
     ${sect('Needs doing',
-      open.length ? open.map(j => `<div class="card tap"><button onclick="drawJob('${j.id}')">
+      open.length ? (open.length > 2 ? jobBar(`subject('${kind}','${id}')`) : '')
+        + (orderJobs(open).map(j => `<div class="card tap"><button onclick="drawJob('${j.id}')">
           <span class="title">${esc(j.title)}</span>
-          <p class="meta">${esc((JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'job')}${
-            j.due_on ? ' &middot; ' + esc(whenDue(daysTo(j.due_on))) : ''}</p></button></div>`).join('')
+          <p class="meta">${esc((JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'job')}
+            &middot; ${esc(jobMeta(j))}</p></button></div>`).join('')
+          || `<p class="hint">Nothing that fits. Loosen it above.</p>`)
         : `<p class="hint">Nothing open here.</p>`,
       `<div class="actions" style="margin-top:.6rem">
         <button class="add" onclick="addJobHere('${kind}','${id}')">Add a job here</button></div>`)}
@@ -5624,6 +5727,7 @@ function drawAdd() {
       `<option value="${esc(n)}">${esc(n)} — ${esc(c)}</option>`).join('')}</select>
     <label for="a-n">Call it <span style="font-weight:400;color:var(--muted)">— optional</span></label>
     <input id="a-n" placeholder="leave it and we will use what it is">
+    <div id="a-checks"></div>
     <div class="actions"><button class="primary" onclick="addThing()">Add</button></div>`;
   /* The rooms offered are the rooms in the building chosen, because a list that
      offers the barn's stalls while you are adding something to the house is a
@@ -5642,6 +5746,27 @@ function drawAdd() {
   };
   $('#a-s').onchange = e => { $('#a-newb').hidden = e.target.value !== '__new'; fillAreas(); };
   fillAreas();
+  /* What it comes with, shown before you agree to it. Setup asks this once for
+     everything at the end; adding one thing later was creating its check-ups
+     silently, which is the same screen full of work nobody chose, arriving one
+     fridge at a time. Ticked by default, because they are the right answer --
+     unticking is the decision, and it is kept rather than thrown away. */
+  $('#a-t').onchange = fillChecks;
+  fillChecks();
+}
+function fillChecks() {
+  const box = $('#a-checks'); if (!box) return;
+  const checks = suggestedFor($('#a-t').value);
+  box.innerHTML = !checks.length ? '' :
+    `<label style="margin-top:1.2rem">What it will watch for you</label>
+     <div class="rows">${checks.map(([title, n, unit]) => `<div class="row">
+       <label class="tick" style="flex:1;min-width:0">
+         <input type="checkbox" class="ac" value="${esc(title)}" checked>
+         <span>${esc(title)}<small style="display:block;color:var(--muted)"
+           >${esc(everyWords(n, unit))}</small></span>
+       </label></div>`).join('')}</div>
+     <p class="hint">Untick anything you would rather not hear about. Nothing is thrown
+       away — it stays set up and stays quiet.</p>`;
 }
 async function addThing() {
   const type = $('#a-t').value;
@@ -5661,14 +5786,20 @@ async function addThing() {
       name:bn, kind: bk === '__other' ? 'other' : bk,
       kind_other: bk === '__other' ? ($('#a-bko').value || '').trim() : '' } });
   }
+  const want = new Set([...document.querySelectorAll('.ac:checked')].map(e => e.value));
   const t = thingWrites(type, { structId, name, installed:today(),
-    areaId: structId === '__new' ? '' : (($('#a-ar') || {}).value || '') });
+    areaId: structId === '__new' ? '' : (($('#a-ar') || {}).value || ''),
+    keep: (tn, title) => want.has(title) });
   if (!t.id) return say('That one has no template yet.');
   t.writes.forEach(w => writes.push(w));
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
   DB = (await DwelLogs.load()).db;
   show('home');
-  say(name + ' added, with ' + t.checks + ' check-up' + (t.checks === 1 ? '' : 's') + '.');
+  const on = want.size;
+  say(name + ' added' + (t.checks
+    ? ', with ' + on + ' check-up' + (on === 1 ? '' : 's')
+      + (on < t.checks ? ' — the rest are kept quiet.' : '.')
+    : '.'));
 }
 
 /* ---------------------------------------------------------------- readings

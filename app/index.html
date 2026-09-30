@@ -288,7 +288,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=60f9d2c786"></script>
+<script src="api.js?v=3f44b6d28d"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -3458,6 +3458,7 @@ function drawHome() {
 
     <h2>Anything else</h2>
     <div class="pick">${[
+      ['people','People and companies','drawFolk()'],
       ['gauge','Take a reading',"drawReading()"],
       ['bell','When to tell me','drawTell()'],
       ['camera','Add a photo','drawPhoto()'],
@@ -5280,23 +5281,27 @@ function drawJob(id) {
           <div class="actions"><button class="add" onclick="addJobSupply('${id}')">Add it</button></div>
         </div>
 
-        <h2>Who does it</h2>
+        <h2>Who you call</h2>
         <select id="jb-svc" onchange="const e=$('#jb-svcnew');if(e)e.hidden=this.value!=='new';
-          if(this.value!=='new')setJobService('${id}', this.value)">
+          if(this.value!=='new')setJobProvider('${id}', this.value)">
           <option value="">You, or whoever is about</option>
-          ${(DB.service || []).filter(x => x.status !== 'archived').map(x =>
-            `<option value="${x.id}"${j.service_id === x.id ? ' selected' : ''}
-              >${esc(x.name)}</option>`).join('')}
-          <option value="new">Somebody you call&hellip;</option>
+          ${folk(CALLED_ROLES).map(x => `<option value="${x.id}"${
+            j.provider_id === x.id ? ' selected' : ''}>${esc(x.name)}${
+            x.company && x.company !== x.name ? esc(' · ' + x.company) : ''}</option>`).join('')}
+          <option value="new">Somebody not on the list&hellip;</option>
         </select>
         <div id="jb-svcnew" hidden>
           <label for="jb-svcn">Who</label>
           <input id="jb-svcn" placeholder="Lakeport Septic">
+          <label for="jb-svcp">Phone</label>
+          <input id="jb-svcp" type="tel" placeholder="optional, but it is the point">
           <div class="actions" style="margin-top:.5rem">
-            <button class="add" onclick="addService('${id}')">Add them</button></div>
+            <button class="add" onclick="addProviderHere('${id}')">Add them</button></div>
         </div>
-        <p class="hint">A company rather than a person: it is who you ring, and it stays
-          right when whoever last rang them moves out.</p>`;
+        <p class="hint">They go on your People and companies list, with everything they have
+          done here and what it came to. ${j.provider_id
+            ? `<button class="ghost" style="min-height:2rem;padding:.2rem .5rem"
+                onclick="drawProvider('${j.provider_id}')">Open them</button>` : ''}</p>`;
     })()}
 
     ${(() => { const H = historyOf(j); if (!H.length) return '';
@@ -5743,12 +5748,26 @@ async function addStep(id) {
   if (!t) return say('Type the step first.');
   const n = stepsOf(id).length;
   const w = (($('#jb-stw') || {}).value || '');
-  await DwelLogs.write([{ op:'upsert', table:'step',
+  await DwelLogs.write(keepJob(id, [{ op:'upsert', table:'step',
     record:{ id:uid(), job_id:id, text:t, position:n + 1, done:'',
       structure_id: w.startsWith('s:') ? w.slice(2) : '',
       area_id: w.startsWith('a:') ? w.slice(2) : '',
-      where_else: w === 'x' ? (($('#jb-stwe') || {}).value || '').trim() : '' } }]);
+      where_else: w === 'x' ? (($('#jb-stwe') || {}).value || '').trim() : '' } }]));
   await reload(); drawJob(id);
+}
+/* Every one of these writes something OTHER than the job and then reloads --
+   and reload() replaces DB wholesale, so the title, notes and cost sitting in
+   the form unsaved were thrown away by the act of attaching a filter to the
+   job. It looked like the screen simply forgot what you had typed.
+
+   syncJob() puts the form back into the row; sending the row with the write
+   makes it survive the reload. Same shape as the bug where the repeat dropdown
+   ate the job title, which is the third time this pattern has cost an hour. */
+function keepJob(id, writes) {
+  try { syncJob(id); } catch (e) {}
+  const j = jobById(id);
+  if (j) writes.push({ op:'upsert', table:'job', record:{ ...j } });
+  return writes;
 }
 async function addJobSupply(id) {
   const pick = (($('#jb-sup') || {}).value || '');
@@ -5771,44 +5790,48 @@ async function addJobSupply(id) {
   }
   writes.push({ op:'upsert', table:'job_supply',
     record:{ id:uid(), job_id:id, supply_id:sid, how_many:q } });
+  keepJob(id, writes);
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
   await reload(); drawJob(id); say('Added to what it needs.');
 }
 async function dropJobSupply(rowId, jobId) {
-  try { await DwelLogs.write([{ op:'archive', table:'job_supply', id:rowId }]); }
+  try { await DwelLogs.write(keepJob(jobId, [{ op:'archive', table:'job_supply', id:rowId }])); }
   catch (e) { return say('Could not save: ' + e.message); }
   await reload(); drawJob(jobId);
 }
-async function setJobService(id, val) {
+async function setJobProvider(id, val) {
   const j = jobById(id); if (!j) return;
   syncJob(id);
-  const writes = [{ op:'upsert', table:'job', record:{ ...jobById(id), service_id: val || '' } }];
-  /* The rule behind a repeating job carries this too, so next year's
-     occurrence knows who to ring without anybody saying it again. */
+  const writes = [{ op:'upsert', table:'job', record:{ ...jobById(id), provider_id: val || '' } }];
+  /* The rule behind a repeating job carries it too, so next year's occurrence
+     knows who to ring without anybody saying it again. */
   const sc = (DB.schedule || []).find(x => x.id === j.schedule_id);
-  if (sc) writes.push({ op:'upsert', table:'schedule', record:{ ...sc, service_id: val || '' } });
+  if (sc) writes.push({ op:'upsert', table:'schedule', record:{ ...sc, service_id: sc.service_id || '' } });
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
   await reload(); drawJob(id);
 }
-async function addService(id) {
+/* The same writer the list screen uses, so a company added in a hurry from a
+   job is the same kind of row as one added deliberately -- name, company,
+   phone, and a place it can be found again. */
+async function addProviderHere(id) {
   const n = (($('#jb-svcn') || {}).value || '').trim();
   if (!n) return say('Give them a name first.');
-  const sid = uid();
+  const pid = uid();
   try {
-    await DwelLogs.write([{ op:'upsert', table:'service',
-      record:{ id:sid, property_id:(prop || {}).id, name:n } }]);
+    await DwelLogs.write([{ op:'upsert', table:'person', record:{ id:pid, name:n,
+      role:'provider', phone:(($('#jb-svcp') || {}).value || '').trim() } }]);
   } catch (e) { return say('Could not save: ' + e.message); }
   await reload();
-  return setJobService(id, sid);
+  return setJobProvider(id, pid);
 }
 async function tickStep(stepId, jobId, on) {
   const st = (DB.step || []).find(x => x.id === stepId); if (!st) return;
-  await DwelLogs.write([{ op:'upsert', table:'step', record:{ ...st,
-    done: on ? 'TRUE' : '', done_on: on ? today() : '', done_by_id: on ? me.id : '' } }]);
+  await DwelLogs.write(keepJob(jobId, [{ op:'upsert', table:'step', record:{ ...st,
+    done: on ? 'TRUE' : '', done_on: on ? today() : '', done_by_id: on ? me.id : '' } }]));
   await reload(); drawJob(jobId);
 }
 async function dropStep(stepId, jobId) {
-  await DwelLogs.write([{ op:'archive', table:'step', id:stepId }]);
+  await DwelLogs.write(keepJob(jobId, [{ op:'archive', table:'step', id:stepId }]));
   await reload(); drawJob(jobId);
 }
 
@@ -5856,6 +5879,227 @@ async function saveJob(id) {
   draft.rep = undefined;
   await reload(); drawJob(id);
   say('Saved.');
+}
+
+/* ---- people and companies ------------------------------------------------
+   Randi, 2026-09-29: "where do i set up companies we use?" Nowhere, was the
+   honest answer, and the "somebody you call" box added that morning made it
+   worse -- it wrote a name onto an arrangement with nobody, no phone number,
+   reachable only from the one job it was typed on.
+
+   The model already knew better. A company is a PERSON with a company name and
+   a phone number: that is why supply.supplier_id has always pointed at person,
+   and why `provider` and `previous_owner` are roles. So there is ONE list of
+   everybody, split by whether they live here or you ring them -- and buying
+   the filter and pumping the septic read from the same list rather than two
+   that can quietly disagree.
+
+   `service` then gets a real job instead of a confusing one: it is the
+   standing arrangement between one of those people and one thing on the place,
+   which is the answer to "which things do they look after". */
+const HOUSEHOLD_ROLES = ['owner','resident','renter'];
+const CALLED_ROLES = ['provider','landlord','agent','helper','previous_owner'];
+const ROLE_SAYS = { provider:'a company', landlord:'the landlord', agent:'the agent',
+  helper:'a helper', previous_owner:'lived here before', owner:'owner',
+  resident:'lives here', renter:'renting' };
+const folk = roles => (DB.person || []).filter(p => p.status !== 'archived'
+  && roles.includes(p.role || 'resident'));
+/* What a provider looks after, what they have done, and what it came to. */
+const lookAfter = pid => (DB.service || []).filter(x => x.person_id === pid
+  && x.status !== 'archived' && !x.ended_on);
+const visitsOf = pid => (DB.visit || []).filter(x => x.person_id === pid
+  && x.status !== 'archived').sort((a, b) => String(b.visited_on || '')
+    .localeCompare(String(a.visited_on || '')));
+
+function drawFolk() {
+  $('#tabs').hidden = false;
+  const card = p => {
+    const n = p.role === 'provider' || p.role === 'helper' ? visitsOf(p.id).length : 0;
+    const looks = lookAfter(p.id).length;
+    return `<div class="card tap"><button onclick="drawProvider('${p.id}')">
+      <span class="title">${esc(p.name || 'somebody')}</span>
+      <p class="meta">${[p.company, ROLE_SAYS[p.role] || p.role,
+        looks ? looks + (looks === 1 ? ' thing' : ' things') : '',
+        n ? n + (n === 1 ? ' visit' : ' visits') : '', p.phone]
+        .filter(Boolean).map(esc).join(' &middot; ')}</p></button></div>`;
+  };
+  const here = folk(HOUSEHOLD_ROLES), called = folk(CALLED_ROLES);
+  app.innerHTML = `<h1>People and companies</h1>
+    <p class="sub">Everybody in one list, told apart by whether they live here or you ring them.</p>
+    <h2>Here</h2>
+    ${here.length ? here.map(card).join('')
+      : '<p class="hint">Nobody on the log yet.</p>'}
+    <h2>Who you call</h2>
+    ${called.length ? called.map(card).join('')
+      : `<p class="hint">The septic company, the vet, the chimney sweep &mdash; and whoever
+         lived here before you, who knows half of what you do not.</p>`}
+    <div class="card" style="margin-top:.8rem">
+      <label for="fk-n">Name</label>
+      <input id="fk-n" placeholder="Dave Wilson, or Lakeport Septic">
+      <label for="fk-c">Company</label>
+      <input id="fk-c" placeholder="if the name above is a person">
+      <label for="fk-r">What are they to you?</label>
+      <select id="fk-r">${CALLED_ROLES.map(r =>
+        `<option value="${r}">${esc(ROLE_SAYS[r] || r)}</option>`).join('')}</select>
+      <label for="fk-p">Phone</label>
+      <input id="fk-p" type="tel" placeholder="the bit you actually want at 7am">
+      <label for="fk-e">Email</label>
+      <input id="fk-e" type="email" placeholder="optional">
+      <div class="actions" style="margin-top:.6rem">
+        <button class="add" onclick="addFolk()">Add them</button></div>
+    </div>
+    <div class="actions" style="margin-top:1.4rem">
+      <button class="ghost" onclick="show('home')">Home</button></div>`;
+  window.scrollTo(0, 0);
+}
+async function addFolk(name, role, then) {
+  const n = name || (($('#fk-n') || {}).value || '').trim();
+  if (!n) return say('Give them a name first.');
+  const id = uid();
+  const rec = { id, name:n, role: role || (($('#fk-r') || {}).value || 'provider'),
+    company:(($('#fk-c') || {}).value || '').trim(),
+    phone:(($('#fk-p') || {}).value || '').trim(),
+    email:(($('#fk-e') || {}).value || '').trim() };
+  try { await DwelLogs.write([{ op:'upsert', table:'person', record:rec }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await reload();
+  say(n + ' added.');
+  if (then) return then(id);
+  drawFolk();
+  return id;
+}
+
+function drawProvider(id) {
+  const p = (DB.person || []).find(x => x.id === id); if (!p) return drawFolk();
+  $('#tabs').hidden = false;
+  const called = CALLED_ROLES.includes(p.role || '');
+  const looks = lookAfter(id), visits = visitsOf(id);
+  const spent = visits.reduce((a, v) => a + (Number(v.total_cost) || 0), 0);
+  const nameOf = sc => subjName('asset', sc.asset_id) || subjName('structure', sc.structure_id)
+    || subjName('animal', sc.animal_id) || subjName('vehicle', sc.vehicle_id) || 'the place';
+  /* Every job that names them, done or not -- which is what "what have they
+     done here" actually means once a company has been coming for years. */
+  const theirs = (DB.job || []).filter(x => x.provider_id === id);
+  app.innerHTML = `<button class="back" onclick="drawFolk()">&lsaquo; Back</button>
+    <p class="step">${esc(ROLE_SAYS[p.role] || p.role || '')}</p>
+    <h1>${esc(p.name || 'somebody')}</h1>
+    ${p.company && p.company !== p.name ? `<p class="sub">${esc(p.company)}</p>` : ''}
+    <div class="rows">
+      ${p.phone ? `<div class="row"><span>Phone</span><span class="meta">${esc(p.phone)}</span></div>` : ''}
+      ${p.email ? `<div class="row"><span>Email</span><span class="meta">${esc(p.email)}</span></div>` : ''}
+      ${visits.length ? `<div class="row"><span>Been out</span><span class="meta">${
+        visits.length} ${visits.length === 1 ? 'time' : 'times'}${
+        spent ? ' &middot; ' + esc(money(spent)) : ''}</span></div>` : ''}
+    </div>
+
+    ${called ? `<h2>What they look after</h2>
+      ${looks.length ? looks.map(sc => `<div class="card"><span class="title">${esc(nameOf(sc))}</span>
+        <p class="meta">${sc.cost_per_visit ? esc(money(sc.cost_per_visit)) + ' a visit' : 'no figure yet'}${
+          sc.started_on ? ' &middot; since ' + esc(sc.started_on) : ''}</p>
+        <button class="quiet" onclick="dropLookAfter('${sc.id}','${id}')">Remove</button></div>`).join('')
+        : '<p class="hint">Nothing yet.</p>'}
+      <select id="pv-a"><option value="">Add something they look after&hellip;</option>
+        ${placeRows('asset').map(a => `<option value="a:${a.id}">${esc(subjName('asset', a.id))}</option>`).join('')}
+        ${placeRows('structure').map(a => `<option value="s:${a.id}">${esc(subjName('structure', a.id))}</option>`).join('')}
+        ${placeRows('animal').map(a => `<option value="n:${a.id}">${esc(subjName('animal', a.id))}</option>`).join('')}
+        ${placeRows('vehicle').map(a => `<option value="v:${a.id}">${esc(subjName('vehicle', a.id))}</option>`).join('')}
+      </select>
+      <div class="counts" style="grid-template-columns:1fr 2fr">
+        <div class="count"><span>A visit costs</span>
+          <input id="pv-c" inputmode="decimal" placeholder="optional"></div>
+        <div class="actions"><button class="add" onclick="addLookAfter('${id}')">Add it</button></div>
+      </div>
+
+      <h2>When they came</h2>
+      ${visits.length ? `<div class="rows">${visits.map(v => `<div class="row">
+        <span>${esc(v.visited_on || '')}${v.total_cost ? ' &middot; ' + esc(money(v.total_cost)) : ''}</span>
+        <span class="meta">${esc(v.notes || '')}</span></div>`).join('')}</div>`
+        : '<p class="hint">Nothing logged yet.</p>'}
+      <div class="card" style="margin-top:.6rem">
+        <label for="pv-d">They came on</label>
+        <input id="pv-d" type="date" max="${esc(today())}" value="${esc(today())}">
+        <label for="pv-t">What it came to</label>
+        <input id="pv-t" inputmode="decimal" placeholder="optional">
+        <label for="pv-n">How it went</label>
+        <textarea id="pv-n" rows="3" placeholder="what they did, what they said, whether you would have them back"></textarea>
+        <p class="hint">Your own note, on your own list. The kind of thing you will have
+          forgotten by the time you need it and will wish you had written down.</p>
+        <div class="actions" style="margin-top:.6rem">
+          <button class="add" onclick="logVisit('${id}')">Log it</button></div>
+      </div>` : ''}
+
+    ${theirs.length ? `<h2>Jobs with their name on</h2>` + theirs.map(x =>
+      `<div class="card tap"><button onclick="drawJob('${x.id}')">
+        <span class="title">${esc(x.title || 'A job')}</span>
+        <p class="meta">${esc(jobMeta(x))}</p></button></div>`).join('') : ''}
+
+    <h2>Notes</h2>
+    <textarea id="pv-note" rows="3"
+      placeholder="anything worth knowing next time">${esc(p.notes || '')}</textarea>
+    <div class="actions" style="margin-top:.6rem">
+      <button class="primary" onclick="saveFolkNote('${id}')">Save</button>
+      <button class="ghost" onclick="renameFolk('${id}')">Rename</button>
+      <button class="ghost" onclick="drawFolk()">Back to the list</button></div>`;
+  window.scrollTo(0, 0);
+}
+async function addLookAfter(pid) {
+  const v = (($('#pv-a') || {}).value || ''); if (!v) return say('Pick what they look after.');
+  const k = { a:'asset_id', s:'structure_id', n:'animal_id', v:'vehicle_id' }[v[0]];
+  const c = (($('#pv-c') || {}).value || '').trim();
+  const rec = { id:uid(), property_id:(prop || {}).id, person_id:pid,
+    name:((DB.person || []).find(x => x.id === pid) || {}).name || '',
+    cost_per_visit:c, started_on:today() };
+  rec[k] = v.slice(2);
+  try { await DwelLogs.write([{ op:'upsert', table:'service', record:rec }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await reload(); drawProvider(pid);
+}
+async function dropLookAfter(sid, pid) {
+  try { await DwelLogs.write([{ op:'archive', table:'service', id:sid }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await reload(); drawProvider(pid);
+}
+async function logVisit(pid) {
+  const on = asDay((($('#pv-d') || {}).value || '')) || today();
+  const rec = { id:uid(), property_id:(prop || {}).id, person_id:pid, visited_on:on,
+    total_cost:(($('#pv-t') || {}).value || '').trim(),
+    notes:(($('#pv-n') || {}).value || '').trim() };
+  try { await DwelLogs.write([{ op:'upsert', table:'visit', record:rec }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await reload(); drawProvider(pid); say('Logged.');
+}
+async function saveFolkNote(id) {
+  const p = (DB.person || []).find(x => x.id === id); if (!p) return;
+  try { await DwelLogs.write([{ op:'upsert', table:'person',
+    record:{ ...p, notes:(($('#pv-note') || {}).value || '').trim() } }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await reload(); drawProvider(id); say('Saved.');
+}
+/* Renaming was on the list for people and animals and only buildings ever got
+   it, which is how somebody stays misspelled forever. */
+async function renameFolk(id) {
+  const p = (DB.person || []).find(x => x.id === id); if (!p) return;
+  const el = $('#pv-note');
+  app.innerHTML = `<button class="back" onclick="drawProvider('${id}')">&lsaquo; Back</button>
+    <h1>Call them what?</h1>
+    <label for="rn-n">Name</label>
+    <input id="rn-n" value="${esc(p.name || '')}">
+    <label for="rn-c">Company</label>
+    <input id="rn-c" value="${esc(p.company || '')}">
+    <div class="actions" style="margin-top:.8rem">
+      <button class="primary" onclick="saveFolkName('${id}')">Save</button>
+      <button class="ghost" onclick="drawProvider('${id}')">Leave it</button></div>`;
+  if (el) el.blur();
+  window.scrollTo(0, 0);
+}
+async function saveFolkName(id) {
+  const p = (DB.person || []).find(x => x.id === id); if (!p) return;
+  const n = (($('#rn-n') || {}).value || '').trim();
+  if (!n) return say('A name, or leave it as it was.');
+  try { await DwelLogs.write([{ op:'upsert', table:'person', record:{ ...p, name:n,
+    company:(($('#rn-c') || {}).value || '').trim() } }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await reload(); drawProvider(id); say('Saved.');
 }
 
 /* A date typed into a box, or nothing. Never a guess. */

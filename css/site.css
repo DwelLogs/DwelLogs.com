@@ -32,7 +32,15 @@ h1, strong, .wordmark, .soon { font-family: "Space Grotesk", system-ui, sans-ser
 @media (prefers-reduced-motion: reduce) { .vitals path { animation: none; stroke-dashoffset: 0; } }
 
 main, footer { position: relative; z-index: 1; }
-main { flex: 1; width: 100%; max-width: 720px; margin: 0 auto; padding: 64px 20px 40px; }
+/* `flex: 1` is `flex-basis: 0`, which asks the browser to IGNORE how tall the
+   content is and then grow the box back. On a page taller than the screen that
+   round trip is pointless, and on iOS -- where the visible height changes as
+   the address bar collapses -- it is the usual suspect behind a page that
+   scrolls past its own footer into nothing. `margin-top: auto` on the footer
+   pins it to the bottom of a short page without ever asking main to be a size
+   it is not. Same result, one less thing that can overshoot. */
+main { width: 100%; max-width: 720px; margin: 0 auto; padding: 64px 20px 40px; }
+footer { margin-top: auto; }
 .wordmark {
   display: flex; align-items: center; gap: 10px; margin: 0 0 48px;
   font-size: 1.3rem; font-weight: 700; letter-spacing: -.01em; color: var(--ink);

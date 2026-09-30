@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>DwelLogs &mdash; what has changed</title>
+  <meta name="description" content="What has been pushed to DwelLogs, when, what is known to be wrong, and what is being worked on next.">
+  <meta name="theme-color" content="#eef3f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1726" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/tokens.css">
+<style>
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink); font-size:17px; line-height:1.55;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased }
+  .wrap { max-width:44rem; margin:0 auto; padding:2.5rem 1.25rem 4rem }
+  .wordmark { display:flex; align-items:center; gap:.5rem; margin:0 0 2rem; font-size:1.15rem;
+    font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif }
+  .wordmark img { width:1.6rem; height:1.6rem }
+  .wordmark .home { display:flex; align-items:center; gap:.5rem; color:inherit; text-decoration:none }
+  .wordmark .home:hover b { text-decoration:underline }
+  .wordmark b { font-weight:700 } .wordmark span { color:var(--accent) }
+  .wordmark .top { margin-left:auto; font-size:.95rem; font-weight:600;
+    color:var(--accent); text-decoration:none }
+  h1 { font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+    font-size:clamp(1.8rem,5vw,2.5rem); line-height:1.1; letter-spacing:-.025em; margin:.2rem 0 .6rem }
+  .lede { color:var(--muted); margin:0 0 2rem; max-width:34rem }
+  h2 { font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif; font-size:1.15rem;
+    margin:0 0 .6rem; display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap }
+  h3 { font-size:.8rem; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--muted); margin:1rem 0 .3rem; font-weight:600 }
+  .stamp { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.72rem;
+    color:var(--muted); font-weight:400 }
+  section { border-top:1px solid var(--line); padding:1.6rem 0 }
+  ul { margin:0; padding-left:1.1rem } li { margin:.3rem 0 }
+  .box { border:1px solid var(--line); border-radius:.9rem; padding:1.1rem 1.25rem;
+    background:var(--card); margin:0 0 1.2rem }
+  .box h2 { margin-bottom:.2rem }
+  footer { border-top:1px solid var(--line); margin-top:2.5rem; padding-top:1.4rem;
+    color:var(--muted); font-size:.9rem }
+  a { color:var(--accent) } footer a { text-decoration:none }
+  footer a:hover { text-decoration:underline }
+</style>
+</head>
+<body><div class="wrap">
+  <p class="wordmark"><a class="home" href="/"><img src="/favicon.svg?v=2" alt=""><b>Dwel<span>Logs</span></b></a><a class="top" href="/app/">Open</a></p>
+  <h1>What has changed.</h1>
+  <p class="lede">Pushed most days while this is being built. Newest first, with the build each
+    one carries &mdash; the app shows you the same number, so a report can name it.</p>
+
+  <div class="box"><h2>Being worked on</h2>
+    <p class="lede" style="margin:.2rem 0 .6rem">A direction, not a date.</p>
+    <ul><li>Seeing what the next month and quarter will cost</li><li>Bringing a log back in from an export, not just sending one out</li><li>A weekend board — drag what you&#x27;ll actually get to</li><li>Searching across the whole place, not one thing at a time</li><li>Renaming animals (people and buildings already can be)</li></ul></div>
+
+  <div class="box"><h2>Known, and not fixed yet</h2>
+    <ul><li>A check-up you skip on the opt-in screen is set up but kept quiet — there&#x27;s no screen yet that shows you the quiet ones or turns them back on.</li><li>Costs only count what&#x27;s been recorded. Nothing is projected forward yet, so the number is history rather than a forecast.</li><li>On a phone, everything lives in that browser. Add it to your home screen and it stays; in Safari without doing that, it clears after about a week of not opening it.</li></ul></div>
+
+  <section><h2>2026-09-30<span class="stamp">dfd345d68f</span></h2><h3>New</h3><ul><li>This page. What has changed, what is known to be wrong, and what is being worked on — with the build you are on, so a report can name it.</li><li>Every report you send now carries the build, so a bug can be placed against the version it happened in.</li></ul></section><section><h2>2026-09-30<span class="stamp">6be093cf03</span></h2><h3>New</h3><ul><li>Room in the model for project boards later — nothing to see yet.</li></ul></section><section><h2>2026-09-30<span class="stamp">ac80fc3563</span></h2><h3>New</h3><ul><li>The app asks your browser to hold on to your log, and says plainly what that browser will actually do with it.</li><li>Something not right, or missing? There&#x27;s an address on the site and in the app now.</li></ul><h3>Fixed</h3><ul><li>Right after an update the app could run new screens against old plumbing for one launch. It doesn&#x27;t now.</li></ul></section><section><h2>2026-09-29<span class="stamp">3f44b6d28d</span></h2><h3>New</h3><ul><li>People and companies in one list — the septic company, the vet, whoever lived here before. Phone, what they look after, every visit and what it came to.</li><li>A note on each visit: what they did, what they said, whether you&#x27;d have them back.</li><li>Rename somebody. A typo used to be permanent.</li></ul><h3>Fixed</h3><ul><li>Attaching something to a job threw away anything you&#x27;d typed and not yet saved.</li></ul></section><section><h2>2026-09-29<span class="stamp">60f9d2c786</span></h2><h3>New</h3><ul><li>Say when something was last done, even if it happened before you had the app. The next one counts from then rather than from today.</li><li>A catch-up list after setup, and again whenever you add a thing.</li><li>Mark it done takes a date — change it if you did it on Friday and are only saying so on Sunday.</li><li>Who did it, for past work: not sure, us, whoever was here before, or a company. Never a housemate&#x27;s name.</li><li>Attach what a job needs to buy, with a part number and a link.</li><li>Say who you call for a job, and a step can be somewhere that isn&#x27;t yours — the hardware shop, environmental health.</li></ul></section><section><h2>2026-09-29<span class="stamp">6306df6477</span></h2><h3>New</h3><ul><li>Rooms and What&#x27;s in it now work per building, with a switcher — the barn&#x27;s answers stop landing on the house.</li><li>A job can say what it&#x27;s about: a building, a room, a thing, an animal, a vehicle.</li></ul><h3>Fixed</h3><ul><li>What&#x27;s in it opened the wrong screen and saved nothing when you came back to it.</li></ul></section><section><h2>2026-09-29<span class="stamp">fb7cbf2e21</span></h2><h3>New</h3><ul><li>Buildings, Rooms and things, Animals, Vehicles and What feeds it are tiles now. Open one to narrow everything to it.</li></ul><h3>Fixed</h3><ul><li>Something with no date read as a day late. It reads as no date.</li><li>Typed answers stopped leaking between buildings.</li><li>On a home screen, the top of every screen no longer sits under the clock.</li></ul></section><section><h2>2026-09-28<span class="stamp">4aac0cf35a</span></h2><h3>New</h3><ul><li>Costs and a copy of everything, at whatever level you&#x27;re looking at.</li></ul><h3>Fixed</h3><ul><li>Every value is checked on the way in and out, so a typo in a number field says so instead of going quiet.</li></ul></section>
+
+  <footer><p><a href="/">Back to the front page</a> &middot;
+    Something not right, or missing? <a href="mailto:hello@dwellogs.com">hello@dwellogs.com</a></p></footer>
+</div></body></html>

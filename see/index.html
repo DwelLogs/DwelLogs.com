@@ -33,6 +33,15 @@
     font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif; font-size:1.15rem }
   .wordmark img { width:1.6rem; height:1.6rem }
   .wordmark b { font-weight:700 } .wordmark span { color:var(--accent) }
+  /* The mark is the way home. This page had no link back to the front at all:
+     you could come in from a shared link, read the whole walk-through, and the
+     only way onward was into the app or backwards out of the browser. */
+  .wordmark .home { display:flex; align-items:center; gap:.5rem;
+    color:inherit; text-decoration:none }
+  .wordmark .home:hover b { text-decoration:underline }
+  .wordmark .top { margin-left:auto; font-family:ui-sans-serif,system-ui,sans-serif;
+    font-size:.95rem; font-weight:600; color:var(--accent); text-decoration:none }
+  .wordmark .top:hover { text-decoration:underline }
   h1 { font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
     font-size:clamp(2rem,6vw,3rem); line-height:1.08; letter-spacing:-.025em; margin:.2rem 0 .7rem }
   .lede { font-size:1.12rem; color:var(--muted); max-width:34rem; margin:0 0 .6rem }
@@ -65,12 +74,15 @@
     font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif; font-size:1rem;
     font-weight:600; text-decoration:none; border:1px solid var(--accent);
     background:var(--accent); color:var(--bg) }
+  /* The quiet one, same as the front page has: two solid buttons side by side
+     make you read both to find out which is the way on. */
+  .cta.quiet { background:var(--card); color:var(--accent) }
   .cta:hover { opacity:.9 }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <p class="wordmark"><img src="/favicon.svg?v=2" alt=""><b>Dwel<span>Logs</span></b></p>
+  <p class="wordmark"><a class="home" href="/"><img src="/favicon.svg?v=2" alt=""><b>Dwel<span>Logs</span></b></a><a class="top" href="/app/">Open</a></p>
 
   <h1>What it looks like.</h1>
   <p class="lede">A walk through the whole thing, from an empty screen to a place that tells you
@@ -229,7 +241,8 @@
     <h2>For wherever you dwell</h2>
     <p class="lede">Houses, condos, rentals, ranches, farms, tiny houses on wheels and boats &mdash;
       including what lives with you. Free, and yours to take with you.</p>
-    <p class="go"><a class="cta" href="/app/">Open DwelLogs</a></p>
+    <p class="go"><a class="cta" href="/app/">Open DwelLogs</a>
+      <a class="cta quiet" href="/">Back to the front page</a></p>
   </div>
 
   <footer>&copy; 2026 DwelLogs. Built by a first-time homeowner who inherited three fridges, a well,

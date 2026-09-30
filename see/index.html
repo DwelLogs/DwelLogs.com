@@ -67,6 +67,13 @@
   footer { color:var(--muted); font-size:.92rem; margin-top:3rem;
     border-top:1px solid var(--line); padding-top:1.4rem }
   a { color:var(--accent) }
+  /* Matching the front page: underlined only on hover. This page carries its
+     own copy of the styles and links tokens.css but not site.css, so anything
+     the shared sheet does has to be said again here -- which is why the two
+     footers disagreed about one link. */
+  .say { margin:.7rem 0 0 }
+  footer a { text-decoration:none }
+  footer a:hover { text-decoration:underline }
   /* Matches the landing page. Somebody who has read the whole walkthrough is
      the likeliest person in the world to want the app. */
   .go { display:flex; flex-wrap:wrap; gap:.75rem; margin:.8rem 0 0 }
@@ -247,7 +254,9 @@
 
   <footer>&copy; 2026 DwelLogs. Built by a first-time homeowner who inherited three fridges, a well,
     a septic system, and a drawer of manuals that never say when &mdash; and is doing something
-    about it.</footer>
+    about it.
+    <p class="say">Something not right, or missing?
+      <a href="mailto:hello@dwellogs.com">hello@dwellogs.com</a></p></footer>
 </div>
 </body>
 </html>

@@ -63,6 +63,14 @@ li span { color: var(--muted); font-size: .95rem; }
 }
 footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px 20px; }
 footer p { max-width: 36em; margin: 0 auto; }
+/* An address, because until now there was none anywhere a visitor could see.
+   The in-app button works, but it needs you to already be inside the app and
+   to find it -- somebody who reads the front page, forms a view and wants to
+   say so had nowhere to put it. Phrased to invite the useful half: what is
+   wrong or missing, not what is nice. */
+footer .say { margin-top: .7rem; }
+footer a { color: var(--accent); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
 
 /* The way in. Both pages used to end in a "Coming soon" chip, which stopped
    being true the day the app went up -- and nothing on either page linked to

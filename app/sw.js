@@ -17,7 +17,7 @@
    immediately, and offline still works completely. Revisit once the update
    path has been proven in the field.  */
 
-const STAMP = '3f44b6d28d';
+const STAMP = 'ac80fc3563';
 const CACHE = 'dwellogs-' + STAMP;
 const SHELL = ['./', 'index.html', 'api.js?v=' + STAMP, 'manifest.webmanifest',
                'icon-192.png', 'icon-512.png'];
@@ -75,10 +75,19 @@ self.addEventListener('fetch', e => {
   if (req.mode === 'navigate') { e.respondWith(fromNetworkFirst(req)); return; }
 
   /* Assets carry the stamp in their URL, so a cache hit is always the right
-     one for this build. Revalidating in the background keeps an unstamped
-     asset from going stale forever. */
+     one for this build -- which was true of the comment and false of the code:
+     `ignoreSearch` threw the stamp away before matching, so api.js?v=NEW
+     happily matched the cached api.js?v=OLD. The first launch after every
+     deploy therefore ran the new index.html against the PREVIOUS api.js, and
+     only came right on the launch after that. Reproduced with two builds and a
+     real worker before believing it.
+
+     That is the exact failure build_app.py exists to prevent, arriving through
+     the cache instead of through a hand-kept number. Matched exactly now, so a
+     new stamp is a miss and goes to the network. Navigations keep ignoreSearch
+     on purpose -- an invite link carries a query and is still the same page. */
   e.respondWith((async () => {
-    const hit = await caches.match(req, { ignoreSearch: true });
+    const hit = await caches.match(req);
     const net = fetch(req).then(async res => {
       if (res && res.ok) { const c = await caches.open(CACHE); c.put(req, res.clone()).catch(() => {}); }
       return res;

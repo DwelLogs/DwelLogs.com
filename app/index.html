@@ -288,7 +288,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=3f44b6d28d"></script>
+<script src="api.js?v=ac80fc3563"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -1070,6 +1070,10 @@ function takeHandoff() {
 }
 
 async function boot() {
+  /* Cheap, idempotent, and the browser answers on its own terms -- but it can
+     only answer if it is asked, and somebody who set their place up before this
+     shipped would never have been. */
+  setTimeout(() => { try { askToKeep(); } catch (e) {} }, 1200);
   /* Belt as well as braces. The ?v= on the script tag is the prevention; this is
      what happens when somebody forgets to bump it. A page holding a stale api.js
      fails at the first call into it — uploading a paper, or looking for a device
@@ -2739,6 +2743,7 @@ async function finishFirst() {
      given here replaces one the app worked out from the day of setup, which is
      the difference between a schedule that is true and one that merely starts
      today. Skipping it costs nothing -- that IS what it would have done. */
+  askToKeep();
   if (flow !== 'join' && catchUpRules(null).length) drawCatchUp('');
 }
 
@@ -3333,6 +3338,41 @@ function wantsHomeScreen() {
 }
 function noHomeScreen() { localStorage.setItem('dwellogs.a2hs', 'no'); drawHome(); }
 
+/* Ask the browser not to bin this. Chrome and Firefox grant it to a site that
+   looks like one you actually use, silently and with no prompt; Safari answers
+   on its own terms. It is four lines and it is the only lever that works for
+   somebody who will never add anything to a home screen.
+
+   Asked once there is real data to lose -- asking on an empty app would be
+   asking for a promise about nothing, and a denied request is not re-asked by
+   the browser for a while. */
+let STORAGE_KEPT = null;
+async function askToKeep() {
+  try {
+    if (!navigator.storage || !navigator.storage.persist) return null;
+    if (await navigator.storage.persisted()) return (STORAGE_KEPT = true);
+    if (!tracked()) return null;                 // nothing worth keeping yet
+    STORAGE_KEPT = await navigator.storage.persist();
+    return STORAGE_KEPT;
+  } catch (e) { return null; }
+}
+/* What this browser will actually do with their log, in a sentence. Safari
+   empties script storage after seven days of not opening a site, unless it is
+   on the home screen -- which is a thing somebody deserves to know BEFORE they
+   spend an evening typing a ranch into it, not after. */
+function keepWords() {
+  const ua = navigator.userAgent || '';
+  const ios = /iPad|iPhone|iPod/.test(ua)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = window.navigator.standalone === true
+    || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (standalone) return 'On your home screen, so it stays put.';
+  if (STORAGE_KEPT) return 'Your browser has been asked to keep it, and agreed.';
+  if (ios) return 'Safari empties this after about a week of not opening it. '
+    + 'On your home screen it stays.';
+  return 'It lives in this browser. Clearing site data clears this.';
+}
+
 function drawHome() {
   const sch = schedules(), now = sch.filter(x => x.state === 'attn'), soon = sch.filter(x => x.state === 'soon');
   const things = (DB.asset || []).filter(a => a.status !== 'archived');
@@ -3435,7 +3475,8 @@ function drawHome() {
     <!-- "Everything else" listed the same rules a second time once the bands
          above started showing all of them. One list. -->
     <p class="meta" style="margin-top:1.4rem">${DwelLogs.raw === null ? '' :
-      (localStorage.getItem('dwellogs.url') ? 'Saving to your sheet.' : 'Saving on this device only.')}
+      (localStorage.getItem('dwellogs.url') ? 'Saving to your sheet.'
+        : 'Saving on this device only. ' + keepWords())}
       <button class="ghost" style="min-height:2rem;padding:.2rem .5rem" onclick="connect()">change</button></p>
     ${behind ? `<div class="card"><span class="title">Your sheet is a version behind</span>
       <p class="meta">Newer parts of the app need columns your sheet does not have yet.
@@ -3452,8 +3493,9 @@ function drawHome() {
         runs out, papers that expire and a vet who charges by the trip.</p>
       <button class="add" onclick="drawAnimal()">Add an animal</button></div>` : ''}
     ${wantsHomeScreen() ? `<div class="card"><span class="title">Put it on your home screen</span>
-      <p class="meta">Tap ${icon('share', 15)} Share, then <b>Add to Home Screen</b>.
-        It opens without a signal after that.</p>
+      <p class="meta">Safari empties what this app has saved after about a week of not
+        opening it &mdash; on your home screen it is exempt, and it opens without a signal
+        too. Tap ${icon('share', 15)} Share, then <b>Add to Home Screen</b>.</p>
       <button class="quiet" onclick="noHomeScreen()">Not now</button></div>` : ''}
 
     <h2>Anything else</h2>
@@ -4292,7 +4334,10 @@ const liveInvites = () => (DB.invite || []).filter(i => i.state === 'sent');
    lists useless. There is no server, so sending means their own mail client
    with the text already written — and the row is kept either way, because a
    report somebody decided not to send is still their note. */
-const FEEDBACK_TO = 'hello@dwellogs.com';
+/* Forwarded at the registrar to a real inbox, so a tester reporting a bug is
+   not handed somebody's personal address. Receive-only: replies come from the
+   inbox behind it. */
+const FEEDBACK_TO = 'support@dwellogs.com';
 function appContext() {
   const n = t => (DB[t] || []).length;
   return [

@@ -10,6 +10,8 @@ Thumbs.db
 .env.*
 *.pem
 *.key
+# MCP config names the Supabase project. It lives in App, never here.
+.mcp.json
 
 # Local scratch
 *.log

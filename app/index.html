@@ -68,6 +68,16 @@ if (location.search.indexOf('fresh=1') > -1) {
   input, select, button, textarea { font:inherit; color:inherit; min-height:2.75rem;
     border-radius:.6rem; border:1px solid var(--line); background:var(--card); padding:.6rem .8rem; }
   input, select, textarea { width:100%; }
+  /* "When" and "Who did it" side by side ran off a phone: Safari gives an EMPTY
+     date input its own intrinsic width, which ignores the flex basis and slid
+     under the select beside it, with the two labels at different heights
+     (Randi's phone, 1 Oct). Stacked on a phone, paired only where there is room. */
+  .ldbox { display:grid; grid-template-columns:1fr; gap:.6rem; }
+  .ldbox > div { min-width:0; }
+  .ldbox > select { grid-column:1 / -1; }
+  .ldbox > button { justify-self:start; grid-column:1 / -1; }
+  .ldbox input[type=date] { display:block; min-width:0; -webkit-appearance:none; appearance:none; }
+  @media (min-width:34rem) { .ldbox { grid-template-columns:1fr 1fr; align-items:end; } }
   button { cursor:pointer; width:auto; }
   /* Four weights, each meaning one thing. They used to mean five: .ghost carried
      Save and Remove and Cancel and Add and Back at once, so it stopped saying
@@ -288,7 +298,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=e7bb5d675b"></script>
+<script src="api.js?v=8dd02b36e4"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -666,6 +676,52 @@ function sysName() {
 }
 /* What a shed can physically have is not what a house can, so the option filter
    follows the building on screen rather than the one the place started as. */
+/* What a building is FOR, where its kind says so plainly. A hen house was
+   asked what cools it and where its hot water comes from, and offered a fridge
+   and a dishwasher; a pump house the same (Randi, 1 Oct: "a hen house would
+   house chickens and a pump house should only house the well"). Nothing is
+   taken away -- the likely questions come first and the rest are one tap off,
+   because the shed going in beside the tiny house will hold a panel AND water
+   filtration. Kinds not listed get every question, as before. */
+const KUSE = { coop:'animals', animal_pen:'animals', kennel:'animals', stable:'animals',
+  pump_house:'water', well_site:'water',
+  shed:'storage', detached_garage:'storage', carport:'storage', workshop:'storage',
+  silo:'storage', warehouse:'storage', root_cellar:'storage' };
+const USE_ASKS = { animals:['water','power','heat'], water:['water','power','heat'],
+  storage:['power'] };
+/* The questions that count for a building of this kind: never one it is not
+   asked (`off`), and only its likely ones when it has a use. */
+const sysMain = (kind, group) => SYSTEMS.filter(q => !(q.off || []).includes(group)
+  && (!USE_ASKS[KUSE[kind]] || USE_ASKS[KUSE[kind]].includes(q.k)));
+/* What the "What else is in there?" screen leads with, by what the building
+   is for. Every list stays reachable under Show the rest. The well itself is
+   never offered here: it comes from the water answer, and counting one here
+   as well would make the place a second well. */
+function thingGroups() {
+  const kind = draft.bkind, use = KUSE[kind], g = flowGroup();
+  const names = cat => STARTER[cat].map(([n]) => n);
+  const st = (DB.structure || []).find(x => x.id === draft.reopened) || {};
+  const water = (draft.sys && draft.sys.water) || String(st.water || '').split(',').map(x => x.trim());
+  /* A house on a well almost always has filtration, and setup never offered
+     it: Randi's export had a well and no filter anywhere, while the real place
+     has a two-stage house filter and one in the pump house. */
+  const treat = ['Whole-house filter', 'Water softener'];
+  const onOwnWater = [].concat(water).some(w => ['well', 'spring', 'hauled'].includes(w));
+  const all = [['Appliances', names('Appliances')], ['Safety', names('Safety')]];
+  if (use === 'water') return { lead: [['Water', ['Whole-house filter', 'Water storage tank', 'Water softener']],
+      ['Safety', names('Safety')]], rest: [['Appliances', names('Appliances')]] };
+  if (use === 'animals') return { lead: [['Safety', ['Fire extinguisher']]],
+      rest: all, animals: kind === 'kennel' ? 'dog' : kind === 'stable' ? 'horse' : 'chicken' };
+  if (use === 'storage') return { lead: [['Safety', names('Safety')]],
+      rest: [['Appliances', names('Appliances')]].concat(onOwnWater ? [['Water', treat]] : []) };
+  if (g === 'land') return { lead: [['Water', ['Irrigation system']]],
+      rest: [['Safety', names('Safety')]] };
+  return { lead: all.slice(0, 1).concat(onOwnWater ? [['Water', treat]] : [], all.slice(1)), rest: [] };
+}
+function sysKind() {
+  const b = (draft.more || [])[draft.sysFor];
+  return b ? b.kind : draft.bkind;
+}
 function sysGroup() {
   const b = (draft.more || [])[draft.sysFor];
   return b ? kgroup(b.kind) : flowGroup();
@@ -693,10 +749,17 @@ function kgroup(k) {
    a lie about what you own. */
 /* What the "something else" box under each one is asking about. Generic on a
    screen with six of them reads as a seventh question. */
+const SYS_SHORT = { water:'water', waste:'waste', power:'power', heat:'heat',
+  cooling:'cooling', hot_water:'hot water' };
+const andList = xs => xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
 const SYS_NOUN = { water:'water source', waste:'way waste leaves', power:'power source',
   heat:'kind of heat', cooling:'kind of cooling', hot_water:'way water is heated' };
 const SYSTEMS = [
-  { k:'water', multi:true, q:'Where does the water come from?', off:['land'], o:[
+  /* Land is asked about water: a garden has a spigot, a pasture has a trough.
+     It used to be off for land like waste and heat, so a garden could only
+     ever say what powers it (Randi, 1 Oct: "id want to put nothing for
+     everything but a water spicket near by"). */
+  { k:'water', multi:true, q:'Where does the water come from?', o:[
     ['hookup','Whatever I am parked next to',['Inline hookup filter'],{only:['wheels','floating']}],
     ['well','A well',['Well'],{}],
     ['city','City or municipal',[],{no:['floating']}],
@@ -705,6 +768,12 @@ const SYSTEMS = [
     ['hauled','Hauled in to a tank',['Water storage tank'],{}],
     ['dockside','A dockside hookup',[],{only:['floating']}],
     ['onboard_tank','A tank aboard',['Water storage tank'],{only:['floating','wheels']}],
+    ['spigot','A spigot or hose from nearby',[],{only:['land']}],
+    /* Each separate system is its own thing -- a second area saying irrigation
+       is asked "same one, or its own?", the same question a shared well gets.
+       Randi, 1 Oct: "irrigation is a system, or many systmes if they are
+       disconnected like they are here". */
+    ['irrigation','Irrigation — drip, sprinklers or a line',['Irrigation system'],{only:['land']}],
     ['none','No water here',[],{}] ] },
 
   { k:'waste', multi:true, q:'Where does the waste go?', off:['land'], o:[
@@ -941,7 +1010,13 @@ const STARTER = {
                                ['Replace the anode rod', 5, 'year', 'manufacturer']]],
     ['Tankless water heater', [['Flush', 1, 'year', 'manufacturer']]],
     ['Point-of-use heater',   [['Descale', 1, 'year', 'manufacturer']]],
-    ['Solar water heater',    [['Check the loop and fluid', 1, 'year', 'manufacturer']]]
+    ['Solar water heater',    [['Check the loop and fluid', 1, 'year', 'manufacturer']]],
+    /* No check-ups until Randi names the intervals she actually uses -- a
+       blow-out before the freeze and a valve check are real, but a number for
+       them is not ours to make up. A thing with no check-ups is still a thing:
+       jobs, history and costs hang off it. One per separate system; the ranch
+       has several that do not connect. */
+    ['Irrigation system',     []]
   ],
   'Septic & sewer': [
     ['Septic tank',       [['Pump-out', 3, 'year', 'code']]],
@@ -1009,11 +1084,22 @@ const STARTER = {
 // ---- boot ---------------------------------------------------------------
 /* Places this person is actually on. A sheet can hold several and a person is
    not on all of them. */
+/* Archived rows stay in DB -- archive is a status, not a delete -- so both
+   sides are checked. Without the membership check, Leave archived the row and
+   the place stayed on the list anyway. */
+const liveRow = x => x.status !== 'archived';
 function myPlaces() {
-  if (!me) return DB.property || [];
-  const on = new Set((DB.membership || []).filter(m => m.person_id === me.id)
+  if (!me) return (DB.property || []).filter(liveRow);
+  const on = new Set((DB.membership || []).filter(m => m.person_id === me.id && liveRow(m))
     .map(m => m.property_id));
-  return (DB.property || []).filter(p => on.has(p.id));
+  return (DB.property || []).filter(p => on.has(p.id) && liveRow(p));
+}
+/* Places you own and removed, so Remove is never the end of the road. */
+function removedPlaces() {
+  if (!me) return [];
+  const own = new Set((DB.membership || []).filter(m => m.person_id === me.id && liveRow(m)
+    && m.access === 'owner').map(m => m.property_id));
+  return (DB.property || []).filter(p => own.has(p.id) && !liveRow(p));
 }
 function switchPlace(id) {
   prop = (DB.property || []).find(p => p.id === id) || prop;
@@ -1132,7 +1218,7 @@ async function boot() {
     || (DB.person || []).filter(p => p.role === 'owner')[0] || null;
   if (me) localStorage.setItem('dwellogs.me', me.id);
   const last = localStorage.getItem('dwellogs.place');
-  prop = myPlaces().find(p => p.id === last) || myPlaces()[0] || (DB.property || [])[0] || null;
+  prop = myPlaces().find(p => p.id === last) || myPlaces()[0] || (DB.property || []).filter(liveRow)[0] || null;
   if (prop) localStorage.setItem('dwellogs.place', prop.id);
   if (res.stale) say('Showing the last copy — could not reach the sheet.');
   /* A sheet is a document, and a document gets edited by hand. Somebody types
@@ -1558,7 +1644,8 @@ const PLACE = [
             onclick="syncStep();draft.sysFor='${v}';drawFirst()">${esc(l)}${
             sysSaidDraft(v) ? '' : ' ·'}</button>`).join('')}</div>
         <p class="hint" style="margin:-.6rem 0 1rem">Each one gets its own answers.</p>` : '';
-      return picker + SYSTEMS.filter(sys => !(sys.off || []).includes(g)).map(sys => {
+      const main = sysMain(sysKind(), g).map(q => q.k);
+      const ask = sys => {
         const { keep, rest } = splitByKind(sys.o, g, o => o[3]);
         const cur = cur0[sys.k];
         const one = (o, hidden) => sys.multi
@@ -1571,7 +1658,16 @@ const PLACE = [
           ${rest.length ? rest.map(o => one(o, true)).join('') +
             `<button class="ghost" onclick="showRest(this)">Show the rest</button>` : ''}</div>
           ${otherBox('structure.' + sys.k + otherScope(), 'Another ' + SYS_NOUN[sys.k] + '?')}`;
-      }).join('')
+      };
+      const open = SYSTEMS.filter(sys => !(sys.off || []).includes(g));
+      /* An extra question that already has an answer is shown, not tucked away:
+         hiding something somebody said reads as losing it. */
+      const extra = open.filter(sys => !main.includes(sys.k) && !(cur0[sys.k] || []).length);
+      return picker + open.filter(sys => !extra.includes(sys)).map(ask).join('')
+        + (extra.length ? `<button class="ghost" style="margin-top:1.1rem"
+            onclick="this.nextElementSibling.hidden=false;this.remove()">Ask about ${
+            esc(andList(extra.map(q => SYS_SHORT[q.k])))} too</button>
+          <div hidden>${extra.map(ask).join('')}</div>` : '')
         + (['wheels','floating'].includes(g)
           ? tip('A house that moves does not have well water or city water — it has a hose, and what ' +
               'is on the other end changes with the address. Say <i>whatever I am parked next to</i> ' +
@@ -1796,16 +1892,27 @@ const PLACE = [
     skippable:true,
     body: () => {
       draft.things = draft.things || {};
-      const g = flowGroup();
-      const groups = g === 'land' ? ['Safety'] : ['Appliances','Safety'];
-      return bldChips('What else is in there?', saidThings)
-        + groups.map(cat => `<label style="margin-top:1.1rem">${esc(cat)}</label>
-        <div class="counts">${STARTER[cat].map(([n]) => `<div class="count">
+      const counts = (label, names) => `<label style="margin-top:1.1rem">${esc(label)}</label>
+        <div class="counts">${names.map(n => `<div class="count">
           <span>${esc(n)}</span>
           <input id="th-${esc(n).replace(/\W/g,'')}" data-n="${esc(n)}" class="th"
             inputmode="numeric" placeholder="0" value="${
               draft.things[n] == null ? '' : esc(String(draft.things[n]))}">
-        </div>`).join('')}</div>`).join('')
+        </div>`).join('')}</div>`;
+      const { lead, rest, animals } = thingGroups();
+      /* The animals that live in a coop are not things with a count; they get
+         their own screen, already pointed at this building. Only on a building
+         that exists -- during first-run setup there is nothing to point at yet. */
+      const addAnimals = animals && draft.reopened
+        ? `<div class="card tap" style="margin-top:1.1rem"><button onclick="syncStep();sweepAdders();
+            draft.an={type:'${animals}',n:1,names:[],where:'${draft.reopened}'};drawAnimal()">
+            <span class="title">Add the animals that live here</span>
+            <p class="meta">They get their own page, and this is where it says they live.</p></button></div>` : '';
+      return bldChips('What else is in there?', saidThings) + addAnimals
+        + lead.map(([l, ns]) => counts(l, ns)).join('')
+        + (rest.length ? `<button class="ghost" style="margin-top:1.1rem"
+            onclick="this.nextElementSibling.hidden=false;this.remove()">Show the rest</button>
+          <div hidden>${rest.map(([l, ns]) => counts(l, ns)).join('')}</div>` : '')
         + otherBox('asset.type', 'Something in there we did not list?')
         + tip('A count rather than a tick, because three fridges is an ordinary number of fridges ' +
            'and one row for all three would lose two of them. Each gets its own check-ups, and every ' +
@@ -2492,9 +2599,18 @@ function drawFirst() {
   // The escape sits ABOVE the questions. Making somebody scroll past forty ticks
   // to find out they did not have to answer them is the screen telling them the
   // wrong thing for the whole time it takes to scroll.
-  const backTo = hubStep ? 'hubStep=null;drawHub()'
+  /* A screen reopened after setup has no hub behind it. Back used to go to
+     drawHub() anyway, which is the FIRST-RUN setup screen -- "Not that kind of
+     place" -- for somebody who only wanted to look at what the barn runs on.
+     Back leaves without saving, to wherever the screen was opened from. */
+  const backTo = draft.reopened ? 'draft={};hubStep=null;leaveStep()'
+    : hubStep ? 'hubStep=null;drawHub()'
     : fs ? 'fs--;drawFirst()'
-    : flow === 'place' ? 'drawWho()' : 'drawWho()';
+    /* Once somebody exists, the first screen ("Start with your name") is not
+       behind anything. Back used to reach it from inside the app -- reopened
+       screen, setup hub, first step, Back -- and finishing it from there made
+       a second place and a second "you" (Randi, 1 Oct, on her phone). */
+    : me ? 'draft={};show(\'home\')' : 'drawWho()';
   app.innerHTML = `<button class="back" onclick="syncStep();sweepAdders();${backTo}">&lsaquo; Back</button>
     <p class="step">${hubStep ? esc(draft.place || 'Setting up') : f.skippable
       ? `Optional <button class="skiplink" onclick="skipFirst()">${
@@ -2866,11 +2982,26 @@ const typeNameOf = a => ((DB.asset_type || [])
   .find(t => t.id === a.asset_type_id) || {}).name || '';
 function thingWrites(typeName, o) {
   o = o || {};
-  const tid = (o.typeIds || {})[typeName]
+  let tid = (o.typeIds || {})[typeName]
     || ((DB.asset_type || []).find(x => x.name === typeName) || {}).id;
   const tmpl = Object.values(STARTER).flat().find(x => x[0] === typeName);
-  if (!tid || !tmpl) return { id:null, writes:[], checks:0 };
+  if (!tmpl) return { id:null, writes:[], checks:0 };
   const id = uid(), writes = [];
+  /* A type added to the catalogue after somebody's setup is not in their rows,
+     and this returned nothing -- so counting one on the screen saved nothing
+     and said nothing. Randi's own data (1 Oct export) had 19 types and no
+     appliances, safety, power or cooling at all. Add what is missing instead. */
+  if (!tid) {
+    const cat = Object.keys(STARTER).find(c => STARTER[c].some(x => x[0] === typeName));
+    let cid = ((DB.category || []).find(x => x.name === cat) || {}).id;
+    if (!cid) { cid = uid(); writes.push({ op:'upsert', table:'category', record:{ id:cid, name:cat } }); }
+    tid = uid();
+    writes.push({ op:'upsert', table:'asset_type', record:{ id:tid, category_id:cid, name:typeName,
+      source:(tmpl[1][0] || [])[3] || 'owner' } });
+    /* Twice in one save -- three fridges -- must not make three types. */
+    (DB.asset_type = DB.asset_type || []).push({ id:tid, category_id:cid, name:typeName });
+    if (!(DB.category || []).some(x => x.id === cid)) (DB.category = DB.category || []).push({ id:cid, name:cat });
+  }
   writes.push({ op:'upsert', table:'asset', record:{ id, property_id:o.propId || (prop || {}).id,
     structure_id:o.structId || '', asset_type_id:tid, area_id:o.areaId || '',
     name:o.name || typeName, status:'active', power_source:o.powered || '',
@@ -2949,6 +3080,10 @@ async function createEverything() {
   // Joining is not setting up. It creates no place, no building and no
   // check-ups — it attaches a person to somebody else's place and stops.
   if (flow === 'join') return acceptInvite();
+  /* Whoever is signed in IS the person setting this up. Relying on
+     draft.existingPerson alone missed every route into this flow except
+     "Add a place", and each of those wrote a new owner with the same name. */
+  if (me && !draft.existingPerson) draft.existingPerson = me.id;
   const personId = draft.existingPerson || uid(), propId = uid(), structId = uid();
   const writes = [];
   if (!draft.existingPerson)
@@ -3003,7 +3138,7 @@ async function createEverything() {
     list.forEach(([tname, checks]) => {
       const tid = typeIds[tname] = uid();
       writes.push({ op:'upsert', table:'asset_type',
-        record:{ id:tid, category_id:cid, name:tname, source:checks[0][3] } });
+        record:{ id:tid, category_id:cid, name:tname, source:(checks[0] || [])[3] || 'owner' } });
     });
   });
 
@@ -3214,6 +3349,7 @@ function schedules() {
 
 function show(s) {
   screen = s;
+  AFTER_STEP = null;
   SUBJ_TRAIL = [];
   $('#tabs').hidden = false;
   $('#tabs').innerHTML = [['home','Home'],['add','Add'],['log','Log']]
@@ -3518,8 +3654,7 @@ function drawHome() {
       ['animal','Add an animal','drawAnimal()'],
       ['things','Add a vehicle','drawVehicle()'],
       ...(movers().length ? [['location','I&rsquo;ve moved','drawMoved()']] : []),
-      ['addplace','Another place','addPlace()'],
-      ['restart','Start over','startOver()']
+      ['addplace','Another place','addPlace()']
     ].map(([ic, l, go]) => `<button type="button" onclick="${go}">${icon(ic, 28)}
       <span class="cap">${l}</span></button>`).join('')}</div>`;
 }
@@ -3594,7 +3729,11 @@ function todo() {
   /* Any building, not just the first. A place whose ADU has never been asked
      what it runs on still has something to fill in, and the old test only ever
      looked at structure[0]. */
-  const noSys = buildings().filter(x => unset(x.water) || unset(x.power) || unset(x.heat));
+  /* Only what the building is asked. Heat was required of a garden that is
+     never asked about heat, so it stayed "still blank" for good -- the shed
+     problem again, one screen over. */
+  const noSys = buildings().filter(x => sysAsked(x)
+    .some(q => ['water', 'power', 'heat'].includes(q.k) && unset(x[q.k])));
   if (noSys.length) out.push({ icon:'systems',
     label: noSys.length === buildings().length ? 'What it runs on'
       : 'What ' + noSys[0].name + ' runs on', go:'drawSystems()' });
@@ -3689,9 +3828,13 @@ function hydrate(stId) {
    answering for the main house and hoping it covers the rest is how the app
    ends up holding something nobody said. So the question is asked per
    building, the same question every time. */
+/* The questions THIS building is asked. Counting all six said "1 of 6" for a
+   garden that was only ever shown one -- a total it could never reach. */
+const sysAsked = st => sysMain(st.kind, kgroup(st.kind));
 function sysSaid(st) {
-  const n = SYSTEMS.filter(q => st[q.k] && st[q.k] !== 'not_sure_yet').length;
-  return n ? n + ' of ' + SYSTEMS.length + ' answered' : 'nothing said yet';
+  const asked = sysAsked(st);
+  const n = asked.filter(q => st[q.k] && st[q.k] !== 'not_sure_yet').length;
+  return n ? n + ' of ' + asked.length + ' answered' : 'nothing said yet';
 }
 const buildings = () => (DB.structure || []).filter(x => x.status !== 'archived');
 /* Everything on the place that has a name and a screen. The walk down from the
@@ -3812,17 +3955,21 @@ async function saveStep(stepId, goToStructId) {
         visibility:b2.theirs ? 'presence_only' : 'shared' } }));
   }
   if (!writes.length) { draft = {};
-    return goToStructId ? reopen(stepId, goToStructId) : show('home'); }
+    return goToStructId ? reopen(stepId, goToStructId) : leaveStep(); }
   try { await DwelLogs.write(writes); }
   catch (e) { return say('Could not save: ' + e.message); }
   draft = {};
+  /* boot() ends in show('home'), which forgets where this screen was opened
+     from -- so the first fix sent a save from What feeds it back to Home. */
+  const after = AFTER_STEP;
   await boot();
+  AFTER_STEP = after;
   if (SHARE_ASK) return drawShare();
   /* Switching to another building is a save, not an exit. Without this the only
      way to answer for the barn was Done, home, back in, pick the barn -- four
      taps to change the subject of a screen that is ABOUT the subject. */
   if (goToStructId) return reopen(stepId, goToStructId);
-  show('home');
+  leaveStep();
   const n = writes.filter(w => w.table === 'area').length;
   const b3 = writes.filter(w => w.table === 'structure' && w.record.id !== stId).length;
   const th = writes.filter(w => w.table === 'asset').length;
@@ -4181,11 +4328,12 @@ function drawShare() {
       'yet records neither and asks nothing again until you come back.', 'What each one does')}
     <div class="actions">
       <button class="primary" onclick="saveShare()">Save</button>
-      <button class="ghost" onclick="SHARE_ASK=null;show('home')">Not now</button>
+      <button class="ghost" onclick="SHARE_ASK=null;leaveStep()">Not now</button>
     </div>`;
 }
 async function saveShare() {
   const { stId, pending } = SHARE_ASK;
+  const st = (DB.structure || []).find(x => x.id === stId) || {};
   const writes = [];
   let shared = 0, own = 0;
   pending.forEach((x, i) => {
@@ -4196,13 +4344,19 @@ async function saveShare() {
         utility:HOOKUP_UTIL[x.sys] || x.sys, source_asset_id:x.other, started_on:today() } });
     } else if (pick === 'own') {
       own++;
-      thingWrites(x.tn, { structId:stId, powered:x.powered }).writes.forEach(w => writes.push(w));
+      /* Named after where it is. Two called "Irrigation system" -- the garden's
+         and the pool area's, which do not connect -- were the same line twice
+         on every list, the problem "kitchen fire extinguisher" already solved. */
+      const nm = uniqueName((st.name ? st.name + ' ' : '') + x.tn.toLowerCase(),
+        (DB.asset || []).map(a => a.name).filter(Boolean));
+      thingWrites(x.tn, { structId:stId, powered:x.powered, name:nm }).writes.forEach(w => writes.push(w));
     }
   });
   SHARE_ASK = null;
-  if (!writes.length) { show('home'); return say('Left open.'); }
+  if (!writes.length) { leaveStep(); return say('Left open.'); }
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
-  await boot(); show('home');
+  const after = AFTER_STEP;
+  await boot(); AFTER_STEP = after; leaveStep();
   const bits = [];
   if (shared) bits.push(shared === 1 ? 'one shared' : shared + ' shared');
   if (own) bits.push(own === 1 ? 'one of its own' : own + ' of its own');
@@ -4348,7 +4502,7 @@ const FEEDBACK_TO = 'support@dwellogs.com';
 /* Generated by build_app.py from docs/changes.json. Inlined rather than
    fetched: this has to read in a basement, and a changelog that arrives
    separately can describe a build you are not running. */
-const CHANGES = {"unreleased": {"new": [], "fixed": [], "gone": []}, "next": ["Photos and files, once there are accounts to hang them off", "Seeing what the next month and quarter will cost", "Bringing a log back in from an export, not just sending one out", "A weekend board — drag what you'll actually get to", "Searching across the whole place, not one thing at a time", "Renaming animals (people and buildings already can be)"], "known": ["There is nowhere to put a photo or a file. A paper is a link to wherever it already lives, and that is all it is for now.", "A check-up you skip on the opt-in screen is set up but kept quiet — there's no screen yet that shows you the quiet ones or turns them back on.", "Costs only count what's been recorded. Nothing is projected forward yet, so the number is history rather than a forecast.", "On a phone, everything lives in that browser. Add it to your home screen and it stays; in Safari without doing that, it clears after about a week of not opening it."], "releases": [{"version": "0.3.0", "on": "2026-09-30", "stamp": "e7bb5d675b", "new": ["This page: what has changed, what is known to be wrong, and what is coming next. It's in the app and on the site.", "Something not right, or missing? There's an address in the app and on the site, and a report from the app says which build you're on.", "The app asks your browser to hold on to your log, and says plainly what that browser will do with it.", "A paper is a link to wherever it already lives — the maker's site, your own Drive, your email."], "fixed": ["Papers on a thing showed as \"Paper\" with no name or date, and tapping one opened a blank form. They show their name and when they run out, and open where they live.", "Right after an update, the app could act up for one launch. It doesn't now."], "gone": ["Adding a photo. It comes back with accounts, so your pictures have somewhere proper to live."]}, {"on": "2026-09-29", "stamp": "3f44b6d28d", "new": ["Home is tiles: Buildings, Rooms and things, Animals, Vehicles and What feeds it. Open one to see only its jobs.", "Rooms and What's in it work per building, with a switcher, so the barn's answers stay with the barn.", "A job can say what it's about: a building, a room, a thing, an animal or a vehicle.", "Say when something was last done, even before you had the app. The next one counts from then, not from today.", "A catch-up list after setup, and again whenever you add a thing.", "Marking something done takes a date — say Friday, even if you're only logging it on Sunday.", "For past work, say who did it: not sure, you, whoever lived here before, or a company.", "A job can list what to buy, with a part number and a link, who you call for it, and a step somewhere else — the hardware shop, the county office.", "People and companies in one list — the septic company, the vet. Phone, what they look after, every visit, what it cost, and a note on whether you'd have them back.", "Rename a person."], "fixed": ["Something with no due date showed as a day late. It shows as no date.", "Answers typed for one building showed up on another.", "What's in it opened the wrong screen and didn't save.", "Attaching something to a job lost anything you'd typed and not saved yet.", "On a home-screen install, the top of each screen sat under the clock."]}, {"on": "2026-09-28", "stamp": "4aac0cf35a", "new": ["What things cost, and a copy of everything, from wherever you're looking."], "fixed": ["A typo in a number field says so, instead of quietly losing it."]}]};
+const CHANGES = {"unreleased": {"new": [], "fixed": [], "gone": []}, "next": ["Photos and files, once there are accounts to hang them off", "Seeing what the next month and quarter will cost", "Bringing a log back in from an export, not just sending one out", "A weekend board — drag what you'll actually get to", "Searching across the whole place, not one thing at a time", "Renaming animals (people and buildings already can be)"], "known": ["There is nowhere to put a photo or a file. A paper is a link to wherever it already lives, and that is all it is for now.", "A check-up you skip on the opt-in screen is set up but kept quiet — there's no screen yet that shows you the quiet ones or turns them back on.", "Costs only count what's been recorded. Nothing is projected forward yet, so the number is history rather than a forecast.", "On a phone, everything lives in that browser. Add it to your home screen and it stays; in Safari without doing that, it clears after about a week of not opening it."], "releases": [{"version": "0.4.0", "on": "2026-10-01", "stamp": "8dd02b36e4", "new": ["A garden, pasture or pool area can say where its water comes from — a spigot, a well, or irrigation. Each irrigation system is its own thing, and one that doesn't connect to another gets its own name.", "Remove a place you own, from your name at the top of Home. Nothing is deleted — it waits under Removed and Bring back puts it back as it was.", "Each kind of building is asked what fits it first. A coop or pump house is asked about water, power and heat; waste, cooling and hot water are one tap away if it has them.", "What's in it leads with what belongs there: filters and tanks in a pump house, a fire extinguisher and its animals in a coop. Everything else is under Show the rest.", "A building on a well, spring or hauled water is offered a whole-house filter and a softener.", "Start over has moved from the Add tab to your name at the top of Home."], "fixed": ["What feeds it said \"nothing wired up yet\" for buildings you had already answered. It shows what each one runs on.", "Tapping a building on What feeds it opened the building's page. It opens what that building runs on, and saving brings you back to the list.", "Back on a screen you reopened after setup, like a building's rooms or what it runs on, dropped you into the first-time setup. It doesn't now.", "Pressing Back enough times could land you on \"Start with your name\" and, from there, set up your place a second time with a second you. Back stops at Home now, and setting up another place is always done as you.", "On a phone, the date and \"Who did it\" boxes on When was it last done ran into each other. They sit one above the other now.", "A garden counted questions it was never asked, so it read \"1 of 6\" and stayed on the still-blank list for good. It counts only what it's asked.", "Adding an animal never asked where it lives, so it ended up in no building. It asks now, and starts with a likely answer — the house for a cat or a dog, the coop for chickens.", "Leaving a place someone shared with you didn't take it off your list. It does now.", "Counting something in What's in it could save nothing at all if that kind of thing was added to the app after you set up — a fire extinguisher in a coop, for one. It saves now."]}, {"version": "0.3.0", "on": "2026-09-30", "stamp": "e7bb5d675b", "new": ["This page: what has changed, what is known to be wrong, and what is coming next. It's in the app and on the site.", "Something not right, or missing? There's an address in the app and on the site, and a report from the app says which build you're on.", "The app asks your browser to hold on to your log, and says plainly what that browser will do with it.", "A paper is a link to wherever it already lives — the maker's site, your own Drive, your email."], "fixed": ["Papers on a thing showed as \"Paper\" with no name or date, and tapping one opened a blank form. They show their name and when they run out, and open where they live.", "Right after an update, the app could act up for one launch. It doesn't now."], "gone": ["Adding a photo. It comes back with accounts, so your pictures have somewhere proper to live."]}, {"on": "2026-09-29", "stamp": "3f44b6d28d", "new": ["Home is tiles: Buildings, Rooms and things, Animals, Vehicles and What feeds it. Open one to see only its jobs.", "Rooms and What's in it work per building, with a switcher, so the barn's answers stay with the barn.", "A job can say what it's about: a building, a room, a thing, an animal or a vehicle.", "Say when something was last done, even before you had the app. The next one counts from then, not from today.", "A catch-up list after setup, and again whenever you add a thing.", "Marking something done takes a date — say Friday, even if you're only logging it on Sunday.", "For past work, say who did it: not sure, you, whoever lived here before, or a company.", "A job can list what to buy, with a part number and a link, who you call for it, and a step somewhere else — the hardware shop, the county office.", "People and companies in one list — the septic company, the vet. Phone, what they look after, every visit, what it cost, and a note on whether you'd have them back.", "Rename a person."], "fixed": ["Something with no due date showed as a day late. It shows as no date.", "Answers typed for one building showed up on another.", "What's in it opened the wrong screen and didn't save.", "Attaching something to a job lost anything you'd typed and not saved yet.", "On a home-screen install, the top of each screen sat under the clock."]}, {"on": "2026-09-28", "stamp": "4aac0cf35a", "new": ["What things cost, and a copy of everything, from wherever you're looking."], "fixed": ["A typo in a number field says so, instead of quietly losing it."]}]};
 /* The build, taken from the script tag the page actually loaded rather than
    from a constant somebody has to remember to bump. Nothing showed it
    anywhere, so a tester saying "it says 1 day late" could not be placed
@@ -5140,9 +5294,32 @@ const outermost = pairs => {
     .forEach(([, i]) => { if (i !== r.id) inside.add(i); }));
   return pairs.filter(([, r]) => !inside.has(r.id));
 };
-const fedWith = st => (DB.hookup || [])
-  .filter(h => h.structure_id === st.id && !h.ended_on)
-  .map(h => String(h.utility || '').replace(/_/g, ' '));
+/* What a building runs on, in a few words, read from the SAME answers the
+   setup screen counts. This used to read only `hookup` rows -- which exist
+   solely when a building shares another's well or septic -- so a house that
+   answered all six questions read "nothing wired up yet" here and "6 of 6
+   answered" one tap away. One fact, one place to read it. */
+const ranOn = st => {
+  const shared = new Set((DB.hookup || [])
+    .filter(h => h.structure_id === st.id && !h.ended_on).map(h => h.utility));
+  return SYSTEMS.map(q => {
+    const v = st[q.k];
+    if (!v || v === 'not_sure_yet') return [];
+    return String(v).split(',').map(x => x.trim()).filter(x => x && x !== 'none').map(x => {
+      const o = q.o.find(y => y[0] === x);
+      const word = (o ? o[1] : x.replace(/_/g, ' ')).replace(/^(a|an|the) /i, '').toLowerCase();
+      return shared.has(HOOKUP_UTIL[q.k] || q.k) ? word + ' (shared)' : word;
+    });
+  }).flat().filter((w, i, all) => all.indexOf(w) === i);  // propane heats AND makes hot water: say it once
+};
+/* Where a reopened screen goes when it is done or backed out of. Set by the
+   screen that opened it; show() clears it, so leaving any other way forgets. */
+let AFTER_STEP = null;
+function leaveStep() {
+  const to = AFTER_STEP; AFTER_STEP = null;
+  if (to === 'feeds') return group('feeds');
+  show('home');
+}
 
 function group(key, tab) {
   const g = GROUP[key]; if (!g || !prop) return show('home');
@@ -5167,11 +5344,15 @@ function group(key, tab) {
     const title = subjName(k, r.id);
     /* An unnamed building is called what it is, and so is the line under it --
        which came out as "Barn" above "Barn". Say a thing once. */
-    let what = g.feeds ? (fedWith(r).join(' · ') || 'nothing wired up yet')
+    let what = g.feeds ? (ranOn(r).join(' · ') || 'nothing said yet')
                        : SUBJECT[k].what(r);
     if (!g.feeds && String(what).toLowerCase() === String(title).toLowerCase()) what = '';
     const meta = [what, n && !g.feeds ? n + ' to do' : ''].filter(Boolean);
-    return `<div class="card tap"><button onclick="subject('${k}','${r.id}')">
+    /* On "What feeds it" the building IS the question, so a tap opens its
+       answers. It used to open the building's general page, and the way to
+       change anything was a button below the whole list. */
+    const go = g.feeds ? `AFTER_STEP='feeds';drawSystems('${r.id}')` : `subject('${k}','${r.id}')`;
+    return `<div class="card tap"><button onclick="${go}">
       <span class="title">${esc(title)}</span>
       ${meta.length ? `<p class="meta">${meta.map(esc).join(' &middot; ')}</p>` : ''}
     </button></div>`;
@@ -5185,9 +5366,8 @@ function group(key, tab) {
      a reading of how the place is plumbed and wired, one building at a time. */
   if (g.feeds) {
     app.innerHTML = `<button class="back" onclick="subjBack()">&lsaquo; Back</button>
-      <h1>${esc(g.label)}</h1><p class="sub">${esc(g.sub)}</p>${listed}
+      <h1>${esc(g.label)}</h1><p class="sub">${esc(g.sub)} Tap one to change it.</p>${listed}
       <div class="actions" style="margin-top:1.6rem">
-        <button class="ghost" onclick="drawSystems()">Change what it runs on</button>
         <button class="ghost" onclick="show('home')">Home</button></div>`;
     return window.scrollTo(0, 0);
   }
@@ -6275,16 +6455,16 @@ async function logPast(schedId, on, who, serviceId, jobId) {
    list. One markup, so the two can never ask the question differently. */
 function lastDoneBox(sid, tag, jobId) {
   const svc = (DB.service || []).filter(x => x.status !== 'archived');
-  return `<div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end">
-    <div style="flex:1;min-width:9rem">
+  return `<div class="ldbox">
+    <div>
       <label for="ld-d-${tag}" style="margin:0 0 .2rem">When</label>
       <input id="ld-d-${tag}" type="date" max="${esc(today())}" style="margin:0"></div>
-    <div style="flex:1;min-width:9rem">
+    <div>
       <label for="ld-w-${tag}" style="margin:0 0 .2rem">Who did it</label>
       <select id="ld-w-${tag}" style="margin:0"
         onchange="const b=$('#ld-s-${tag}');if(b)b.hidden=this.value!=='service'">${
         DID_IT.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select></div>
-    ${svc.length ? `<select id="ld-s-${tag}" hidden style="margin:0;flex:1;min-width:9rem">${
+    ${svc.length ? `<select id="ld-s-${tag}" hidden style="margin:0">${
       svc.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>` : ''}
     <button class="ghost" style="margin:0" onclick="logPast('${sid}',
       $('#ld-d-${tag}').value, $('#ld-w-${tag}').value,
@@ -6886,15 +7066,22 @@ function drawMe() {
         </button>
         <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
           onclick="exportPlace('${p.id}')">Take a copy</button>
-        ${mine ? '' : `<button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
-          onclick="leavePlace('${p.id}')">Leave</button>`}</div>`;
+        ${!mine ? `<button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+          onclick="leavePlace('${p.id}')">Leave</button>`
+          : places.length > 1 ? `<button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+          onclick="removePlace('${p.id}')">Remove</button>` : ''}</div>`;
     }).join('') || ''}</div>
+    ${removedPlaces().length ? `<h2>Removed</h2><div class="rows">${removedPlaces().map(p =>
+      `<div class="row">${icon(p.kind, 26)}<span class="grow"><b>${esc(p.name)}</b>
+        <small>removed, nothing deleted</small></span>
+        <button class="ghost" style="min-height:2rem;padding:.25rem .6rem"
+          onclick="restorePlace('${p.id}')">Bring back</button></div>`).join('')}</div>` : ''}
     ${tip('A zip with one spreadsheet per table, exactly as the app holds it, and the id ' +
       'columns join them to each other. It is a copy, not a handover — the place stays where it ' +
       'is and nothing here stops working. Take one whenever you like.', 'What a copy is')}
     ${places.some(p => accessOf(p.id) === 'owner')
-      ? tip('A place you own has no Leave, because leaving would strand it. Hand it to somebody ' +
-          'else first, or start over from the home screen if you want it gone.', 'Why some have no Leave')
+      ? tip('A place you own has Remove instead of Leave, because leaving would strand it with ' +
+          'nobody to look after it. Remove keeps everything and Bring back undoes it.', 'Why some have no Leave')
       : ''}
 
     ${(() => { const t = tellSummary(); return `<h2>When you hear from us</h2>
@@ -6915,7 +7102,12 @@ function drawMe() {
       <button type="button" onclick="connect()">${icon('systems', 28)}
         <span class="cap">${localStorage.getItem('dwellogs.url')
           ? 'Change the sheet' : 'Connect a sheet'}</span></button>
-    </div>`;
+    </div>
+
+    <h2 style="margin-top:2rem">Start over</h2>
+    <p class="hint" style="margin:.2rem 0 .6rem">Clears this device and takes you back to the first
+      screen. It asks first, and says what goes.</p>
+    <button class="ghost" onclick="startOver()">Start over</button>`;
 }
 async function saveMe() {
   const n = ($('#me-n').value || '').trim();
@@ -6949,6 +7141,46 @@ async function doLeave(id) {
   localStorage.removeItem('dwellogs.place');
   await boot();
   say('Left. It is off your list.');
+}
+/* Removing a place you own. Randi, 1 Oct: Back walked her into setting up the
+   ranch a second time, and there was no way to take the copy away again.
+
+   Archived, not deleted -- the place and everything in it stay where they are
+   and come back with one tap from "Removed". Offered only while you have
+   another place, because removing your only one leaves nothing to open. */
+function removePlace(id) {
+  const p = (DB.property || []).find(x => x.id === id) || {};
+  const st = (DB.structure || []).filter(x => x.property_id === id && liveRow(x)).length;
+  const others = (DB.membership || []).filter(m => m.property_id === id && liveRow(m)
+    && m.person_id !== me.id).map(m => ((DB.person || []).find(x => x.id === m.person_id) || {}).name)
+    .filter(Boolean);
+  $('#tabs').hidden = true;
+  app.innerHTML = `<h1>Remove ${esc(p.name)}?</h1>
+    <p class="sub">${st ? (st === 1 ? '1 building and everything in it go' : st + ' buildings and everything in them go') + ' with it.'
+      : 'It has nothing in it yet.'}</p>
+    <div class="card"><span class="title">What happens</span>
+      <p class="meta">It comes off your list. Nothing is deleted: it waits under <b>Removed</b>
+        on this screen, and <b>Bring back</b> puts it back exactly as it was.</p></div>
+    ${others.length ? `<div class="card"><span class="title">Who else stops seeing it</span>
+      <p class="meta">${esc(others.join(', '))}</p></div>` : ''}
+    <div class="actions">
+      <button class="primary" onclick="doRemovePlace('${id}')">Remove it</button>
+      <button class="quiet" onclick="drawMe()">Keep it</button>
+    </div>`;
+}
+async function doRemovePlace(id) {
+  const p = (DB.property || []).find(x => x.id === id) || {};
+  try { await DwelLogs.write([{ op:'archive', table:'property', id }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  if (localStorage.getItem('dwellogs.place') === id) localStorage.removeItem('dwellogs.place');
+  await boot(); drawMe();
+  say(p.name + ' removed. Bring it back from Removed any time.');
+}
+async function restorePlace(id) {
+  const p = (DB.property || []).find(x => x.id === id); if (!p) return;
+  try { await DwelLogs.write([{ op:'upsert', table:'property', record:{ ...p, status:'active' } }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  await boot(); drawMe(); say(p.name + ' is back.');
 }
 /* Joining another place with a code, from inside the app rather than at first run. */
 function drawFirst_join() {
@@ -7092,6 +7324,23 @@ function animalCore() {
     <div id="an-names">${animalNames()}</div>`;
 }
 
+/* Where a new animal most likely lives, so the question arrives answered and
+   costs a tap only when it is wrong. The form never asked at all, so every
+   animal landed in no building -- Randi's two cats were "on the ranch" and not
+   in the house (export, 1 Oct). A guess, offered: a cat can be a barn cat. */
+const ANIMAL_HOME = {
+  chicken:['coop','animal_pen','barn'], duck:['coop','animal_pen','barn'],
+  goat:['barn','animal_pen','pole_barn','stable','pasture'],
+  sheep:['barn','animal_pen','pole_barn','pasture'], pig:['animal_pen','barn','pole_barn'],
+  cow:['barn','pole_barn','pasture'], horse:['stable','barn','pasture'],
+  cat:HOMES, dog:HOMES, bird:HOMES, bee:[] };
+function animalHome(type) {
+  const here = buildings().filter(x => !x.property_id || x.property_id === (prop || {}).id);
+  for (const k of (ANIMAL_HOME[type] || HOMES)) {
+    const b = here.find(x => x.kind === k); if (b) return b.id;
+  }
+  return '';
+}
 function drawAnimal() {
   $('#tabs').hidden = true;
   const people = (DB.person || []);
@@ -7112,6 +7361,13 @@ function drawAnimal() {
     <select id="an-o">
       <option value="">It belongs to the place</option>
       ${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+    </select>
+    <label for="an-s">Where does it live?</label>
+    <select id="an-s" onchange="draft.an.where=this.value">
+      <option value="">Nowhere in particular</option>
+      ${buildings().filter(x => !x.property_id || x.property_id === (prop || {}).id).map(x => {
+        const sel = (draft.an.where != null ? draft.an.where : animalHome(draft.an.type)) === x.id;
+        return `<option value="${x.id}"${sel ? ' selected' : ''}>${esc(x.name)}</option>`; }).join('')}
     </select>
     <h2>What you get from it</h2>
     <div class="rows">${PRODUCES.map(v => `<div class="row">
@@ -7197,6 +7453,7 @@ function anCount(v) {
 async function saveAnimal() {
   keepAnimalNames();
   const a = draft.an, owner = $('#an-o').value, role = $('#an-r').value;
+  const stId = ($('#an-s') || {}).value || '';
   const writes = [];
   /* Two of a thing get numbered, the same way two fire extinguishers do, so
      "which one did I already do" has an answer. One of a thing keeps a blank
@@ -7209,9 +7466,9 @@ async function saveAnimal() {
       owner_id: owner || '', name, type:a.type, role,
       produces: (a.produces || []).join(', '),
       helps_with: (a.helps_with || []).join(', '),
-      cared_for_by_id: owner || '', acquired_on:today() } });
+      cared_for_by_id: owner || '', acquired_on:today(), structure_id:stId } });
     writes.push({ op:'upsert', table:'placement', record:{ id:uid(), animal_id:id,
-      property_id:prop.id, arrived_on:today() } });
+      property_id:prop.id, structure_id:stId, arrived_on:today() } });
   }
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
   const n = a.n, t = a.type, first = a.names[0];
@@ -7414,7 +7671,7 @@ function startOver() {
         <p class="meta">This device is the only place these rows exist. Gone is gone.</p></div>`}
     <div class="actions">
       <button class="primary" onclick="wipe()">Yes, start over</button>
-      <button class="quiet" onclick="show('home')">Keep it</button>
+      <button class="quiet" onclick="drawMe()">Keep it</button>
     </div>`;
 }
 function wipe() {

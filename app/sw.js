@@ -9,26 +9,33 @@
    not edited by hand. Everything cached is namespaced under it, so a deploy
    makes a new cache and the old one is deleted on activate.
 
-   Navigations are NETWORK-FIRST with a short timeout, deliberately. Cache-first
-   would be a few hundred milliseconds faster on repeat opens, and it is the
-   usual advice -- but it also means a bad deploy pins a broken app on somebody
-   else's phone with no way to reach them. Mid-test that is not a trade worth
-   making. The network is tried first, a slow or absent one falls back to cache
-   immediately, and offline still works completely. Revisit once the update
-   path has been proven in the field.  */
+   Navigations are CACHE-FIRST (1 Oct). They were network-first with a 2.5 s
+   wait, so a bad deploy could never pin a broken app on somebody's phone --
+   and the price was a blank screen on every open after an update while the
+   new page came down over rural signal (Randi, after v0.4.0). Now the page on
+   the phone opens at once, the app asks for an update itself and shows
+   "Getting the new version" when there is one, and the safety net is where
+   it belongs: releases pass the flow suite first, an install that cannot
+   fetch the whole new page and code fails and leaves the working version in
+   place, and /app/?fresh=1 still clears a stuck phone. */
 
-const STAMP = '8dd02b36e4';
+const STAMP = '0b2013df62';
 const CACHE = 'dwellogs-' + STAMP;
 const SHELL = ['./', 'index.html', 'api.js?v=' + STAMP, 'manifest.webmanifest',
                'icon-192.png', 'icon-512.png'];
-const NAV_TIMEOUT = 2500;
+const CORE = ['index.html', 'api.js?v=' + STAMP];
 
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
     const c = await caches.open(CACHE);
-    /* One bad URL must not fail the whole install and leave the app with no
-       worker at all, so each is added on its own and a miss is survivable. */
-    await Promise.all(SHELL.map(u => c.add(u).catch(() => {})));
+    /* `reload` skips the browser's HTTP cache. Pages sets max-age=600, so
+       within ten minutes of a deploy a plain fetch could hand this NEW worker
+       the OLD index.html, and it would serve that from cache for good.
+       The page and its code must both arrive or the install fails, and the
+       version already on the phone keeps running. Icons are allowed to miss. */
+    await c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })));
+    await Promise.all(SHELL.filter(u => !CORE.includes(u))
+      .map(u => c.add(new Request(u, { cache: 'reload' })).catch(() => {})));
     await self.skipWaiting();
   })());
 });
@@ -42,28 +49,15 @@ self.addEventListener('activate', e => {
   })());
 });
 
-function fromNetworkFirst(req) {
-  return new Promise(resolve => {
-    let settled = false;
-    const done = r => { if (!settled) { settled = true; resolve(r); } };
-    const timer = setTimeout(async () => {
-      const hit = await caches.match(req, { ignoreSearch: true });
-      if (hit) done(hit);
-    }, NAV_TIMEOUT);
-    fetch(req).then(async res => {
-      clearTimeout(timer);
-      if (res && res.ok) {
-        const c = await caches.open(CACHE);
-        c.put(req, res.clone()).catch(() => {});
-      }
-      done(res);
-    }).catch(async () => {
-      clearTimeout(timer);
-      const hit = await caches.match(req, { ignoreSearch: true })
-               || await caches.match('index.html');
-      done(hit || Response.error());
-    });
-  });
+/* The page as this worker shipped it, at once. Only a phone that has never
+   cached it (the very first open) waits for the network. An invite link
+   carries a query and is still the same page. */
+async function fromCacheFirst(req) {
+  const c = await caches.open(CACHE);
+  const hit = await c.match('index.html') || await c.match(req, { ignoreSearch: true });
+  if (hit) return hit;
+  try { return await fetch(req); }
+  catch (e) { return (await caches.match('index.html')) || Response.error(); }
 }
 
 self.addEventListener('fetch', e => {
@@ -72,7 +66,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  if (req.mode === 'navigate') { e.respondWith(fromNetworkFirst(req)); return; }
+  if (req.mode === 'navigate') { e.respondWith(fromCacheFirst(req)); return; }
 
   /* Assets carry the stamp in their URL, so a cache hit is always the right
      one for this build -- which was true of the comment and false of the code:

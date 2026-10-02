@@ -347,6 +347,114 @@ function cleanRead(raw) {
            unreadable: seen.slice(0, 6), unreadableN: notes.length };
 }
 
+/* ------------------------------------------------------------------------
+   An account: the log on Supabase, reached by plain fetch. Built 1 Oct.
+
+   No client library: the site loads nothing from anybody else's server, and
+   what the app needs is six requests -- send a sign-in link, start Google,
+   refresh a session, sign out, and two calls (everything, apply) that 0003
+   adds to the database. The key below is the publishable one: it is meant to
+   be in a page, and what it can reach is decided by the rules in 0002, not by
+   keeping it secret. */
+const SB_URL = 'https://nwiulbgeqhmyfwgnarpv.supabase.co';
+const SB_KEY = 'sb_publishable_GCDa4R4mzlOkV1_RnItaFw_0yfsbPf8';
+
+const Account = (function () {
+  const KEY = 'dwellogs.session';
+  const get = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } };
+  const put = s => { try { s ? localStorage.setItem(KEY, JSON.stringify(s)) : localStorage.removeItem(KEY); } catch (e) {} };
+  const here = () => location.origin + location.pathname;
+  const head = tok => ({ apikey: SB_KEY, 'Content-Type': 'application/json',
+                         Authorization: 'Bearer ' + (tok || SB_KEY) });
+  // The session's own claims, for the email to show. Read, never trusted: the
+  // database checks the token itself.
+  const claims = t => { try { return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); }
+                        catch (e) { return {}; } };
+
+  /* A link from the email, or Google, lands back here with the session in the
+     fragment -- never sent to any server, read once and scrubbed from the
+     address bar so it is not left in history or in a screenshot of the URL. */
+  function takeFromUrl() {
+    const h = location.hash || '';
+    if (!/[#&](access_token|error)=/.test(h)) return null;
+    const p = new URLSearchParams(h.slice(1));
+    history.replaceState(null, '', location.href.split('#')[0]);
+    if (p.get('error')) return { error: p.get('error_code') === 'otp_expired'
+      ? 'That link has run out or was already used. Ask for a new one.'
+      : (p.get('error_description') || 'Signing in did not work.').replace(/\+/g, ' ') };
+    const s = { access_token: p.get('access_token'), refresh_token: p.get('refresh_token'),
+                expires_at: Number(p.get('expires_at')) || Math.floor(Date.now() / 1000) + Number(p.get('expires_in') || 3600) };
+    if (!s.access_token || !s.refresh_token) return { error: 'Signing in did not finish. Try the link again.' };
+    put(s);
+    return { ok: true };
+  }
+
+  async function sendLink(email) {
+    const r = await fetch(SB_URL + '/auth/v1/otp?redirect_to=' + encodeURIComponent(here()),
+      { method: 'POST', headers: head(), body: JSON.stringify({ email, create_user: true }) });
+    if (r.ok) return;
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 429) throw new Error('Too many links asked for in a short time. Wait a few minutes, then try again.');
+    /* Until the project has its own email sender, Supabase's sends only to the
+       people on the project (1 Oct). Everybody else gets this, not its code. */
+    if (/not authorized/i.test(j.msg || j.message || ''))
+      throw new Error('Signing in is open to the first testers for now.');
+    throw new Error(j.msg || j.message || j.error_description || 'The link could not be sent.');
+  }
+  function google() {
+    location.assign(SB_URL + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(here()));
+  }
+  async function providers() {
+    try { const r = await fetch(SB_URL + '/auth/v1/settings', { headers: { apikey: SB_KEY } });
+          return (await r.json()).external || {}; }
+    catch (e) { return {}; }
+  }
+
+  /* A session lasts an hour; the refresh token makes a new one. A refresh that
+     is refused (signed out elsewhere, or a year untouched) ends the session
+     here too, so the app asks to sign in rather than failing every save. */
+  async function token() {
+    const s = get(); if (!s) return null;
+    if (s.expires_at - 60 > Date.now() / 1000) return s.access_token;
+    const r = await fetch(SB_URL + '/auth/v1/token?grant_type=refresh_token',
+      { method: 'POST', headers: head(), body: JSON.stringify({ refresh_token: s.refresh_token }) });
+    if (!r.ok) { if (r.status >= 400 && r.status < 500) put(null); throw new Error('Signed out. Sign in again.'); }
+    const j = await r.json();
+    put({ access_token: j.access_token, refresh_token: j.refresh_token,
+          expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600) });
+    return j.access_token;
+  }
+
+  /* A call into the database. Two kinds of failure, and they are kept apart:
+     no signal (fetch throws -- try again later) and a refusal (the database
+     answered no -- tell the person). */
+  async function rpc(name, args) {
+    const tok = await token();
+    if (!tok) throw Object.assign(new Error('Not signed in.'), { refused: true });
+    const r = await fetch(SB_URL + '/rest/v1/rpc/' + name,
+      { method: 'POST', headers: head(tok), body: JSON.stringify(args || {}) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw Object.assign(new Error(readable((j && (j.message || j.msg)) || r.statusText)), { refused: true });
+    return j;
+  }
+  // The database's own words, turned into ones a person can act on.
+  function readable(m) {
+    m = String(m || '');
+    if (/row-level security|not yours/i.test(m)) return 'That is not yours to change on this place.';
+    if (/duplicate key/i.test(m)) return 'Something with that id is already there and is not yours.';
+    if (/not signed in/i.test(m)) return 'Signed in, but not set up yet. Open the app again.';
+    return m.charAt(0).toUpperCase() + m.slice(1);
+  }
+
+  async function signOut() {
+    const s = get();
+    if (s) fetch(SB_URL + '/auth/v1/logout', { method: 'POST', headers: head(s.access_token) }).catch(() => {});
+    put(null);
+  }
+  const email = () => { const s = get(); return s ? (claims(s.access_token).email || '') : ''; };
+  return { signedIn: () => !!get(), takeFromUrl, sendLink, google, providers, rpc, signOut, email };
+})();
+
 const DwelLogs = (function () {
   const CFG = { url: '', token: '', property: null };   // set by configure()
   const CACHE = 'dwellogs.cache.v1';
@@ -355,12 +463,20 @@ const DwelLogs = (function () {
   /* No URL means local mode: the same API backed by localStorage, so the
      whole first run can be walked through before any deploying happens, and
      so a demo does not need a live sheet. */
-  function configure(url, token) { CFG.url = url || ''; CFG.token = token || ''; }
-  const LOCAL = 'dwellogs.local.v1';
-  function localDb() {
-    try { return JSON.parse(localStorage.getItem(LOCAL) || 'null'); } catch (e) { return null; }
+  /* A session outranks a sheet: signing in is the newer, deliberate choice. */
+  function configure(url, token) {
+    CFG.url = url || ''; CFG.token = token || ''; CFG.account = Account.signedIn();
   }
-  function localSave(d) { try { localStorage.setItem(LOCAL, JSON.stringify(d)); } catch (e) {} }
+  const LOCAL = 'dwellogs.local.v1';
+  /* The account's copy on this phone, and what is waiting to go up. Separate
+     from LOCAL on purpose: the device-only log stays exactly as it was until
+     moving it up has worked, so a failed move costs nothing. */
+  const ACCOUNT = 'dwellogs.account.v1', QUEUE = 'dwellogs.queue.v1';
+  const store = () => CFG.account ? ACCOUNT : LOCAL;
+  function localDb(key) {
+    try { return JSON.parse(localStorage.getItem(key || store()) || 'null'); } catch (e) { return null; }
+  }
+  function localSave(d) { try { localStorage.setItem(store(), JSON.stringify(d)); } catch (e) {} }
   function emptyDb() {
     const d = {}; Object.keys(TABLE_NAMES).forEach(t => { d[t] = []; }); return d;
   }
@@ -399,6 +515,7 @@ const DwelLogs = (function () {
   }
 
   async function load({ fresh = true } = {}) {
+    if (CFG.account) return accountLoad();
     if (!CFG.url) { db = settle(localDb() || emptyDb()); return { db, local: true, read: lastRead }; }
     if (fresh && CFG.url) {
       try {
@@ -433,6 +550,7 @@ const DwelLogs = (function () {
        it catches. */
     writes = (Array.isArray(writes) ? writes : [writes]).map(cleanWrite);
     if (!writes.length) return [];
+    if (CFG.account) return accountWrite(writes);
     if (!CFG.url) return localWrite(writes);
     const body = writes.length > 1
       ? { token: CFG.token, op: 'batch', writes }
@@ -449,6 +567,150 @@ const DwelLogs = (function () {
     if (warn.length) console.warn('[DwelLogs]', warn.join(' '));
     return j.data.results;
   }
+  /* ---- account mode ------------------------------------------------------
+     The screens keep writing what they always wrote. These two functions are
+     the whole difference between a row on the phone and a row in the database:
+       out: only the model's columns; blank is null; a tick is true; the app's
+            status=archived becomes an archive, which stamps archived_at.
+       in:  null is blank; true is 'TRUE'; archived_at is status=archived again
+            on the tables that have no status of their own.
+     Created and updated times, and who signed in, are the database's to keep. */
+  const LOCKED = { person: ['auth_subject', 'auth_provider', 'email_verified'] };
+  function toDb(w) {
+    if (w.op === 'archive') return [{ op: 'archive', table: w.table, id: w.id }];
+    const cols = TABLE_COLS[w.table], src = w.record || {}, rec = {};
+    Object.keys(src).forEach(k => {
+      if (!(k in cols) || (LOCKED[w.table] || []).includes(k)) return;
+      const v = src[k];
+      rec[k] = v === '' || v == null ? null
+        : cols[k] === 'b' ? (v === true || String(v).toUpperCase() === 'TRUE') : v;
+    });
+    /* A person written down here belongs to this place's list (person.added_in_id,
+       1 Oct), or nobody but themselves could see them. */
+    if (w.table === 'person' && !rec.added_in_id && src.id !== localStorage.getItem('dwellogs.me'))
+      rec.added_in_id = localStorage.getItem('dwellogs.place') || null;
+    const out = [{ op: 'upsert', table: w.table, record: rec }];
+    if (src.status === 'archived' && !('status' in cols)) out.push({ op: 'archive', table: w.table, id: rec.id });
+    return out;
+  }
+  function fromDb(all) {
+    const raw = {};
+    Object.keys(all || {}).forEach(t => {
+      const cols = TABLE_COLS[t]; if (!cols) return;
+      raw[t] = (all[t] || []).map(row => {
+        const rec = {};
+        Object.keys(row).forEach(k => {
+          const v = row[k];
+          rec[k] = v === null ? '' : v === true ? 'TRUE' : v === false ? '' : v;
+        });
+        if (row.archived_at) rec.status = 'archived';
+        else if (!('status' in cols)) rec.status = 'active';
+        return rec;
+      });
+    });
+    return raw;
+  }
+  const queued = () => { try { return JSON.parse(localStorage.getItem(QUEUE) || '[]'); } catch (e) { return []; } };
+  const setQueue = q => { try { q.length ? localStorage.setItem(QUEUE, JSON.stringify(q))
+                                         : localStorage.removeItem(QUEUE); } catch (e) {} };
+  /* Send what is waiting, oldest first. No signal: it stays, and is sent next
+     time. Refused: it can never go, so it is dropped and said, and the next
+     read puts the phone back in step with what the database actually holds. */
+  let refusedNote = '';
+  async function flush() {
+    let q = queued();
+    while (q.length) {
+      try { await Account.rpc('apply', { p_writes: q[0] }); }
+      catch (e) {
+        if (!e.refused) return false;
+        refusedNote = 'A change made without signal could not be saved: ' + e.message;
+      }
+      q = q.slice(1); setQueue(q);
+    }
+    return true;
+  }
+  async function accountLoad() {
+    try {
+      await flush();
+      const all = await Account.rpc('everything');
+      db = settle(fromDb(all));
+      localSave(db);
+      const note = refusedNote; refusedNote = '';
+      return { db, account: true, read: lastRead, note };
+    } catch (e) {
+      if (e.refused) throw e;
+      const c = localDb();
+      if (c) { db = settle(c); return { db, stale: true, account: true, read: lastRead }; }
+      throw new Error('No signal, and nothing on this phone yet.');
+    }
+  }
+  /* Saved on the phone first whatever happens, so a screen never waits on the
+     signal; then sent. A refusal undoes nothing on the phone by itself -- the
+     error is thrown, the screen says it, and the next read restores the truth. */
+  async function accountWrite(writes) {
+    const batch = writes.flatMap(toDb);
+    const out = localWrite(writes);
+    if (queued().length) { setQueue(queued().concat([batch])); await flush(); return out; }
+    try { await Account.rpc('apply', { p_writes: batch }); }
+    catch (e) {
+      if (e.refused) throw e;
+      setQueue([batch]);
+      out.forEach(r => r.warnings.push('Saved on this phone. It goes up when there is signal.'));
+    }
+    return out;
+  }
+
+  /* Moving a phone's own log into the account it just signed in to. Once, in
+     one transaction: it all arrives or none of it does, and the phone's copy is
+     not touched either way.
+     Order matters because the rules check as rows arrive: the place, then your
+     own membership of it, then the people on its list, then everything else. A
+     lookup to a row that arrives later (a done job's completion, a building
+     attached to another) is filled in by a second write at the end. */
+  const LATER = { job: ['completion_id', 'parent_job_id', 'depends_on_id', 'bundled_to_id'],
+    structure: ['attached_to_id'], area: ['parent_area_id'], asset: ['parent_asset_id', 'replaced_by_id'],
+    schedule: ['then_id'], shutoff: ['upstream_shutoff_id'], coverage: ['replaced_by_id'] };
+  const FIRST = ['property', 'membership', 'person', 'category', 'asset_type', 'structure', 'area',
+    'asset', 'hookup', 'supply_link', 'animal', 'vehicle', 'placement', 'service', 'supply', 'schedule',
+    'document', 'coverage', 'job', 'step', 'completion', 'reading'];
+  async function liftToAccount(name) {
+    const l = localDb(LOCAL) || {};
+    const myId = localStorage.getItem('dwellogs.me');
+    const id = await Account.rpc('claim_me', { p_name: name || null, p_person_id: myId || null });
+    const place = ((l.property || [])[0] || {}).id || null;
+    /* Signed in somewhere else first, so the account already has you under
+       another id: the phone's rows that point at the phone's you point at that
+       one instead, or the move would make you twice. */
+    const swap = r => { if (!myId || id === myId) return r;
+      const o = {}; Object.keys(r).forEach(k => { o[k] = r[k] === myId ? id : r[k]; }); return o; };
+    const tables = FIRST.concat(Object.keys(l).filter(t => !FIRST.includes(t) && TABLE_COLS[t]));
+    const now = [], after = [];
+    tables.forEach(t => (l[t] || [])
+      .filter(r => (t !== 'membership' || r.person_id === myId)
+        // claim_me made your own row; it is updated with your name below, not sent twice
+        && !(t === 'person' && r.id === myId && id !== myId))
+      .concat(t === 'person' ? (l.membership || []).filter(r => r.person_id !== myId)
+                               .map(r => ({ __t: 'membership', ...r })) : [])
+      .forEach(r0 => {
+        const table = r0.__t || t, r = swap({ ...r0 }); delete r.__t;
+        if (table === 'person' && r.id !== myId && !r.added_in_id) r.added_in_id = place;
+        // Rows from a build older than a required field: filled the way today's
+        // app writes them (supabase/load_set.py does the same for saved sets).
+        if (table === 'completion') {
+          r.what = r.what || ((l.job || []).find(j => j.id === r.job_id) || {}).title || 'Done';
+          r.origin = r.origin || 'planned';
+        }
+        const late = {};
+        (LATER[table] || []).forEach(c => { if (r[c]) { late[c] = r[c]; delete r[c]; } });
+        toDb({ op: 'upsert', table, record: r }).forEach(x => now.push(x));
+        if (Object.keys(late).length) after.push({ op: 'upsert', table, record: { id: r.id, ...late } });
+      }));
+    await Account.rpc('apply', { p_writes: now.concat(after) });
+    localStorage.setItem('dwellogs.me', id);
+    return { id, rows: now.length };
+  }
+  async function claim(name) { return Account.rpc('claim_me', { p_name: name || null }); }
+
   /* Adds missing tabs and columns and copies renamed columns forward. Additive
      only: nothing in their spreadsheet is reordered or removed, and columns of
      their own are reported back untouched. */
@@ -504,7 +766,7 @@ const DwelLogs = (function () {
      one moment: somebody who has been running on one phone connects a sheet,
      and their work is sitting in here while the sheet is empty. Nothing else
      in this API can see it once a URL is configured. */
-  function localSnapshot() { return localDb(); }
+  function localSnapshot() { return localDb(LOCAL); }
 
   async function upload(file, name, bucket) {
     if (file.size > PAPER_MAX)
@@ -624,7 +886,8 @@ const DwelLogs = (function () {
   function install(v) { Object.keys(v).forEach(k => { window[k] = v[k]; }); }
 
   return { configure, load, save, archive, write, migrate, photo, upload, shrink, view, install,
-           localSnapshot,
+           localSnapshot, liftToAccount, claim, account: Account,
+           get pending() { return queued().length; },
            /* Exposed so the negative tests can push rubbish at the gate
               directly rather than through a screen. */
            check, cleanWrite, cleanRead, cols: TABLE_COLS,

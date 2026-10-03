@@ -100,6 +100,8 @@ const TABLE_COLS = {
   step: {id:"i",property_id:"r",job_id:"r",structure_id:"r",area_id:"r",where_else:"t",text:"t",
     position:"n",done:"b",done_on:"d",done_by_id:"r"},
   job_supply: {id:"i",property_id:"r",job_id:"r",supply_id:"r",how_many:"n",note:"t"},
+  job_also: {id:"i",property_id:"r",job_id:"r",structure_id:"r",area_id:"r",asset_id:"r",
+    animal_id:"r",vehicle_id:"r"},
   notify: {id:"i",property_id:"r",job_id:"r",person_id:"r",counterparty:"t",expecting:"T",
     ask:"t",tell_by:"d",consequence:"t",status:"p",reply:"T",told_on:"d"},
   comment: {id:"i",property_id:"r",job_id:"r",asset_id:"r",author_id:"r",body:"T",said_at:"D"},
@@ -401,6 +403,43 @@ const Account = (function () {
       throw new Error('Signing in is open to the first testers for now.');
     throw new Error(j.msg || j.message || j.error_description || 'The link could not be sent.');
   }
+  /* The code in the same email, typed into the app you are already in. The
+     link opens in the phone's default browser, and on a phone every browser and
+     every home-screen app keeps its own storage -- so a link tapped in Mail
+     signs in Chrome while the log sits in the home-screen app (found
+     on 1 Oct). The code works wherever the app is open. */
+  async function verifyCode(email, code) {
+    const r = await fetch(SB_URL + '/auth/v1/verify',
+      { method: 'POST', headers: head(), body: JSON.stringify({ type: 'email', email, token: code }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token) {
+      if (r.status === 429) throw new Error('Too many tries in a short time. Wait a few minutes, then try again.');
+      throw new Error(/expired|invalid/i.test(j.msg || j.error_description || j.message || '')
+        ? 'That code has run out or is not the one in the email. Ask for a new one.'
+        : 'That code did not work. Check it against the email.');
+    }
+    put({ access_token: j.access_token, refresh_token: j.refresh_token,
+          expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600) });
+  }
+  /* The emailed link, pasted rather than tapped. Supabase locks its email
+     templates until the project has its own sender, so the code could not be
+     added to the email (3 Oct) -- but the link itself carries a one-time token,
+     and the app can finish the sign-in with it from wherever it is open. */
+  async function verifyLink(link) {
+    let u; try { u = new URL(String(link).trim()); } catch (e) { u = null; }
+    const token = u && (u.searchParams.get('token') || u.searchParams.get('token_hash'));
+    if (!token) throw new Error('That does not look like the link from the email. Press and hold it, then Copy Link.');
+    const type = u.searchParams.get('type') || 'magiclink';
+    const r = await fetch(SB_URL + '/auth/v1/verify',
+      { method: 'POST', headers: head(), body: JSON.stringify({ type, token_hash: token }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token)
+      throw new Error(/expired|invalid/i.test(j.msg || j.error_description || j.message || '')
+        ? 'That link has run out or was already used. Send a new one.'
+        : 'That link did not work. Send a new one and paste it straight away.');
+    put({ access_token: j.access_token, refresh_token: j.refresh_token,
+          expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600) });
+  }
   function google() {
     location.assign(SB_URL + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(here()));
   }
@@ -452,7 +491,7 @@ const Account = (function () {
     put(null);
   }
   const email = () => { const s = get(); return s ? (claims(s.access_token).email || '') : ''; };
-  return { signedIn: () => !!get(), takeFromUrl, sendLink, google, providers, rpc, signOut, email };
+  return { signedIn: () => !!get(), takeFromUrl, sendLink, verifyCode, verifyLink, google, providers, rpc, signOut, email };
 })();
 
 const DwelLogs = (function () {

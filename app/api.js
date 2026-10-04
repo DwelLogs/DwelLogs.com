@@ -630,6 +630,11 @@ const DwelLogs = (function () {
       rec.added_in_id = localStorage.getItem('dwellogs.place') || null;
     const out = [{ op: 'upsert', table: w.table, record: rec }];
     if (src.status === 'archived' && !('status' in cols)) out.push({ op: 'archive', table: w.table, id: rec.id });
+    // Archived here, written back as anything else: brought back, so archived_at
+    // is cleared. Only then -- every other save leaves it alone.
+    const was = ((db || {})[w.table] || []).find(r => r.id === rec.id);
+    if (was && was.status === 'archived' && src.status && src.status !== 'archived')
+      out.push({ op: 'restore', table: w.table, id: rec.id });
     return out;
   }
   function fromDb(all) {

@@ -609,7 +609,8 @@ const DwelLogs = (function () {
     const cols = TABLE_COLS[w.table], src = w.record || {}, rec = {};
     const norm = (k, v) => v === '' || v == null ? null
       : cols[k] === 'b' ? (v === true || String(v).toUpperCase() === 'TRUE') : v;
-    const was = ((db || {})[w.table] || []).find(r => r.id === src.id);
+    // A row a screen added ahead of its own save (__pending) is not one we have.
+    const was = ((db || {})[w.table] || []).find(r => r.id === src.id && !r.__pending);
     Object.keys(src).forEach(k => {
       if (!(k in cols) || (LOCKED[w.table] || []).includes(k)) return;
       /* A row this phone already has sends only what changed. Screens write the

@@ -37,7 +37,7 @@ const TABLE_COLS = {
   structure: {id:"i",property_id:"r",name:"t",kind:"p",kind_other:"t",attached_to_id:"r",
     responsible_id:"r",visibility:"p",what_crosses:"x",water:"P",waste:"P",power:"P",heat:"P",
     cooling:"P",hot_water:"P",spaces:"P",people_living:"n",children_here:"p",mobile:"b",
-    leaves_with:"p",heated:"b",hidden:"b"},
+    leaves_with:"p",heated:"b",hidden:"b",nothing_inside:"b"},
   placement: {id:"i",structure_id:"r",area_id:"r",asset_id:"r",animal_id:"r",vehicle_id:"r",
     property_id:"r",address:"t",arrived_on:"d",left_on:"d",stay_kind:"p",water:"P",waste:"P",
     power:"P",source_note:"T",note:"T"},

@@ -361,6 +361,13 @@ function cleanRead(raw) {
 const SB_URL = 'https://nwiulbgeqhmyfwgnarpv.supabase.co';
 const SB_KEY = 'sb_publishable_GCDa4R4mzlOkV1_RnItaFw_0yfsbPf8';
 
+/* A request into a flicker of signal can sit there for a minute. Past 8
+   seconds it is treated as no signal: the change waits on the phone and goes
+   up later, and the screen moves on (5 Oct). */
+function timed(url, opt, ms = 8000) {
+  const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
+  return fetch(url, { ...opt, signal: c.signal }).finally(() => clearTimeout(t));
+}
 const Account = (function () {
   const KEY = 'dwellogs.session';
   const get = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } };
@@ -436,7 +443,7 @@ const Account = (function () {
   async function token() {
     const s = get(); if (!s) return null;
     if (s.expires_at - 60 > Date.now() / 1000) return s.access_token;
-    const r = await fetch(SB_URL + '/auth/v1/token?grant_type=refresh_token',
+    const r = await timed(SB_URL + '/auth/v1/token?grant_type=refresh_token',
       { method: 'POST', headers: head(), body: JSON.stringify({ refresh_token: s.refresh_token }) });
     if (!r.ok) { if (r.status >= 400 && r.status < 500) put(null); throw new Error('Signed out. Sign in again.'); }
     const j = await r.json();
@@ -448,11 +455,11 @@ const Account = (function () {
   /* A call into the database. Two kinds of failure, and they are kept apart:
      no signal (fetch throws -- try again later) and a refusal (the database
      answered no -- tell the person). */
-  async function rpc(name, args) {
+  async function rpc(name, args, ms) {
     const tok = await token();
     if (!tok) throw Object.assign(new Error('Not signed in.'), { refused: true });
-    const r = await fetch(SB_URL + '/rest/v1/rpc/' + name,
-      { method: 'POST', headers: head(tok), body: JSON.stringify(args || {}) });
+    const r = await timed(SB_URL + '/rest/v1/rpc/' + name,
+      { method: 'POST', headers: head(tok), body: JSON.stringify(args || {}) }, ms);
     const j = await r.json().catch(() => null);
     if (!r.ok) throw Object.assign(new Error(readable((j && (j.message || j.msg)) || r.statusText)), { refused: true });
     return j;
@@ -599,21 +606,28 @@ const DwelLogs = (function () {
   function toDb(w) {
     if (w.op === 'archive') return [{ op: 'archive', table: w.table, id: w.id }];
     const cols = TABLE_COLS[w.table], src = w.record || {}, rec = {};
+    const norm = (k, v) => v === '' || v == null ? null
+      : cols[k] === 'b' ? (v === true || String(v).toUpperCase() === 'TRUE') : v;
+    const was = ((db || {})[w.table] || []).find(r => r.id === src.id);
     Object.keys(src).forEach(k => {
       if (!(k in cols) || (LOCKED[w.table] || []).includes(k)) return;
-      const v = src[k];
-      rec[k] = v === '' || v == null ? null
-        : cols[k] === 'b' ? (v === true || String(v).toUpperCase() === 'TRUE') : v;
+      /* A row this phone already has sends only what changed. Screens write the
+         whole row back, so a change made offline used to carry the rest of the
+         row with it and put back whatever somebody else had changed meanwhile
+         (5 Oct). Two people editing different parts of a job no longer collide;
+         the same field edited in two places is newest-wins. */
+      if (was && k !== 'id' && String(norm(k, was[k])) === String(norm(k, src[k]))) return;
+      rec[k] = norm(k, src[k]);
     });
     /* A person written down here belongs to this place's list (person.added_in_id,
        1 Oct), or nobody but themselves could see them. */
-    if (w.table === 'person' && !rec.added_in_id && src.id !== localStorage.getItem('dwellogs.me'))
+    if (!was && w.table === 'person' && !rec.added_in_id && src.id !== localStorage.getItem('dwellogs.me'))
       rec.added_in_id = localStorage.getItem('dwellogs.place') || null;
-    const out = [{ op: 'upsert', table: w.table, record: rec }];
+    const out = [];
+    if (!was || Object.keys(rec).some(k => k !== 'id')) out.push({ op: 'upsert', table: w.table, record: rec });
     if (src.status === 'archived' && !('status' in cols)) out.push({ op: 'archive', table: w.table, id: rec.id });
     // Archived here, written back as anything else: brought back, so archived_at
     // is cleared. Only then -- every other save leaves it alone.
-    const was = ((db || {})[w.table] || []).find(r => r.id === rec.id);
     if (was && was.status === 'archived' && src.status && src.status !== 'archived')
       out.push({ op: 'restore', table: w.table, id: rec.id });
     return out;
@@ -730,7 +744,9 @@ const DwelLogs = (function () {
         toDb({ op: 'upsert', table, record: r }).forEach(x => now.push(x));
         if (Object.keys(late).length) after.push({ op: 'upsert', table, record: { id: r.id, ...late } });
       }));
-    await Account.rpc('apply', { p_writes: now.concat(after) });
+    // A whole log in one save: longer than the 8 seconds a screen waits. Sent
+    // again after a timeout it does no harm -- every write is update-or-insert.
+    await Account.rpc('apply', { p_writes: now.concat(after) }, 60000);
     localStorage.setItem('dwellogs.me', id);
     return { id, rows: now.length };
   }
@@ -912,6 +928,9 @@ const DwelLogs = (function () {
 
   return { configure, load, save, archive, write, migrate, photo, upload, shrink, view, install,
            localSnapshot, liftToAccount, claim, account: Account,
+           /* Send what is waiting, now. The app calls it when the phone says the
+              signal is back; it never redraws, so nothing being typed is lost. */
+           async sync() { return CFG.account && queued().length ? flush() : true; },
            get pending() { return queued().length; },
            /* Exposed so the negative tests can push rubbish at the gate
               directly rather than through a screen. */

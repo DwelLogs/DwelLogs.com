@@ -421,25 +421,6 @@ const Account = (function () {
     put({ access_token: j.access_token, refresh_token: j.refresh_token,
           expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600) });
   }
-  /* The emailed link, pasted rather than tapped. Supabase locks its email
-     templates until the project has its own sender, so the code could not be
-     added to the email (3 Oct) -- but the link itself carries a one-time token,
-     and the app can finish the sign-in with it from wherever it is open. */
-  async function verifyLink(link) {
-    let u; try { u = new URL(String(link).trim()); } catch (e) { u = null; }
-    const token = u && (u.searchParams.get('token') || u.searchParams.get('token_hash'));
-    if (!token) throw new Error('That does not look like the link from the email. Press and hold it, then Copy Link.');
-    const type = u.searchParams.get('type') || 'magiclink';
-    const r = await fetch(SB_URL + '/auth/v1/verify',
-      { method: 'POST', headers: head(), body: JSON.stringify({ type, token_hash: token }) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.access_token)
-      throw new Error(/expired|invalid/i.test(j.msg || j.error_description || j.message || '')
-        ? 'That link has run out or was already used. Send a new one.'
-        : 'That link did not work. Send a new one and paste it straight away.');
-    put({ access_token: j.access_token, refresh_token: j.refresh_token,
-          expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600) });
-  }
   function google() {
     location.assign(SB_URL + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(here()));
   }
@@ -491,7 +472,7 @@ const Account = (function () {
     put(null);
   }
   const email = () => { const s = get(); return s ? (claims(s.access_token).email || '') : ''; };
-  return { signedIn: () => !!get(), takeFromUrl, sendLink, verifyCode, verifyLink, google, providers, rpc, signOut, email };
+  return { signedIn: () => !!get(), takeFromUrl, sendLink, verifyCode, google, providers, rpc, signOut, email };
 })();
 
 const DwelLogs = (function () {

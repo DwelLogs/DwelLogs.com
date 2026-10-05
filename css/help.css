@@ -1,0 +1,56 @@
+/* The help pages (dwellogs.com/help/). Started 5 Oct with "Sharing a place",
+   when sharing got enough set-ups that the same questions would keep coming:
+   one page per question, linked from the app where the question comes up.
+   Colours only from tokens.css, like the rest of the site. */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 17px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1rem 5rem; }
+.wordmark { display: flex; align-items: center; gap: .5rem; margin: 0 0 2rem;
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; font-size: 1.15rem; }
+.wordmark img { width: 1.6rem; height: 1.6rem; }
+.wordmark b { font-weight: 700; } .wordmark span { color: var(--accent); }
+.wordmark .home { display: flex; align-items: center; gap: .5rem; color: inherit; text-decoration: none; }
+.wordmark .home:hover b { text-decoration: underline; }
+.wordmark .top { margin-left: auto; font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: .95rem; font-weight: 600; color: var(--accent); text-decoration: none; }
+.wordmark .top:hover { text-decoration: underline; }
+h1, h2, h3 { font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; letter-spacing: -.015em; }
+h1 { font-size: clamp(2rem, 6vw, 2.7rem); line-height: 1.1; letter-spacing: -.025em; margin: .2rem 0 .7rem; }
+h2 { font-size: 1.45rem; line-height: 1.25; margin: 2.6rem 0 .6rem; padding-top: 1.6rem;
+  border-top: 1px solid var(--line); }
+h3 { font-size: 1.12rem; margin: 1.8rem 0 .4rem; }
+.lede { font-size: 1.12rem; color: var(--muted); margin: 0 0 1rem; }
+p, li { max-width: 40rem; }
+a { color: var(--accent); }
+.crumbs { font-size: .92rem; color: var(--muted); margin: -1rem 0 1.2rem; }
+.crumbs a { text-decoration: none; } .crumbs a:hover { text-decoration: underline; }
+.toc { background: var(--card); border: 1px solid var(--line); border-radius: .9rem; padding: .9rem 1.2rem; }
+.toc ul { margin: .3rem 0 0; padding-left: 1.1rem; }
+/* The access table turns into stacked cards on a phone: four columns of
+   sentences do not fit 375px, and a sideways-scrolling table hides half of it. */
+table.access { width: 100%; border-collapse: collapse; margin: .8rem 0; }
+table.access th, table.access td { text-align: left; vertical-align: top; padding: .6rem .7rem;
+  border-bottom: 1px solid var(--line); }
+table.access th { font-size: .9rem; color: var(--muted); font-weight: 600; }
+@media (max-width: 40rem) {
+  table.access thead { display: none; }
+  table.access tr { display: block; background: var(--card); border: 1px solid var(--line);
+    border-radius: .8rem; padding: .4rem .2rem; margin: 0 0 .7rem; }
+  table.access td { display: block; border: 0; padding: .25rem .8rem; }
+  table.access td:first-child { font-weight: 700; }
+}
+.setup { background: var(--card); border: 1px solid var(--line); border-radius: .9rem;
+  padding: .3rem 1.2rem 1rem; margin: 1rem 0; }
+.setup h3 { margin-top: 1rem; }
+.setup ol { padding-left: 1.3rem; margin: .4rem 0; }
+.setup li { margin: .25rem 0; }
+.tag { display: inline-block; font-size: .78rem; font-weight: 700; letter-spacing: .03em;
+  border-radius: 999px; padding: .1rem .55rem; margin-left: .4rem; vertical-align: .15em;
+  border: 1px solid var(--line); color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; }
+.tag.works { border-color: var(--accent); color: var(--accent); }
+.coming { color: var(--muted); }
+.button { font-weight: 600; white-space: nowrap; }
+footer { color: var(--muted); font-size: .92rem; margin-top: 3rem; border-top: 1px solid var(--line); padding-top: 1.4rem; }
+footer a { text-decoration: none; } footer a:hover { text-decoration: underline; }

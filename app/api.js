@@ -624,6 +624,17 @@ const DwelLogs = (function () {
        1 Oct), or nobody but themselves could see them. */
     if (!was && w.table === 'person' && !rec.added_in_id && src.id !== localStorage.getItem('dwellogs.me'))
       rec.added_in_id = localStorage.getItem('dwellogs.place') || null;
+    /* A new rule needs what the database requires of every rule. Four screens
+       make rules -- the job screen, setup, readings, the catalogue -- and only
+       the catalogue sent these, so turning a repeat on for "Deworm" failed on
+       an account (5 Oct). Filled once, here, for any screen that leaves them
+       out: a person setting an interval is its source. */
+    if (!was && w.table === 'schedule') {
+      if (rec.responsibility == null) rec.responsibility = 'owner';
+      if (rec.interval_source == null) rec.interval_source = 'owner';
+      if (rec.cost_source == null) rec.cost_source = 'entered';
+      if (rec.kind == null) rec.kind = 'interval';
+    }
     const out = [];
     if (!was || Object.keys(rec).some(k => k !== 'id')) out.push({ op: 'upsert', table: w.table, record: rec });
     if (src.status === 'archived' && !('status' in cols)) out.push({ op: 'archive', table: w.table, id: rec.id });

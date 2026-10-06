@@ -154,6 +154,16 @@ if (location.search.indexOf('fresh=1') > -1) {
   .title { font-weight:600; }
   .hint { color:var(--muted); font-size:.85rem; margin:.25rem 0 0; }
   .actions { display:flex; gap:.6rem; flex-wrap:wrap; margin-top:1.1rem; }
+  /* The For box (v0.20.0): what a task is for, as chips, with suggestions
+     under the box as you type. */
+  .forchips { display:flex; flex-wrap:wrap; gap:.4rem; margin:.1rem 0 .5rem; }
+  .forchip { display:inline-flex; align-items:center; gap:.2rem; border:1px solid var(--accent);
+    color:var(--accent); border-radius:999px; padding:.25rem .3rem .25rem .75rem; font-weight:600; font-size:.95rem; }
+  .forchip button { border:0; background:none; color:inherit; min-height:2rem; min-width:2rem; padding:0;
+    font-size:1.2rem; line-height:1; }
+  .forsug { display:grid; gap:.3rem; margin:.4rem 0 .2rem; }
+  .forsug button { text-align:left; width:100%; background:var(--card); border:1px solid var(--line); }
+  .forsug .fornew { color:var(--accent); font-weight:600; }
   .savebar { position:sticky; bottom:0; z-index:3; display:flex; gap:.6rem; flex-wrap:wrap;
     margin:1.6rem -1rem 0; padding:.6rem 1rem calc(.6rem + env(safe-area-inset-bottom,0px));
     background:var(--bg); border-top:1px solid var(--line); }
@@ -265,7 +275,7 @@ if (location.search.indexOf('fresh=1') > -1) {
   .sec > summary::-webkit-details-marker { display:none }
   .sec > summary::after { content:'+'; color:var(--accent); font-size:1.2rem; font-weight:400 }
   .sec[open] > summary::after { content:'\2212' }
-  .secb > h2:first-child { display:none }
+  .secb > h2:first-child { display:none }   /* the summary already says it; the checklist in More is wrapped so it keeps its heading */
   .disclose { margin:.35rem 0 0 }
   .disclose summary { font-size:.86rem; color:var(--accent); cursor:pointer; list-style:none;
     display:inline-block; padding:.35rem 0; min-height:0 }
@@ -352,7 +362,7 @@ if (location.search.indexOf('fresh=1') > -1) {
      separately, so without this a browser can hold a new page and an old
      script and call a function that is not there yet. Same rule the README
      already states for the icons. -->
-<script src="api.js?v=9d53f294cd"></script>
+<script src="api.js?v=e1ff34c977"></script>
 <script>
 /* Registered after load so it never competes with boot. Failure here is not
    fatal and is not reported: a browser with no service worker support, or a
@@ -1424,6 +1434,11 @@ async function boot() {
   // Back from an emailed link or Google, before anything else reads the address.
   const signin = DwelLogs.account.takeFromUrl();
   takeInvite();
+  /* Signed out: the sign-in screen, whatever else this phone holds (5 Oct:
+     sign out opened the phone's own log from before accounts, so it looked
+     like nothing had happened). That log is one tap away on that screen. */
+  if (DwelLogs.account.signedIn()) localStorage.removeItem('dwellogs.signedout');
+  else if (localStorage.getItem('dwellogs.signedout') === '1' && !localStorage.getItem('dwellogs.url')) return drawStart();
   const handoff = takeHandoff();
   /* A brand-new person is NOT asked where their data should live. They came to
      look at a home-maintenance app and the first screen used to be a question
@@ -1675,13 +1690,16 @@ function drawStart() {
     <div class="actions"><button class="primary" onclick="sendSignIn()">Email me a code</button></div>
 
     <h2 style="margin-top:2rem">Or use it on this phone only</h2>
+    ${liftable() ? `<p class="sub" style="margin-top:-.2rem">This phone already has a log on it, from before
+      signing in. Use it on this phone opens that one.</p>` : ''}
     <ul class="hint" style="margin:.2rem 0 .8rem;padding-left:1.1rem">
       <li>It lives in this browser on this phone. If the phone is lost, or its storage is cleared, the log goes with it.</li>
       <li>It cannot be opened on another phone or a computer, or shared with anyone.</li>
       <li>No reminders by email or calendar.</li>
       <li>You can sign in later and bring it with you.</li></ul>
     <div class="actions"><button class="ghost"
-      onclick="localStorage.setItem('dwellogs.phoneonly','1');drawWho()">Use it on this phone</button></div>
+      onclick="localStorage.setItem('dwellogs.phoneonly','1');localStorage.removeItem('dwellogs.signedout');${
+        liftable() ? 'boot()' : 'drawWho()'}">Use it on this phone</button></div>
     ${waiting ? '' : `<details class="sec" style="margin-top:1.6rem"><summary>Somebody sent you an invite code</summary>
       <div class="secb"><label for="iv-code">The code</label>
         <input id="iv-code" autocapitalize="characters" autocomplete="off" placeholder="like K7QM2X">
@@ -3354,8 +3372,11 @@ async function createPlaceNow() {
   app.innerHTML = `<h1>Setting it up…</h1>`;
   let made;
   try { made = await createEverything(); } catch (e) { return say('Could not save: ' + e.message); }
-  SETTING_UP = made.propId;
-  try { localStorage.setItem('dwellogs.place', made.propId); localStorage.setItem('dwellogs.setup', made.propId); } catch (e) {}
+  /* Straight to Home (decided 5 Oct, task first): "setting up the full
+     property before adding tasks might not be viable". The setting-up screen
+     is one tap away on Home for anybody who wants it, not the way in. */
+  try { localStorage.setItem('dwellogs.place', made.propId); localStorage.removeItem('dwellogs.setup'); } catch (e) {}
+  SETTING_UP = null;
   draft = {}; flow = null; hubStep = null; fs = 0;
   await boot();
 }
@@ -3389,6 +3410,26 @@ function waitingCards() {
     + (localStorage.getItem('dwellogs.bring') && liftable() ? `<div class="card tap"><button onclick="drawBringIn()">
       <span class="title">Bring ${esc(((l.property || [])[0] || {}).name || 'your home')} in</span>
       <p class="meta">It is still only on this phone. It goes on ${esc((prop || {}).name || 'the place')} as yours.</p></button></div>` : '');
+}
+/* On a new place's Home, until it is used or set aside: setting up is there for
+   anybody who wants it, and nobody has to (decided 5 Oct). */
+function setupCard() {
+  if (!prop || myHomes().length) return '';
+  const key = 'dwellogs.setupcard.' + prop.id;
+  try { if (localStorage.getItem(key)) return ''; } catch (e) { return ''; }
+  const mine = (DB.membership || []).some(m => m.person_id === (me || {}).id && m.property_id === prop.id && m.access === 'owner');
+  if (!mine || (DB.job || []).some(j => j.property_id === prop.id) || tracked() > 3) return '';
+  return `<div class="card"><span class="title">Start with a task, or set up the place</span>
+    <p class="meta">Add a task and say what it is for &mdash; anything not on here yet gets added as you go.
+      Or set ${esc(prop.name)} up first: its buildings, what they run on, and what is in them.</p>
+    <div class="actions" style="margin-top:.6rem">
+      <button class="ghost" onclick="openSetup()">Set it up</button>
+      <button class="quiet" onclick="try{localStorage.setItem('${key}','1')}catch(e){};drawHome()">Not now</button></div></div>`;
+}
+function openSetup() {
+  SETTING_UP = prop.id;
+  try { localStorage.setItem('dwellogs.setup', prop.id); localStorage.setItem('dwellogs.setupcard.' + prop.id, '1'); } catch (e) {}
+  show('home');
 }
 function drawSetupHub() {
   $('#tabs').hidden = true;
@@ -3440,7 +3481,7 @@ function drawSetupHub() {
     <div class="actions" style="margin-top:1.2rem">
       <button class="primary" onclick="drawCatchUp('', true)">Take me in</button>
     </div>
-    <p class="hint">People, animals and papers can wait — they're on Home under Still blank.</p>`;
+    <p class="hint">Anything not here yet can be added from a task, when it comes up.</p>`;
   window.scrollTo(0, 0);
 }
 async function renameLive() {
@@ -3905,7 +3946,7 @@ function schedules() {
 let LAST_VIEW = null, JOB_OPEN = null, JOB_BACK = null, JOB_ONLY = null, DRAFT_JOB = null, EDIT_STEP = null;
 function leaveJob(msg) {
   const go = JOB_BACK || (() => show('home'));
-  JOB_OPEN = JOB_BACK = JOB_ONLY = DRAFT_JOB = NEW_JOB = EDIT_STEP = null;
+  JOB_OPEN = JOB_BACK = JOB_ONLY = DRAFT_JOB = NEW_JOB = EDIT_STEP = null; FOR = null;
   go();
   if (msg) say(msg);
 }
@@ -3924,7 +3965,7 @@ function show(s) {
   $('#tabs').hidden = false;
   // The third tab was Log, a flat list of what was done. Jobs is that list and
   // everything still to do, filtered (2 Oct); Done is one tap on it.
-  $('#tabs').innerHTML = [['home','Home'],['add','Add'],['log','Jobs']]
+  $('#tabs').innerHTML = [['home','Home'],['add','Add'],['log','Tasks']]
     .map(([k, l]) => `<button onclick="show('${k}')" aria-current="${k === s ? 'page' : 'false'}">${l}</button>`).join('');
   ({ home: drawHome, add: drawAdd, log: drawJobs })[s]();
   window.scrollTo(0, 0);
@@ -4291,6 +4332,7 @@ function drawHome() {
       <button type="button" aria-pressed="${!mineOnly}" onclick="HOME_SCOPE='all';drawHome()">All of ${
         esc(prop.name)}</button></div>` : ''}
     ${waitingCards()}
+    ${setupCard()}
     <h1>${esc(mineOnly && homes.length === 1 ? homes[0].name : prop.name)}</h1>
     ${pulseSvg()}
     <p class="sub">${
@@ -4311,7 +4353,7 @@ function drawHome() {
          "the home dashboard needs the quick links of something broke"). */ ''}
     <div class="actions" style="margin:.2rem 0 1rem">
       <button class="add" onclick="brokeJob()">Something broke</button>
-      <button class="ghost" onclick="newJob()">Add a job</button></div>
+      <button class="ghost" onclick="newJob()">Add a task</button></div>
     <span class="big">${now.length}</span>
     <p class="title">${now.length === 1 ? 'thing needs you now' : 'things need you now'}</p>
     ${(() => {
@@ -4345,7 +4387,7 @@ function drawHome() {
         ${[['30','Next 30 days'], ['90','Next 90 days'], ['all','Everything']].map(([v, l]) =>
           `<button type="button" aria-pressed="${span === v}" onclick="setHomeSpan('${v}')">${l}</button>`).join('')}</div>`;
       return chooser + (out || `<div class="empty">Nothing due${span === 'all' ? '' : ' in that time'}. That is a real state, not an empty one.</div>`)
-        + (rest > 0 ? `<button class="skiplink" style="margin-top:.4rem" onclick="show('log')">${rest} more later, on Jobs</button>` : '');
+        + (rest > 0 ? `<button class="skiplink" style="margin-top:.4rem" onclick="show('log')">${rest} more later, on Tasks</button>` : '');
     })()}
     ${(() => {
       /* Jobs that are not a rule coming due \u2014 what somebody typed in, or a fault
@@ -5433,7 +5475,7 @@ const FEEDBACK_TO = 'support@dwellogs.com';
 /* Generated by build_app.py from docs/changes.json. Inlined rather than
    fetched: this has to read in a basement, and a changelog that arrives
    separately can describe a build you are not running. */
-const CHANGES = {"unreleased": {"new": [], "fixed": [], "gone": []}, "next": ["Ask for help: put one of your jobs out to the whole place, and anybody can take it", "Staying a while: access that ends on its own on the day somebody leaves, and taking somebody off a place yourself", "A room that is somebody's, for a lodger, and things that are one person's, for roommates", "A weekend board: Today, This week, Next week", "Renting: say you rent, and the landlord's jobs show as theirs, with Tell them or Do it myself", "Checked, not yet: for a check-up that's a look, say it didn't need doing and when to look again", "Seeing what the next month and quarter will cost", "Photos and files, once there are accounts to hang them off"], "known": ["There is nowhere to put a photo or a file. A paper is a link to wherever it already lives, and that is all it is for now.", "Costs only count what's been recorded. Nothing is projected forward yet, so the number is history rather than a forecast.", "The email digest and the calendar feed still need a Google Sheet; for accounts they are being built.", "Signing in is open to the first testers for now; the emails it sends only reach them until there is a proper sender.", "On a phone, everything lives in that browser. Add it to your home screen and it stays; in Safari without doing that, it clears after about a week of not opening it."], "releases": [{"version": "0.19.0", "on": "2026-10-05", "stamp": "9d53f294cd", "new": ["A job for several animals or things has a line for each: tick them as you get to them. The card says \"3 of 5\", each one's own history says when it was done, and the job is done when they all are -- or tap Done today for the rest. The next time round, they all start unticked."], "fixed": ["A job's card on Home says what it is about -- the utility sink, the barn -- the way a check-up's card does, instead of \"Something to do\".", "One job for both cats says \"Tato and Biscuit\" on its card, on Animals and on each cat's page. It named only the first, so it looked as if the other's was missing."]}, {"version": "0.18.0", "on": "2026-10-05", "stamp": "362995ee84", "new": ["Home looks 30 days ahead, or 90, or everything: your choice at the top, and it remembers. Anything late always shows; the rest is one line that opens Jobs.", "Something broke, on Home, next to Add a job.", "On a thing's page: Something's wrong with it, a job about that thing in one tap.", "Slide a check-up left to Stop it reminding you: on Home, on Jobs and on a page's Comes round. It can be turned back on under Check-ups. Check-ups on a page slide right to Done too."], "fixed": ["Adding a thing of a kind your account did not have yet, like a pool, failed with an error about \"category_id\". It saves now.", "What kind of thing? is grouped, with what fits the building first: a pool area opens on Pool & spa.", "History on a building or a group puts the thing first and what was done under it, with dates as Oct 5 rather than 2026-10-05.", "Opening a building or a group starts on To do, not on whichever tab the last one was left on.", "Saving Rooms, What's in it or What it runs on goes back to the page you opened it from -- the barn, the coop -- not Home. Adding a thing does the same, by way of its check-ups.", "Buildings, and Rooms & things, leave out jobs about animals and vehicles. Deworming the cat showed under Buildings because the cat lives in the house.", "Waiting invites say what they let somebody do, and the date they stop working, in words.", "Adding an animal, Who lives here and Move it go back to the page you opened them from, on save or Cancel."], "gone": ["Parked for now, to get the basics right first: What it needs on a job, spares and Running low; Soonest, Quickest and Cheapest; the Costs tab; papers; the kind of job; parts of a thing; and Whose it is on a building. Nothing you saved is lost, and each comes back when it is needed."]}, {"version": "0.17.0", "on": "2026-10-05", "stamp": "e8fba74c7a", "new": ["Pools and hot tubs: the pool, its pump, filter, salt cell or chlorinator, cleaner, refill pump and filter traps, each with its own check-ups. A pool area leads with them on What's in it.", "Outdoor things: deck boards (look over them, and seal or stain), outdoor lights, a grill and a patio heater. A deck, porch or patio leads with them.", "Internet: a router or modem, and Wi-Fi hubs, so you know where each one is. The companies behind your accounts go on People and companies.", "A lift pump, for a holding tank that pumps up to a septic tank, and a leach field to walk now and then.", "Parts of a thing: from a thing's page, A part of it adds a filter cartridge, a UV lamp or a pool's pump to it, each with its own dates. Changing one cartridge does not reset the others.", "Outdoor places -- a pool area, a garden, a leach field -- can say what is in them, from What's in it or their own page. Still blank does not ask them."], "fixed": ["Save and Done today stay pinned to the bottom of a job, and the job scrolls under them. Save sat in the middle of the screen, and opening anything above it pushed it out of sight.", "\"Pool area\" says it is the area around the pool; the pool itself is a thing in it."]}, {"version": "0.16.0", "on": "2026-10-05", "stamp": "e840571a09", "new": ["Toilets, showers and bathtubs on What's in it, next to the sinks, each with a look now and then: a toilet that runs or rocks, a shower head to descale, caulk to check."], "fixed": ["Saving What's in it with nothing filled in counts as nothing in here, so an empty shed stops coming up first on \"Save, then …\".", "Setting up says what Take me in does, and has it at the top as well as the bottom. Setup stays open until it is tapped, so it was easy to stay on it for days without finding the home screen.", "An invite shows on the setup screen too, for a phone that has not finished setting up.", "The first question says it wants your own name, and that the place gets its name next.", "Join with a code, not signed in, keeps the code and goes to signing in; the invite opens after. It went the old Google Sheet way, which looks for the invite on the phone and could not find one sent from an account."]}, {"version": "0.15.0", "on": "2026-10-05", "stamp": "5ab5ba1265", "new": ["A simpler job screen: what, what it is about, when and how often; a checklist; what it needs; notes. Who has it, who you call, the kind of job and Remove are under More.", "A check-up's checklist and what it needs come round again each time, unticked, with who else it is for and who you call. They stayed behind on the finished one, so the steps had to be typed in again.", "Done it? asks what happened and what it cost, both optional: \"Pass\", or what was found. It shows in the history beside the date."], "fixed": ["Turning on a repeat for a job, like deworming the cats, failed with an error about \"responsibility\" when signed in. The job saved; the repeat did not. It saves now."], "gone": ["From the job screen: Start, time and cost estimates, safety, and \"Something is wrong with it\" as a tick. A job can still be marked as something wrong under More, and nothing already saved is lost."]}, {"version": "0.14.0", "on": "2026-10-04", "stamp": "3b481de0a1", "new": ["A building's page has A thing here, Rooms and What it runs on at the top. Until it had rooms or things, the only thing on it was Add a job; a room's page has A thing here too.", "Ceiling fans: an answer on What cools it, with dusting the blades and switching direction for the season. Ceiling fans typed in before turn into the answer the next time you open that screen.", "Rooms are back in setting up, for the buildings people live in. Sheds and barns are not asked.", "Nothing in here to track: say so on What's in it, and an empty shed comes off Still blank."], "fixed": ["Changes on a job were lost when you pressed Record it under Was it already done?, or added something to buy: the screen redrew from what was saved before. What you typed is kept and saved with it now.", "Changing how often a check-up comes round moves its next date to match, counted from when it was last done -- unless you set the date yourself.", "Things added after setting up, like a well on What does it run on?, show their check-ups to keep or untick, instead of appearing on Home unasked.", "Cards no longer slide over the menu at the bottom of the screen.", "Screens open at the top. Several, like adding an animal, opened partway down.", "Where to get it, on something a job needs, takes a place as well as a link. It used to bring up a keyboard with no space bar."]}, {"version": "0.13.0", "on": "2026-10-04", "stamp": "2df16bff36", "new": ["Bring your home in: invite somebody and say they will bring their own home. If they set it up on their own phone, after accepting they can bring it in whole, as a building on your place that is theirs, with its things, check-ups, jobs and history. They choose whether you see everything in it, or only that it is there and what it is hooked up to.", "What their home runs on: if the well or septic is already on your place, they say what their home gets from it, and a well of their own that is the same one becomes yours instead of a second one, with what they logged on it. Their own solar, holding tank and battery stay theirs.", "Someone whose home is on your place opens the app on their home, with the whole place one tap away.", "Hand a building to somebody on your place, from the building's page: the shed you built for them, say. Say whether it stays with the place or goes with them if they move on. Once it is theirs, what you see inside it is up to them.", "What somebody else paid for shows on that line: \"Pumped the tank · $350 · paid by Mom\". It is never added up per person.", "How sharing works: a page on dwellogs.com with the kinds of access, whose a building is, and how to set up family, guests, roommates and a home parked on your land. Linked from Invite somebody and wherever a building can be somebody's."], "fixed": ["An invite link opened on a phone that already had its own log said nothing about the invite. Home says so now, with Sign in."], "gone": ["The email box on your screen, unless your log is in a Google Sheet. It was for the digest, and only the Sheet sends one so far."]}, {"version": "0.12.0", "on": "2026-10-04", "stamp": "eb51df326e", "new": ["Invite somebody through your account: choose who it is for, what they can do, and the whole place or one building. Send the code by text or any app. They sign in with their own email, see what the invite offers, and accept -- arriving as the person already on your list, with what they have already done.", "Join with a code, from your screen, if you are already signed in and somebody invites you to another place."], "fixed": ["Save on a job no longer sits on the line below it.", "\"Also for\" on a job is one folded line, \"Also for other things…\", instead of a tick box for everything on the place. It opens by itself when something is ticked, or when you came from an animal's page and there are only a few others.", "Date boxes on an iPhone, like \"Good until\" on an invite, ran past the right edge of the screen. They fit now, with the date on the left like every other box."], "gone": ["\"They can see costs\" on an invite, until costs can actually be kept from somebody."]}, {"version": "0.11.0", "on": "2026-10-04", "stamp": "2b14b52e51", "new": ["The first screen leads with signing in: your email, then the code from the email. New or returning, it is the same step. Using it on this phone only is still there, with what that means said plainly.", "Signed in with no signal, everything is still there to look at and change. Changes wait on the phone and go up as soon as the signal comes back, even a bar of it. Home says how many are waiting.", "Put it on your home screen: the steps for your phone, on Home and on your screen, including Chrome on an iPhone and Android. On Android, an Install button when the phone offers one."], "fixed": ["Sign out goes back to the first screen, to sign in again or start on this phone -- not to an old copy of your log.", "Once your log is in your account, the phone's own copy is cleared, so nothing is left behind to get out of step.", "Two people changing different parts of the same job no longer undo each other: only what you changed is sent.", "A save made on a flicker of signal no longer hangs the screen. After a few seconds it waits on the phone and goes up later.", "Setting up after signing in asks your name, and uses it."]}, {"version": "0.10.1", "on": "2026-10-04", "stamp": "18393c5420", "fixed": ["Signing in asks for one thing: the code in the email. It works whichever app or browser you have DwelLogs open in. The email says it comes from DwelLogs now."]}, {"version": "0.10.0", "on": "2026-10-04", "stamp": "16489b2902", "new": ["Done from the card: slide a job or a check-up right and tap Done, on Home, on Jobs, and on a building's or an animal's page. It is marked done today and you stay where you were. A check-up answered with a number opens the reading instead.", "Done today sits at the top of a job, next to Save. To say it was done on another day, the date is still at the bottom."]}, {"version": "0.9.0", "on": "2026-10-04", "stamp": "5d421ec0d8", "new": ["Remove a job: slide it left on Jobs and tap Remove, or open it and use Remove this job at the bottom. What was already logged as done stays in the history.", "A new job can be saved as already done: say the day you did it, and it goes in the history on that day."], "fixed": ["Jobs has Add a job at the top.", "A job with no name says \"No name yet\" on Jobs, so the empty ones left behind by older versions are easy to find and remove.", "Tapping into a number that is already filled in selects it, so what you type replaces it. A phone's number pad has no space bar to move the cursor with.", "Signed in, Bring back on a removed place brings it back. It said it had and changed nothing.", "Add is a row of choices, with A thing among them. The form for a thing opens on its own and starts with nothing picked -- it used to sit open under the choices, already set to a well.", "Mark it done takes you back to where you opened the job, like Save.", "The top of the screen stays clear of the phone's clock when you scroll. The fix in 0.8.0 did not take on iPhone.", "On a building's or a group's page, To do, History and Costs are the same small buttons as on Jobs, and the search box no longer touches what is above and below it."]}, {"version": "0.8.0", "on": "2026-10-03", "stamp": "c146288743", "new": ["One job can cover several things: from Tato's page, add \"Deworm the cats\" and tick Biscuit under Also for. It is one job, ticked once, and it shows on both cats' pages.", "Steps can be changed: tap Change on a step to fix its words or where it happens, without losing its tick.", "Jobs, where Log was: every job and check-up, done ones included. To do, Done, Ideas or All at the top; filter by kind, when (late, the next 30 days, the last 30 days, or between two dates), what it is about, who has it and where it came from; sort by when it is due, when it was done, when it was added or what it costs. It remembers how you left it."], "fixed": ["Signing in from the app on your home screen: press and hold Sign in in the email, choose Copy Link, and paste it into the app. Tapping the link opens your phone's browser, which keeps its own copy of everything and may not be where your log is.", "Signed in with nothing in the account yet, the first screen now says so, and says where your log is if it is on this phone in another app or browser. Sign out is right there.", "Save on a job takes you back to where you opened it from, and says Saved. Back does the same.", "A job opens at the top of the screen, not wherever the list you tapped it from was scrolled to.", "A new job is only saved when you press Save, and it needs a name. Leaving one half-written no longer leaves a nameless \"A job\" behind.", "Added from an animal's page, a job's \"What is it about?\" lists your animals, not every building and thing.", "Mark it done sits under the date, not on top of it, and the top of the screen no longer slides under the phone's clock.", "\"Who you call\" starts at \"Nobody, we do it ourselves\".", "Home is shorter. The grid of twelve tiles at the bottom is gone: adding a job, a reading, a paper, an animal, a vehicle or another place is on the Add tab, and People and companies and Invite somebody are on your screen. What has changed and Tell us something are two links at the foot.", "Still blank shows the three that matter most, with the rest a tap away. Outdoor places like the yard or a fence line are no longer listed for what they run on, and the tiles say Check-ups and Invite somebody."], "gone": ["Connect a Google Sheet, for anyone not already using one. Sign in keeps your log in your account; Take a copy is still there for a download."]}, {"version": "0.7.0", "on": "2026-10-01", "stamp": "64a58906d1", "new": ["Sign in with your email: tap Sign in, and the link that arrives opens the app signed in. No password. Your log is then kept in your account, so a new phone, or losing this one, does not lose it.", "The first time you sign in on a phone that has a log, it asks whether to put that log in your account. It goes in whole or not at all, and the phone's copy stays as it is.", "Signed in with no signal, a change is saved on the phone and goes up when the signal is back. Your person screen says how many are waiting."]}, {"version": "0.6.1", "on": "2026-10-01", "stamp": "c5fa93664e", "fixed": ["Where it is: typing your state ticks the climate it usually has again, when nothing is ticked yet. Since setup moved it to Still blank, it only said the guess and ticked nothing."], "gone": ["\"Nothing else, unless you say so\" on Invite somebody. What an invite lets them do is the list on the invite itself."]}, {"version": "0.6.0", "on": "2026-10-01", "stamp": "e1f462e8c0", "new": ["On the screens that are asked one building at a time, \"Answering for\" at the top says which building you're on, and switching saves first. \"Save, then …\" takes you to the next building still waiting.", "Setting up works one building at a time, for every building — rooms, what's in it and who lives there aren't just about the main house any more. If you close the app partway, setup picks up where you left it.", "Check-ups: one screen for each thing the app keeps an eye on. Untick it, change how often, say when it was last done, and change when it's next due — say the tankless flush is due this week even though it's yearly.", "Adding a job asks what it is, what it's about and when — Today, This week, Next week, Someday or a date — and whether something's wrong. Then Save. Steps, repeats, who does it, what to buy, time and cost, and notes are headings you open when you want them.", "Adding a building: \"Another kind…\" with the buildings lists only the building kinds not already shown. \"Somewhere else…\" with the outside ones is for anything that isn't on the list — the pond, the woodlot — and gets asked what land is asked.", "Adding an animal: \"Something else…\" for one that isn't listed, your own words for what you get from it and what it helps with, and \"a service or assistance animal\" under Kept as.", "Icons are drawn in the orange from the DwelLogs heartbeat.", "Setting up is quicker: the buildings, what they run on and what's in them, then you're in. Rooms, who lives where, animals, where it is and the house's papers are waiting on Home under Still blank.", "The pulse line draws what it's about, like the one on dwellogs.com: your buildings on Home, your animals on the Animals page, and a building's or animal's own outline on its page — each followed by a heartbeat as tall as how soon it needs you. Every animal type has its own icon too."], "fixed": ["Lists of tick boxes take about a third less room, so the long questions scroll less.", "Answering \"Same one, or its own?\" after \"Save, then …\" took you back to the list instead of on to the next building. It goes on to the building you picked.", "The rooms screen asked twice for something not on its lists. One box now — a room or space we did not list — and what you type becomes a room or space you can file things against.", "Who lives here: an empty box showed a grey 0 that looked like an answer. It says \"how many\" now, and there's a \"Nobody lives here\" tick. The names on the log are labelled as everyone at the place, not the building you're on.", "Adding a name that was already on the log made a second person with the same name, who then showed up twice under \"Whose is it?\". It uses the one already there."]}, {"version": "0.5.0", "on": "2026-10-01", "stamp": "0b2013df62", "new": ["A ZIP code for each place, if you'd like to give one — it's for the weather where the place actually is. Call the place whatever you call it.", "Where it is — region, ZIP, climate, freezing and what can happen there — can be changed after setup, from your name at the top of Home.", "\"An attic fan\" is one of the answers for what cools a building, with its own check-up."], "fixed": ["After an update, the note saying what changed sat near the bottom of Home, where it was easy to miss. It's at the top now, and names the version.", "Opening the app right after an update showed a blank screen for a few seconds. It opens straight away now, and when there's a new version it says \"Getting the new version…\" while it comes down.", "If the site had a problem, the app could open to an error page instead of what's on your phone. It opens from your phone.", "What you type into \"Another kind of…?\" is kept as part of that building's answer, and shows on What feeds it. It used to disappear.", "A building where nobody lives can say so. Putting 0 kept it on the still-blank list.", "Adding a building no longer jumps you to the top each time you pick a kind. Pick it, name it, add it, top to bottom. \"Something else…\" lists only the kinds that aren't already on the screen."], "gone": ["The \"Why we ask\" links under most screens. They answered questions nobody had asked.", "Asking for your town during setup. Nothing used it."]}, {"version": "0.4.0", "on": "2026-10-01", "stamp": "8dd02b36e4", "new": ["A garden, pasture or pool area can say where its water comes from — a spigot, a well, or irrigation. Each irrigation system is its own thing, and one that doesn't connect to another gets its own name.", "Remove a place you own, from your name at the top of Home. Nothing is deleted — it waits under Removed and Bring back puts it back as it was.", "Each kind of building is asked what fits it first. A coop or pump house is asked about water, power and heat; waste, cooling and hot water are one tap away if it has them.", "What's in it leads with what belongs there: filters and tanks in a pump house, a fire extinguisher and its animals in a coop. Everything else is under Show the rest.", "A building on a well, spring or hauled water is offered a whole-house filter and a softener.", "Start over has moved from the Add tab to your name at the top of Home."], "fixed": ["What feeds it said \"nothing wired up yet\" for buildings you had already answered. It shows what each one runs on.", "Tapping a building on What feeds it opened the building's page. It opens what that building runs on, and saving brings you back to the list.", "Back on a screen you reopened after setup, like a building's rooms or what it runs on, dropped you into the first-time setup. It doesn't now.", "Pressing Back enough times could land you on \"Start with your name\" and, from there, set up your place a second time with a second you. Back stops at Home now, and setting up another place is always done as you.", "On a phone, the date and \"Who did it\" boxes on When was it last done ran into each other. They sit one above the other now.", "A garden counted questions it was never asked, so it read \"1 of 6\" and stayed on the still-blank list for good. It counts only what it's asked.", "Adding an animal never asked where it lives, so it ended up in no building. It asks now, and starts with a likely answer — the house for a cat or a dog, the coop for chickens.", "Leaving a place someone shared with you didn't take it off your list. It does now.", "Counting something in What's in it could save nothing at all if that kind of thing was added to the app after you set up — a fire extinguisher in a coop, for one. It saves now."]}, {"version": "0.3.0", "on": "2026-09-30", "stamp": "e7bb5d675b", "new": ["This page: what has changed, what is known to be wrong, and what is coming next. It's in the app and on the site.", "Something not right, or missing? There's an address in the app and on the site, and a report from the app says which build you're on.", "The app asks your browser to hold on to your log, and says plainly what that browser will do with it.", "A paper is a link to wherever it already lives — the maker's site, your own Drive, your email."], "fixed": ["Papers on a thing showed as \"Paper\" with no name or date, and tapping one opened a blank form. They show their name and when they run out, and open where they live.", "Right after an update, the app could act up for one launch. It doesn't now."], "gone": ["Adding a photo. It comes back with accounts, so your pictures have somewhere proper to live."]}, {"on": "2026-09-29", "stamp": "3f44b6d28d", "new": ["Home is tiles: Buildings, Rooms and things, Animals, Vehicles and What feeds it. Open one to see only its jobs.", "Rooms and What's in it work per building, with a switcher, so the barn's answers stay with the barn.", "A job can say what it's about: a building, a room, a thing, an animal or a vehicle.", "Say when something was last done, even before you had the app. The next one counts from then, not from today.", "A catch-up list after setup, and again whenever you add a thing.", "Marking something done takes a date — say Friday, even if you're only logging it on Sunday.", "For past work, say who did it: not sure, you, whoever lived here before, or a company.", "A job can list what to buy, with a part number and a link, who you call for it, and a step somewhere else — the hardware shop, the county office.", "People and companies in one list — the septic company, the vet. Phone, what they look after, every visit, what it cost, and a note on whether you'd have them back.", "Rename a person."], "fixed": ["Something with no due date showed as a day late. It shows as no date.", "Answers typed for one building showed up on another.", "What's in it opened the wrong screen and didn't save.", "Attaching something to a job lost anything you'd typed and not saved yet.", "On a home-screen install, the top of each screen sat under the clock."]}, {"on": "2026-09-28", "stamp": "4aac0cf35a", "new": ["What things cost, and a copy of everything, from wherever you're looking."], "fixed": ["A typo in a number field says so, instead of quietly losing it."]}]};
+const CHANGES = {"unreleased": {"new": [], "fixed": [], "gone": []}, "next": ["Ask for help: put one of your tasks out to the whole place, and anybody can take it", "Staying a while: access that ends on its own on the day somebody leaves, and taking somebody off a place yourself", "A room that is somebody's, for a lodger, and things that are one person's, for roommates", "A weekend board: Today, This week, Next week", "Renting: say you rent, and the landlord's tasks show as theirs, with Tell them or Do it myself", "Checked, not yet: for a check-up that's a look, say it didn't need doing and when to look again", "Seeing what the next month and quarter will cost", "Photos and files, once there are accounts to hang them off"], "known": ["There is nowhere to put a photo or a file. A paper is a link to wherever it already lives, and that is all it is for now.", "Costs only count what's been recorded. Nothing is projected forward yet, so the number is history rather than a forecast.", "The email digest and the calendar feed still need a Google Sheet; for accounts they are being built.", "Signing in is open to the first testers for now; the emails it sends only reach them until there is a proper sender.", "On a phone, everything lives in that browser. Add it to your home screen and it stays; in Safari without doing that, it clears after about a week of not opening it."], "releases": [{"version": "0.20.0", "on": "2026-10-05", "stamp": "e1ff34c977", "new": ["Task, not job, everywhere: Add a task, the Tasks tab, New task. The same thing, under the word people use for it.", "Start with a task: after your name and the place's name, you are on Home. Setting the place up is there when you want it, under Set it up on Home, and nobody has to.", "A new task finds what it is for as you type -- a thing, an animal, a building, a room -- or adds it on the spot: its name, what it is, and where. Something the app knows, like a pool filter, gets its check-ups offered after you save. Notes sit right under it, for anybody who would rather just write it down.", "Later, under More on a task: pick a new day, and it moves."], "fixed": ["Signing out goes to the sign-in screen, even when the phone has a log on it from before you signed in. That log is one tap away there, under Use it on this phone."]}, {"version": "0.19.0", "on": "2026-10-05", "stamp": "9d53f294cd", "new": ["A job for several animals or things has a line for each: tick them as you get to them. The card says \"3 of 5\", each one's own history says when it was done, and the job is done when they all are -- or tap Done today for the rest. The next time round, they all start unticked."], "fixed": ["A job's card on Home says what it is about -- the utility sink, the barn -- the way a check-up's card does, instead of \"Something to do\".", "One job for both cats says \"Tato and Biscuit\" on its card, on Animals and on each cat's page. It named only the first, so it looked as if the other's was missing."]}, {"version": "0.18.0", "on": "2026-10-05", "stamp": "362995ee84", "new": ["Home looks 30 days ahead, or 90, or everything: your choice at the top, and it remembers. Anything late always shows; the rest is one line that opens Jobs.", "Something broke, on Home, next to Add a job.", "On a thing's page: Something's wrong with it, a job about that thing in one tap.", "Slide a check-up left to Stop it reminding you: on Home, on Jobs and on a page's Comes round. It can be turned back on under Check-ups. Check-ups on a page slide right to Done too."], "fixed": ["Adding a thing of a kind your account did not have yet, like a pool, failed with an error about \"category_id\". It saves now.", "What kind of thing? is grouped, with what fits the building first: a pool area opens on Pool & spa.", "History on a building or a group puts the thing first and what was done under it, with dates as Oct 5 rather than 2026-10-05.", "Opening a building or a group starts on To do, not on whichever tab the last one was left on.", "Saving Rooms, What's in it or What it runs on goes back to the page you opened it from -- the barn, the coop -- not Home. Adding a thing does the same, by way of its check-ups.", "Buildings, and Rooms & things, leave out jobs about animals and vehicles. Deworming the cat showed under Buildings because the cat lives in the house.", "Waiting invites say what they let somebody do, and the date they stop working, in words.", "Adding an animal, Who lives here and Move it go back to the page you opened them from, on save or Cancel."], "gone": ["Parked for now, to get the basics right first: What it needs on a job, spares and Running low; Soonest, Quickest and Cheapest; the Costs tab; papers; the kind of job; parts of a thing; and Whose it is on a building. Nothing you saved is lost, and each comes back when it is needed."]}, {"version": "0.17.0", "on": "2026-10-05", "stamp": "e8fba74c7a", "new": ["Pools and hot tubs: the pool, its pump, filter, salt cell or chlorinator, cleaner, refill pump and filter traps, each with its own check-ups. A pool area leads with them on What's in it.", "Outdoor things: deck boards (look over them, and seal or stain), outdoor lights, a grill and a patio heater. A deck, porch or patio leads with them.", "Internet: a router or modem, and Wi-Fi hubs, so you know where each one is. The companies behind your accounts go on People and companies.", "A lift pump, for a holding tank that pumps up to a septic tank, and a leach field to walk now and then.", "Parts of a thing: from a thing's page, A part of it adds a filter cartridge, a UV lamp or a pool's pump to it, each with its own dates. Changing one cartridge does not reset the others.", "Outdoor places -- a pool area, a garden, a leach field -- can say what is in them, from What's in it or their own page. Still blank does not ask them."], "fixed": ["Save and Done today stay pinned to the bottom of a job, and the job scrolls under them. Save sat in the middle of the screen, and opening anything above it pushed it out of sight.", "\"Pool area\" says it is the area around the pool; the pool itself is a thing in it."]}, {"version": "0.16.0", "on": "2026-10-05", "stamp": "e840571a09", "new": ["Toilets, showers and bathtubs on What's in it, next to the sinks, each with a look now and then: a toilet that runs or rocks, a shower head to descale, caulk to check."], "fixed": ["Saving What's in it with nothing filled in counts as nothing in here, so an empty shed stops coming up first on \"Save, then …\".", "Setting up says what Take me in does, and has it at the top as well as the bottom. Setup stays open until it is tapped, so it was easy to stay on it for days without finding the home screen.", "An invite shows on the setup screen too, for a phone that has not finished setting up.", "The first question says it wants your own name, and that the place gets its name next.", "Join with a code, not signed in, keeps the code and goes to signing in; the invite opens after. It went the old Google Sheet way, which looks for the invite on the phone and could not find one sent from an account."]}, {"version": "0.15.0", "on": "2026-10-05", "stamp": "5ab5ba1265", "new": ["A simpler job screen: what, what it is about, when and how often; a checklist; what it needs; notes. Who has it, who you call, the kind of job and Remove are under More.", "A check-up's checklist and what it needs come round again each time, unticked, with who else it is for and who you call. They stayed behind on the finished one, so the steps had to be typed in again.", "Done it? asks what happened and what it cost, both optional: \"Pass\", or what was found. It shows in the history beside the date."], "fixed": ["Turning on a repeat for a job, like deworming the cats, failed with an error about \"responsibility\" when signed in. The job saved; the repeat did not. It saves now."], "gone": ["From the job screen: Start, time and cost estimates, safety, and \"Something is wrong with it\" as a tick. A job can still be marked as something wrong under More, and nothing already saved is lost."]}, {"version": "0.14.0", "on": "2026-10-04", "stamp": "3b481de0a1", "new": ["A building's page has A thing here, Rooms and What it runs on at the top. Until it had rooms or things, the only thing on it was Add a job; a room's page has A thing here too.", "Ceiling fans: an answer on What cools it, with dusting the blades and switching direction for the season. Ceiling fans typed in before turn into the answer the next time you open that screen.", "Rooms are back in setting up, for the buildings people live in. Sheds and barns are not asked.", "Nothing in here to track: say so on What's in it, and an empty shed comes off Still blank."], "fixed": ["Changes on a job were lost when you pressed Record it under Was it already done?, or added something to buy: the screen redrew from what was saved before. What you typed is kept and saved with it now.", "Changing how often a check-up comes round moves its next date to match, counted from when it was last done -- unless you set the date yourself.", "Things added after setting up, like a well on What does it run on?, show their check-ups to keep or untick, instead of appearing on Home unasked.", "Cards no longer slide over the menu at the bottom of the screen.", "Screens open at the top. Several, like adding an animal, opened partway down.", "Where to get it, on something a job needs, takes a place as well as a link. It used to bring up a keyboard with no space bar."]}, {"version": "0.13.0", "on": "2026-10-04", "stamp": "2df16bff36", "new": ["Bring your home in: invite somebody and say they will bring their own home. If they set it up on their own phone, after accepting they can bring it in whole, as a building on your place that is theirs, with its things, check-ups, jobs and history. They choose whether you see everything in it, or only that it is there and what it is hooked up to.", "What their home runs on: if the well or septic is already on your place, they say what their home gets from it, and a well of their own that is the same one becomes yours instead of a second one, with what they logged on it. Their own solar, holding tank and battery stay theirs.", "Someone whose home is on your place opens the app on their home, with the whole place one tap away.", "Hand a building to somebody on your place, from the building's page: the shed you built for them, say. Say whether it stays with the place or goes with them if they move on. Once it is theirs, what you see inside it is up to them.", "What somebody else paid for shows on that line: \"Pumped the tank · $350 · paid by Mom\". It is never added up per person.", "How sharing works: a page on dwellogs.com with the kinds of access, whose a building is, and how to set up family, guests, roommates and a home parked on your land. Linked from Invite somebody and wherever a building can be somebody's."], "fixed": ["An invite link opened on a phone that already had its own log said nothing about the invite. Home says so now, with Sign in."], "gone": ["The email box on your screen, unless your log is in a Google Sheet. It was for the digest, and only the Sheet sends one so far."]}, {"version": "0.12.0", "on": "2026-10-04", "stamp": "eb51df326e", "new": ["Invite somebody through your account: choose who it is for, what they can do, and the whole place or one building. Send the code by text or any app. They sign in with their own email, see what the invite offers, and accept -- arriving as the person already on your list, with what they have already done.", "Join with a code, from your screen, if you are already signed in and somebody invites you to another place."], "fixed": ["Save on a job no longer sits on the line below it.", "\"Also for\" on a job is one folded line, \"Also for other things…\", instead of a tick box for everything on the place. It opens by itself when something is ticked, or when you came from an animal's page and there are only a few others.", "Date boxes on an iPhone, like \"Good until\" on an invite, ran past the right edge of the screen. They fit now, with the date on the left like every other box."], "gone": ["\"They can see costs\" on an invite, until costs can actually be kept from somebody."]}, {"version": "0.11.0", "on": "2026-10-04", "stamp": "2b14b52e51", "new": ["The first screen leads with signing in: your email, then the code from the email. New or returning, it is the same step. Using it on this phone only is still there, with what that means said plainly.", "Signed in with no signal, everything is still there to look at and change. Changes wait on the phone and go up as soon as the signal comes back, even a bar of it. Home says how many are waiting.", "Put it on your home screen: the steps for your phone, on Home and on your screen, including Chrome on an iPhone and Android. On Android, an Install button when the phone offers one."], "fixed": ["Sign out goes back to the first screen, to sign in again or start on this phone -- not to an old copy of your log.", "Once your log is in your account, the phone's own copy is cleared, so nothing is left behind to get out of step.", "Two people changing different parts of the same job no longer undo each other: only what you changed is sent.", "A save made on a flicker of signal no longer hangs the screen. After a few seconds it waits on the phone and goes up later.", "Setting up after signing in asks your name, and uses it."]}, {"version": "0.10.1", "on": "2026-10-04", "stamp": "18393c5420", "fixed": ["Signing in asks for one thing: the code in the email. It works whichever app or browser you have DwelLogs open in. The email says it comes from DwelLogs now."]}, {"version": "0.10.0", "on": "2026-10-04", "stamp": "16489b2902", "new": ["Done from the card: slide a job or a check-up right and tap Done, on Home, on Jobs, and on a building's or an animal's page. It is marked done today and you stay where you were. A check-up answered with a number opens the reading instead.", "Done today sits at the top of a job, next to Save. To say it was done on another day, the date is still at the bottom."]}, {"version": "0.9.0", "on": "2026-10-04", "stamp": "5d421ec0d8", "new": ["Remove a job: slide it left on Jobs and tap Remove, or open it and use Remove this job at the bottom. What was already logged as done stays in the history.", "A new job can be saved as already done: say the day you did it, and it goes in the history on that day."], "fixed": ["Jobs has Add a job at the top.", "A job with no name says \"No name yet\" on Jobs, so the empty ones left behind by older versions are easy to find and remove.", "Tapping into a number that is already filled in selects it, so what you type replaces it. A phone's number pad has no space bar to move the cursor with.", "Signed in, Bring back on a removed place brings it back. It said it had and changed nothing.", "Add is a row of choices, with A thing among them. The form for a thing opens on its own and starts with nothing picked -- it used to sit open under the choices, already set to a well.", "Mark it done takes you back to where you opened the job, like Save.", "The top of the screen stays clear of the phone's clock when you scroll. The fix in 0.8.0 did not take on iPhone.", "On a building's or a group's page, To do, History and Costs are the same small buttons as on Jobs, and the search box no longer touches what is above and below it."]}, {"version": "0.8.0", "on": "2026-10-03", "stamp": "c146288743", "new": ["One job can cover several things: from Tato's page, add \"Deworm the cats\" and tick Biscuit under Also for. It is one job, ticked once, and it shows on both cats' pages.", "Steps can be changed: tap Change on a step to fix its words or where it happens, without losing its tick.", "Jobs, where Log was: every job and check-up, done ones included. To do, Done, Ideas or All at the top; filter by kind, when (late, the next 30 days, the last 30 days, or between two dates), what it is about, who has it and where it came from; sort by when it is due, when it was done, when it was added or what it costs. It remembers how you left it."], "fixed": ["Signing in from the app on your home screen: press and hold Sign in in the email, choose Copy Link, and paste it into the app. Tapping the link opens your phone's browser, which keeps its own copy of everything and may not be where your log is.", "Signed in with nothing in the account yet, the first screen now says so, and says where your log is if it is on this phone in another app or browser. Sign out is right there.", "Save on a job takes you back to where you opened it from, and says Saved. Back does the same.", "A job opens at the top of the screen, not wherever the list you tapped it from was scrolled to.", "A new job is only saved when you press Save, and it needs a name. Leaving one half-written no longer leaves a nameless \"A job\" behind.", "Added from an animal's page, a job's \"What is it about?\" lists your animals, not every building and thing.", "Mark it done sits under the date, not on top of it, and the top of the screen no longer slides under the phone's clock.", "\"Who you call\" starts at \"Nobody, we do it ourselves\".", "Home is shorter. The grid of twelve tiles at the bottom is gone: adding a job, a reading, a paper, an animal, a vehicle or another place is on the Add tab, and People and companies and Invite somebody are on your screen. What has changed and Tell us something are two links at the foot.", "Still blank shows the three that matter most, with the rest a tap away. Outdoor places like the yard or a fence line are no longer listed for what they run on, and the tiles say Check-ups and Invite somebody."], "gone": ["Connect a Google Sheet, for anyone not already using one. Sign in keeps your log in your account; Take a copy is still there for a download."]}, {"version": "0.7.0", "on": "2026-10-01", "stamp": "64a58906d1", "new": ["Sign in with your email: tap Sign in, and the link that arrives opens the app signed in. No password. Your log is then kept in your account, so a new phone, or losing this one, does not lose it.", "The first time you sign in on a phone that has a log, it asks whether to put that log in your account. It goes in whole or not at all, and the phone's copy stays as it is.", "Signed in with no signal, a change is saved on the phone and goes up when the signal is back. Your person screen says how many are waiting."]}, {"version": "0.6.1", "on": "2026-10-01", "stamp": "c5fa93664e", "fixed": ["Where it is: typing your state ticks the climate it usually has again, when nothing is ticked yet. Since setup moved it to Still blank, it only said the guess and ticked nothing."], "gone": ["\"Nothing else, unless you say so\" on Invite somebody. What an invite lets them do is the list on the invite itself."]}, {"version": "0.6.0", "on": "2026-10-01", "stamp": "e1f462e8c0", "new": ["On the screens that are asked one building at a time, \"Answering for\" at the top says which building you're on, and switching saves first. \"Save, then …\" takes you to the next building still waiting.", "Setting up works one building at a time, for every building — rooms, what's in it and who lives there aren't just about the main house any more. If you close the app partway, setup picks up where you left it.", "Check-ups: one screen for each thing the app keeps an eye on. Untick it, change how often, say when it was last done, and change when it's next due — say the tankless flush is due this week even though it's yearly.", "Adding a job asks what it is, what it's about and when — Today, This week, Next week, Someday or a date — and whether something's wrong. Then Save. Steps, repeats, who does it, what to buy, time and cost, and notes are headings you open when you want them.", "Adding a building: \"Another kind…\" with the buildings lists only the building kinds not already shown. \"Somewhere else…\" with the outside ones is for anything that isn't on the list — the pond, the woodlot — and gets asked what land is asked.", "Adding an animal: \"Something else…\" for one that isn't listed, your own words for what you get from it and what it helps with, and \"a service or assistance animal\" under Kept as.", "Icons are drawn in the orange from the DwelLogs heartbeat.", "Setting up is quicker: the buildings, what they run on and what's in them, then you're in. Rooms, who lives where, animals, where it is and the house's papers are waiting on Home under Still blank.", "The pulse line draws what it's about, like the one on dwellogs.com: your buildings on Home, your animals on the Animals page, and a building's or animal's own outline on its page — each followed by a heartbeat as tall as how soon it needs you. Every animal type has its own icon too."], "fixed": ["Lists of tick boxes take about a third less room, so the long questions scroll less.", "Answering \"Same one, or its own?\" after \"Save, then …\" took you back to the list instead of on to the next building. It goes on to the building you picked.", "The rooms screen asked twice for something not on its lists. One box now — a room or space we did not list — and what you type becomes a room or space you can file things against.", "Who lives here: an empty box showed a grey 0 that looked like an answer. It says \"how many\" now, and there's a \"Nobody lives here\" tick. The names on the log are labelled as everyone at the place, not the building you're on.", "Adding a name that was already on the log made a second person with the same name, who then showed up twice under \"Whose is it?\". It uses the one already there."]}, {"version": "0.5.0", "on": "2026-10-01", "stamp": "0b2013df62", "new": ["A ZIP code for each place, if you'd like to give one — it's for the weather where the place actually is. Call the place whatever you call it.", "Where it is — region, ZIP, climate, freezing and what can happen there — can be changed after setup, from your name at the top of Home.", "\"An attic fan\" is one of the answers for what cools a building, with its own check-up."], "fixed": ["After an update, the note saying what changed sat near the bottom of Home, where it was easy to miss. It's at the top now, and names the version.", "Opening the app right after an update showed a blank screen for a few seconds. It opens straight away now, and when there's a new version it says \"Getting the new version…\" while it comes down.", "If the site had a problem, the app could open to an error page instead of what's on your phone. It opens from your phone.", "What you type into \"Another kind of…?\" is kept as part of that building's answer, and shows on What feeds it. It used to disappear.", "A building where nobody lives can say so. Putting 0 kept it on the still-blank list.", "Adding a building no longer jumps you to the top each time you pick a kind. Pick it, name it, add it, top to bottom. \"Something else…\" lists only the kinds that aren't already on the screen."], "gone": ["The \"Why we ask\" links under most screens. They answered questions nobody had asked.", "Asking for your town during setup. Nothing used it."]}, {"version": "0.4.0", "on": "2026-10-01", "stamp": "8dd02b36e4", "new": ["A garden, pasture or pool area can say where its water comes from — a spigot, a well, or irrigation. Each irrigation system is its own thing, and one that doesn't connect to another gets its own name.", "Remove a place you own, from your name at the top of Home. Nothing is deleted — it waits under Removed and Bring back puts it back as it was.", "Each kind of building is asked what fits it first. A coop or pump house is asked about water, power and heat; waste, cooling and hot water are one tap away if it has them.", "What's in it leads with what belongs there: filters and tanks in a pump house, a fire extinguisher and its animals in a coop. Everything else is under Show the rest.", "A building on a well, spring or hauled water is offered a whole-house filter and a softener.", "Start over has moved from the Add tab to your name at the top of Home."], "fixed": ["What feeds it said \"nothing wired up yet\" for buildings you had already answered. It shows what each one runs on.", "Tapping a building on What feeds it opened the building's page. It opens what that building runs on, and saving brings you back to the list.", "Back on a screen you reopened after setup, like a building's rooms or what it runs on, dropped you into the first-time setup. It doesn't now.", "Pressing Back enough times could land you on \"Start with your name\" and, from there, set up your place a second time with a second you. Back stops at Home now, and setting up another place is always done as you.", "On a phone, the date and \"Who did it\" boxes on When was it last done ran into each other. They sit one above the other now.", "A garden counted questions it was never asked, so it read \"1 of 6\" and stayed on the still-blank list for good. It counts only what it's asked.", "Adding an animal never asked where it lives, so it ended up in no building. It asks now, and starts with a likely answer — the house for a cat or a dog, the coop for chickens.", "Leaving a place someone shared with you didn't take it off your list. It does now.", "Counting something in What's in it could save nothing at all if that kind of thing was added to the app after you set up — a fire extinguisher in a coop, for one. It saves now."]}, {"version": "0.3.0", "on": "2026-09-30", "stamp": "e7bb5d675b", "new": ["This page: what has changed, what is known to be wrong, and what is coming next. It's in the app and on the site.", "Something not right, or missing? There's an address in the app and on the site, and a report from the app says which build you're on.", "The app asks your browser to hold on to your log, and says plainly what that browser will do with it.", "A paper is a link to wherever it already lives — the maker's site, your own Drive, your email."], "fixed": ["Papers on a thing showed as \"Paper\" with no name or date, and tapping one opened a blank form. They show their name and when they run out, and open where they live.", "Right after an update, the app could act up for one launch. It doesn't now."], "gone": ["Adding a photo. It comes back with accounts, so your pictures have somewhere proper to live."]}, {"on": "2026-09-29", "stamp": "3f44b6d28d", "new": ["Home is tiles: Buildings, Rooms and things, Animals, Vehicles and What feeds it. Open one to see only its jobs.", "Rooms and What's in it work per building, with a switcher, so the barn's answers stay with the barn.", "A job can say what it's about: a building, a room, a thing, an animal or a vehicle.", "Say when something was last done, even before you had the app. The next one counts from then, not from today.", "A catch-up list after setup, and again whenever you add a thing.", "Marking something done takes a date — say Friday, even if you're only logging it on Sunday.", "For past work, say who did it: not sure, you, whoever lived here before, or a company.", "A job can list what to buy, with a part number and a link, who you call for it, and a step somewhere else — the hardware shop, the county office.", "People and companies in one list — the septic company, the vet. Phone, what they look after, every visit, what it cost, and a note on whether you'd have them back.", "Rename a person."], "fixed": ["Something with no due date showed as a day late. It shows as no date.", "Answers typed for one building showed up on another.", "What's in it opened the wrong screen and didn't save.", "Attaching something to a job lost anything you'd typed and not saved yet.", "On a home-screen install, the top of each screen sat under the clock."]}, {"on": "2026-09-28", "stamp": "4aac0cf35a", "new": ["What things cost, and a copy of everything, from wherever you're looking."], "fixed": ["A typo in a number field says so, instead of quietly losing it."]}]};
 /* The build, taken from the script tag the page actually loaded rather than
    from a constant somebody has to remember to bump. Nothing showed it
    anywhere, so a tester saying "it says 1 day late" could not be placed
@@ -5585,6 +5627,159 @@ function stepsOf(id) {
    words and the link can never point at different things. */
 const JOB_AT = [['asset','asset_id'], ['vehicle','vehicle_id'], ['animal','animal_id'],
                 ['area','area_id'], ['structure','structure_id']];
+/* ---- For: who, what or where a task is for (v0.20.0, decided 5 Oct) --------
+   "Setting up the full property before adding tasks might not be viable. I
+   would want to be able to add a task for a thing and be able to add where if
+   it's not there." One box: type, and it finds what exists -- a thing, an
+   animal, a building, a room or a space -- or adds it on the spot with three
+   answers: its name, what it is, and where. The first one chosen is the job's
+   own subject; the rest are job_also, which For each ticks one by one.
+   Held in FOR until Save, so nothing about the job is written early; a thing
+   added here IS written at once, because it exists whether or not the job is
+   ever saved. */
+let FOR = null;   // { job, items:[[kind, id]], adding, newThings }
+const FOR_KINDS = [['asset','thing'], ['animal','animal'], ['vehicle','vehicle'],
+                   ['structure','building'], ['area','room or space']];
+function forInit(j) {
+  if (FOR && FOR.job === j.id) return;
+  const items = [];
+  const at = JOB_AT.find(([, f]) => j[f]); if (at) items.push([at[0], j[at[1]]]);
+  alsoOf(j.id).forEach(a => { const k = JOB_AT.find(([, f]) => a[f]); if (k) items.push([k[0], a[k[1]]]); });
+  FOR = { job:j.id, items, adding:null, newThings:[] };
+}
+const forName = (k, i) => subjName(k, i) || ((subjRow(k, i) || {}).name) || '';
+function forWhere(r) {
+  const T = byId('structure'), R = byId('area');
+  const st = T[r.structure_id] || (R[r.area_id] && T[R[r.area_id].structure_id]) || T[(R[r.parent_area_id] || {}).structure_id];
+  return st && st.id !== r.id ? st.name : '';
+}
+function forFind(q, kinds) {
+  q = String(q || '').trim().toLowerCase(); if (!q) return [];
+  return kinds.flatMap(([k, word]) => placeRows(k)
+    .filter(r => String(r.name || subjName(k, r.id) || '').toLowerCase().includes(q)
+      && !FOR.items.some(([kk, ii]) => kk === k && ii === r.id))
+    .map(r => ({ k, id:r.id, name:r.name || subjName(k, r.id), sub:[word, forWhere(r)].filter(Boolean).join(' · ') })))
+    .slice(0, 8);
+}
+function forBox() {
+  const chips = FOR.items.map(([k, i], n) => `<span class="forchip">${esc(forName(k, i))}<button type="button"
+      aria-label="Take off ${esc(forName(k, i))}" onclick="forDrop(${n})">&times;</button></span>`).join('');
+  return `<div class="forchips">${chips}</div>` + (FOR.adding ? forAddForm()
+    : `<input id="jb-for" placeholder="${FOR.items.length ? 'and something else?' : 'a thing, an animal or a place'}"
+        autocomplete="off" oninput="forSuggest(this.value)"><div id="jb-forsug" class="forsug"></div>`);
+}
+function forRedraw() { const b = $('#jb-forbox'); if (b) b.innerHTML = forBox(); }
+function forSuggest(q) {
+  const box = $('#jb-forsug'); if (!box) return;
+  const t = String(q || '').trim();
+  box.innerHTML = !t ? '' : forFind(t, FOR_KINDS).map(c => `<button type="button" onclick="forPick('${c.k}','${c.id}')">
+      <b>${esc(c.name)}</b> <span class="meta">${esc(c.sub)}</span></button>`).join('')
+    + `<button type="button" class="fornew" onclick="forStartAdd()">+ Add &ldquo;${esc(t)}&rdquo; as something new</button>`;
+}
+function forPick(k, id) { FOR.items.push([k, id]); forRedraw(); }
+function forDrop(n) { FOR.items.splice(n, 1); forRedraw(); }
+function forStartAdd() {
+  FOR.adding = { name:(($('#jb-for') || {}).value || '').trim(), as:'', type:'', where:null };
+  forRedraw(); const n = $('#fa-n'); if (n && !n.value) n.focus();
+}
+function forAddForm() {
+  const a = FOR.adding;
+  return `<div class="card" style="margin:.2rem 0 .4rem">
+    <label for="fa-n" style="margin-top:0">Call it</label>
+    <input id="fa-n" value="${esc(a.name)}" oninput="FOR.adding.name=this.value">
+    <label>It is</label>
+    <div class="chips">${[['thing','A thing'], ['animal','An animal'], ['place','A place']].map(([v, l]) =>
+      `<button type="button" aria-pressed="${a.as === v}" onclick="FOR.adding.as='${v}';forRedraw()">${l}</button>`).join('')}</div>
+    ${a.as === 'animal' ? `<label>What kind?</label>
+      <div class="chips">${ANIMAL_TYPES.map(t => `<button type="button" aria-pressed="${a.type === t}"
+        onclick="FOR.adding.type='${t}';forRedraw()">${esc(typeLabel(t))}</button>`).join('')}</div>` : ''}
+    ${a.as ? `<label for="fa-w">${a.as === 'place' ? 'Inside somewhere?' : 'Where is it?'}
+        <span style="font-weight:400;color:var(--muted)">&mdash; optional</span></label>
+      ${a.where ? `<div class="forchips"><span class="forchip">${esc(forName(a.where[0], a.where[1]))}<button type="button"
+          aria-label="Take it off" onclick="FOR.adding.where=null;forRedraw()">&times;</button></span></div>`
+        : `<input id="fa-w" placeholder="a building, a room, the yard" autocomplete="off" oninput="forWhereSuggest(this.value)">
+           <div id="fa-wsug" class="forsug"></div>`}` : ''}
+    <div class="actions"><button class="add" onclick="forCreate()">Add it</button>
+      <button class="quiet" onclick="FOR.adding=null;forRedraw()">Cancel</button></div></div>`;
+}
+function forWhereSuggest(q) {
+  const box = $('#fa-wsug'); if (!box) return;
+  const t = String(q || '').trim();
+  box.innerHTML = !t ? '' : forFind(t, [['structure','building'], ['area','room or space']])
+      .map(c => `<button type="button" onclick="FOR.adding.where=['${c.k}','${c.id}'];forRedraw()">
+        <b>${esc(c.name)}</b> <span class="meta">${esc(c.sub)}</span></button>`).join('')
+    + `<button type="button" class="fornew" onclick="forNewWhere()">+ Add &ldquo;${esc(t)}&rdquo; as a new place</button>`;
+}
+/* A place with no kind of its own -- "the back fence", "Mom's corner" -- is a
+   building of kind other, the same as "Somewhere else…" in setup. */
+const newPlaceRec = name => ({ id:uid(), property_id:prop.id, name, kind:'other', kind_other:name, visibility:'shared' });
+async function forNewWhere() {
+  const name = (($('#fa-w') || {}).value || '').trim(); if (!name) return;
+  const st = newPlaceRec(name);
+  try { await DwelLogs.write([{ op:'upsert', table:'structure', record:st }]); }
+  catch (e) { return say('Could not save: ' + e.message); }
+  FOR.adding.where = ['structure', st.id]; forRedraw();
+}
+/* The longest kind the catalogue knows inside the name: "the big pool filter"
+   is a Pool filter, not a Pool. */
+function knownKind(name) {
+  const n = String(name || '').toLowerCase();
+  return Object.values(STARTER).flat().map(x => x[0]).filter(t => n.includes(t.toLowerCase()))
+    .sort((a, b) => b.length - a.length)[0] || '';
+}
+async function forCreate() {
+  const a = FOR.adding, name = String(a.name || '').trim();
+  if (!name) { $('#fa-n') && $('#fa-n').classList.add('missing'); return say('Give it a name.'); }
+  if (!a.as) return say('Say if it is a thing, an animal or a place.');
+  if (a.as === 'animal' && !a.type) return say('Say what kind of animal.');
+  const [wk, wid] = a.where || [];
+  const R = byId('area');
+  const stId = wk === 'structure' ? wid : wk === 'area' ? (R[wid] || {}).structure_id || '' : '';
+  const areaId = wk === 'area' ? wid : '';
+  let writes, k, id;
+  if (a.as === 'thing') {
+    k = 'asset';
+    const kind = knownKind(name);
+    if (kind) {
+      const t = thingWrites(kind, { structId:stId, areaId, name });
+      writes = t.writes; id = t.id;
+      if (writes.some(w => w.table === 'schedule')) FOR.newThings.push(id);
+    } else {
+      id = uid();
+      writes = [{ op:'upsert', table:'asset', record:{ id, property_id:prop.id, name, status:'active',
+        structure_id:stId, area_id:areaId } }];
+    }
+  } else if (a.as === 'animal') {
+    k = 'animal'; id = uid();
+    writes = [{ op:'upsert', table:'animal', record:{ id, property_id:prop.id, name, type:a.type, role:'pet',
+      structure_id:stId, area_id:areaId } }];
+  } else if (wk) {
+    k = 'area'; id = uid();
+    writes = [{ op:'upsert', table:'area', record:{ id, structure_id:stId, parent_area_id:areaId, name } }];
+  } else {
+    const st = newPlaceRec(name); k = 'structure'; id = st.id;
+    writes = [{ op:'upsert', table:'structure', record:st }];
+  }
+  try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
+  FOR.items.push([k, id]); FOR.adding = null; forRedraw();
+  say(name + ' added' + (wk ? ', in ' + forName(wk, wid) : '') + '.');
+}
+/* What Save writes for For: the first one is the job's own subject, the rest
+   are job_also rows -- added, or archived when taken off. */
+function forApply(rec) {
+  JOB_AT.forEach(([, f]) => { rec[f] = ''; });
+  const first = FOR.items[0];
+  if (first) rec[(JOB_AT.find(x => x[0] === first[0]) || [])[1]] = first[1];
+}
+function forAlsoWrites(id) {
+  const had = alsoOf(id), want = FOR.items.slice(1), out = [];
+  const fieldOf = k => (JOB_AT.find(x => x[0] === k) || [])[1];
+  want.forEach(([k, i]) => { const f = fieldOf(k);
+    if (f && !had.some(a => a[f] === i)) out.push({ op:'upsert', table:'job_also', record:{ id:uid(), job_id:id, [f]:i } }); });
+  had.forEach(a => { if (!want.some(([k, i]) => a[fieldOf(k)] === i)) out.push({ op:'archive', table:'job_also', id:a.id }); });
+  return out;
+}
+
 /* A line for each one a job covers (decided 5 Oct): grooming five animals and
    getting to three is "3 of 5", not done and not undone. The job's own subject
    first (its date on job.first_done_on), then each job_also row (done_on). A
@@ -5978,7 +6173,7 @@ function subject(kind, id, tab) {
     if (j.blocked_on_person_id) out.push('waiting on '
       + (((DB.person || []).find(p => p.id === j.blocked_on_person_id)) || {}).name || 'somebody');
     if (j.depends_on_id) { const d = jobById(j.depends_on_id);
-      if (d && openJob(d)) out.push('after ' + (d.title || 'another job')); }
+      if (d && openJob(d)) out.push('after ' + (d.title || 'another task')); }
     (DB.job_supply || []).filter(x => x.job_id === j.id).forEach(x => {
       const sp = (DB.supply || []).find(y => y.id === x.supply_id); if (!sp) return;
       const have = Number(sp.on_hand), need = Number(x.how_many) || 1;
@@ -6063,7 +6258,7 @@ function subject(kind, id, tab) {
       .sort((a3, b3) => String(b3.done_on).localeCompare(String(a3.done_on)))
       .map(c => `<div class="row">
         <span>${esc(c.what || 'Done')}${c.job_id
-          ? ` <button class="skiplink" onclick="drawJob('${c.job_id}')">the job</button>` : ''}</span>
+          ? ` <button class="skiplink" onclick="drawJob('${c.job_id}')">the task</button>` : ''}</span>
         <span class="meta">${[c.cost ? money(c.cost) : 'no figure', paidBy(c),
           agoWords(daysTo(c.done_on))].filter(Boolean).map(esc).join(' · ')}</span>
       </div>`).join('')}</div>`;
@@ -6103,7 +6298,7 @@ function subject(kind, id, tab) {
         + (shown.map(jobCard).join('') || `<p class="hint">Nothing matches.</p>`)
         : `<p class="hint">Nothing open here.</p>`,
       `<div class="actions" style="margin-top:.6rem">
-        <button class="add" onclick="addJobHere('${kind}','${id}')">Add a job here</button></div>`);
+        <button class="add" onclick="addJobHere('${kind}','${id}')">Add a task here</button></div>`);
     /* What a building is, from its own page. Until it had rooms or things the
        house's page was "Needs doing" and nothing else, so there was no way in
        from there to say what is in it (Randi, 5 Oct). */
@@ -6547,9 +6742,16 @@ function drawJob(id) {
   const sup = i2 => (DB.supply || []).find(x => x.id === i2) || {};
   const avail = (DB.supply || []).filter(x => x.status !== 'archived' && !needed.some(m => m.supply_id === x.id));
   const caller = ((DB.person || []).find(p => p.id === j.provider_id) || {}).name;
+  forInit(j);
+  /* Last done, when it repeats and nothing has been recorded yet: the next one
+     counts from it (v0.20.0 -- it was "Was it already done?" under More). */
+  const askLast = rep && !(sched && (DB.completion || []).some(c => c.schedule_id === sched.id));
   app.innerHTML = `<button class="back" onclick="leaveJob()">&lsaquo; Back</button>
-    <p class="step">${sched ? 'Check-up' : esc((JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'Job')}</p>
-    <h1>${esc(j.title || 'A new job')}</h1>
+    ${/* A new one says so and nothing else: the fields below are what it is
+         (v0.20.0 -- "Something to do / A new job / The ranch" said it three
+         times before the first box). */ ''}
+    ${isNew ? `<h1>${j.kind === 'fault' ? 'Something broke' : 'New task'}</h1>` : `<p class="step">${sched ? 'Check-up' : 'Task'}</p>
+    <h1>${esc(j.title || 'A task')}</h1>
     <p class="sub">${(() => {
       /* What it is about is a place you can go, not a word. */
       const at = JOB_AT.map(([k, f]) => [k, j[f]]).find(([, v]) => v);
@@ -6557,9 +6759,13 @@ function drawJob(id) {
       return at && subjRow(at[0], at[1])
         ? `<button class="skiplink" onclick="subject('${at[0]}','${at[1]}')">${esc(nm)}</button>`
         : esc(nm);
-    })()}${claimer ? ' &middot; ' + esc(claimer === me.name ? 'you have it' : claimer + ' has it') : ''}</p>
+    })()}${claimer ? ' &middot; ' + esc(claimer === me.name ? 'you have it' : claimer + ' has it') : ''}</p>`}
 
-    ${P.name}${P.about}
+    <label for="jb-t">What needs doing?</label>
+    <input id="jb-t" value="${esc(j.title || '')}" placeholder="clean the pool filter">
+    <label for="jb-for">For <span style="font-weight:400;color:var(--muted)">&mdash; optional</span></label>
+    <div id="jb-forbox">${forBox()}</div>
+    ${P.notes}
     <label>When</label>
     <input type="hidden" id="jb-slot" value="${esc(slot)}">
     <div class="chips" style="margin-bottom:.4rem">${JOB_SLOTS.map(([v, l]) => `<button type="button"
@@ -6568,6 +6774,8 @@ function drawJob(id) {
         this.setAttribute('aria-pressed',String(!w.hidden));if(!w.hidden)$('#jb-d').focus()">A date…</button></div>
     <div id="jb-dwrap"${j.due_on ? '' : ' hidden'}>${P.due}</div>
     ${P.repeat}
+    ${askLast ? `<label for="jb-last">Last done <span style="font-weight:400;color:var(--muted)">&mdash; if you know</span></label>
+      <input id="jb-last" type="date" max="${esc(today())}">` : ''}
 
     ${(() => {
       /* One line for each animal or thing the job covers, ticked as each is done
@@ -6582,7 +6790,7 @@ function drawJob(id) {
         </label></div>`).join('')}</div>`;
     })()}
 
-    ${P.steps}
+    ${steps.length ? P.steps : ''}
 
     ${PARKED.needs ? '' : `
     <h2>What it needs</h2>
@@ -6612,8 +6820,6 @@ function drawJob(id) {
       </div></div></details>
 `}
 
-    ${P.notes}
-
     ${isNew ? `<h2>Already done?</h2>
       <p class="hint" style="margin-top:-.2rem">For something you did before writing it down &mdash;
         say when, and it goes in the history on that day.</p>
@@ -6642,6 +6848,11 @@ function drawJob(id) {
       </details>`).join('')}</div>`; })()}
 
     <details class="sec" style="margin-top:1.6rem"><summary>More</summary><div class="secb">
+      ${steps.length ? '' : `<div>${P.steps.replace('<h2>Checklist', '<h2 style="margin-top:.4rem">Checklist')}</div>`}
+      ${isNew ? '' : `<h2>Later</h2>
+        <label for="jb-later" style="margin-top:0">Move it to</label>
+        <input id="jb-later" type="date" min="${esc(today())}">
+        <div class="actions"><button class="ghost" onclick="laterJob('${id}')">Move it</button></div>`}
       <h2 style="margin-top:.4rem">Who has it</h2>
       ${(() => {
         const mine = j.claimed_by_id === me.id, since = sinceWords(j.claimed_at);
@@ -6670,17 +6881,7 @@ function drawJob(id) {
       </div>
       ${caller ? `<div class="actions"><button class="ghost" onclick="drawProvider('${j.provider_id}')">Open ${esc(caller)}</button></div>` : ''}
       ${PARKED.kind ? '' : P.kind}
-      ${(() => {
-        /* Only where it is true: a repeating check-up never recorded as done. */
-        const sc = sched;
-        if (!sc || !sc.every_n || sc.kind === 'once') return '';
-        if ((DB.completion || []).some(c => c.schedule_id === sc.id)) return '';
-        return `<h2>Was it already done?</h2>
-          <p class="hint" style="margin:-.2rem 0 .7rem">If it was seen to before you started
-            keeping track, say when, and the next one counts from then.</p>
-          ${lastDoneBox(sc.id, 'job', id)}`;
-      })()}
-      ${isDraft(id) ? '' : `<h2>Remove this job</h2>
+      ${isDraft(id) ? '' : `<h2>Remove this task</h2>
         <p class="hint" style="margin-top:0">It comes off every list, with its checklist. What was
           already logged as done stays in the history.</p>
         <div class="actions"><button class="ghost" onclick="removeJob('${id}')">Remove it</button></div>`}
@@ -6764,7 +6965,7 @@ function jobCardRead(r) {
   const who = ((DB.person || []).find(p => p.id === c.by_person_id) || {}).name;
   const steps = (DB.step || []).filter(x => x.job_id === j.id)
     .sort((a, b) => (+a.position || 0) - (+b.position || 0));
-  const kind = (JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'Job';
+  const kind = (JOB_KIND.find(k => k[0] === j.kind) || [])[1] || 'Task';
   const row = (label, val) => val ? `<p class="meta"><b>${esc(label)}</b> ${esc(val)}</p>` : '';
   return `<p class="step" style="margin-top:.6rem">${esc(kind)}</p>
     <p class="title">${esc(j.title || '')}</p>
@@ -6850,7 +7051,7 @@ function jobFields(j, live, id, parts) {
     <select id="jb-ab" onchange="setJobAbout('${id}', this.value)">${aboutOptions(j)}</select>
     ${alsoBox(j)}` : ''}`,
     kind: `
-    <label for="jb-k">What kind of job is this?</label>
+    <label for="jb-k">What kind of task is this?</label>
     <select id="jb-k" onchange="${kindGo}">${optList(kind, JOB_KIND.map(k => [k[0], k[1]]))}</select>
     <p class="hint">${esc((JOB_KIND.find(k => k[0] === kind) || [])[2] || '')}</p>`,
     notes: `
@@ -6902,10 +7103,10 @@ function jobFields(j, live, id, parts) {
     <label for="jb-d">Due</label>
     <input id="jb-d" type="date" value="${esc(j.due_on || '')}">`,
     repeat: `
-    <label for="jb-r">Does it come round again?</label>
+    <label for="jb-r">Repeats</label>
     <select id="jb-r" onchange="${repGo}">
-      <option value=""${!rep ? ' selected' : ''}>No &mdash; just this once</option>
-      <option value="yes"${rep ? ' selected' : ''}>Yes, on a repeat</option>
+      <option value=""${!rep ? ' selected' : ''}>Once</option>
+      <option value="yes"${rep ? ' selected' : ''}>Every&hellip;</option>
     </select>
     ${rep ? `<div class="counts" style="grid-template-columns:1fr 2fr">
       <div class="count"><span>Every</span>
@@ -6932,7 +7133,7 @@ function readJobFields() {
     prerequisites: v('#jb-p'), safety: v('#jb-sf') || 'none',
     rep: ($('#jb-r') && $('#jb-r').value === 'yes') ? 'yes' : '',
     every_n: num(v('#jb-en')) || 6, every_unit: v('#jb-eu') || 'month',
-    answer: v('#jb-ans') || 'tick' };
+    answer: v('#jb-ans') || 'tick', last: v('#jb-last') };
   if (out.kind === 'fault') Object.assign(out, { state: v('#jb-st') || 'degraded',
     workaround: v('#jb-wa'), reported_on: v('#jb-ro'), reply: v('#jb-rp') });
   if (out.kind === 'improvement') Object.assign(out, { now: v('#jb-now'), want: v('#jb-want') });
@@ -7305,18 +7506,38 @@ async function saveJob(id, doneOn, stay) {
     reported_on:f.reported_on, reply:f.reply });
   if (f.kind === 'improvement') Object.assign(rec, { now:f.now, want:f.want });
 
+  const usingFor = FOR && FOR.job === id;
+  if (usingFor) forApply(rec);
   const writes = [{ op:'upsert', table:'job', record:rec }];
 
   writes.unshift(...repeatWrites(j, f, rec));
-  writes.push(...alsoWrites(id, rec));
+  writes.push(...(usingFor ? forAlsoWrites(id) : alsoWrites(id, rec)));
   try { await DwelLogs.write(writes); } catch (e) { return say('Could not save: ' + e.message); }
   draft.rep = undefined;
+  const fresh = usingFor ? FOR.newThings.slice() : [];
   await reload();
   if (doneOn) return finishJob(id, doneOn);
   if (stay) return true;
   // Back to wherever it was opened from. It used to stay put, and Save looked
-  // like it had done nothing (2 Oct).
+  // like it had done nothing (2 Oct). Something new the catalogue knew -- a
+  // pool filter added from the For box -- shows its check-ups first, to keep
+  // or untick, then goes back there too.
+  if (fresh.length) {
+    const back = JOB_BACK || (() => show('home'));
+    JOB_OPEN = JOB_BACK = JOB_ONLY = DRAFT_JOB = NEW_JOB = EDIT_STEP = null; FOR = null;
+    CATCH_BACK = back; drawCatchUp(fresh);
+    return say('Saved. These come with what you added — untick any you would rather not hear about.');
+  }
   leaveJob('Saved.');
+}
+/* Later, from More: a new date, and the job stays open (decided 5 Oct). */
+async function laterJob(id) {
+  const d = asDay(($('#jb-later') || {}).value);
+  if (!d) return say('Pick the day to move it to.');
+  const due = $('#jb-d'); if (due) due.value = d;
+  const slot = $('#jb-slot'); if (slot) slot.value = '';
+  if (!(await saveJob(id, null, true))) return;
+  leaveJob('Moved to ' + niceDate(d) + '.');
 }
 /* A repeat is a RULE, and the rule is a schedule row - the job is one
    occurrence of it. Turning the repeat on here makes the rule if there is
@@ -7327,8 +7548,10 @@ function repeatWrites(j, f, rec) {
   const out = [];
   const sc = (DB.schedule || []).find(x => x.id === j.schedule_id);
   if (f.rep === 'yes') {
-    const rule = { id: (sc || {}).id || uid(), asset_id:j.asset_id || '',
-      structure_id:j.structure_id || '', area_id:j.area_id || '', animal_id:j.animal_id || '',
+    // What it is about comes from the record being saved: For may have changed it.
+    const rule = { id: (sc || {}).id || uid(), asset_id:rec.asset_id || '',
+      structure_id:rec.structure_id || '', area_id:rec.area_id || '', animal_id:rec.animal_id || '',
+      vehicle_id:rec.vehicle_id || '',
       title: rec.title, kind: f.answer === 'reading' ? 'reading' : 'interval',
       every_n: f.every_n, every_unit: f.every_unit,
       /* Same rule as the setup path: a repeat is a cadence, not a start date.
@@ -7350,7 +7573,14 @@ function repeatWrites(j, f, rec) {
     if (changed && last && (rec.due_on || '') === (sc.next_due_on || '')) {
       rule.next_due_on = rec.due_on = rollFrom(last, f.every_n, f.every_unit);
     }
+    /* Last done, said on the job screen: the next one counts from it, and it
+       goes in the history as done by us (v0.20.0). */
+    const lastSaid = asDay(f.last);
+    if (lastSaid && lastSaid <= today()) rule.next_due_on = rec.due_on = rollFrom(lastSaid, f.every_n, f.every_unit);
     out.push({ op:'upsert', table:'schedule', record:rule });
+    if (lastSaid && lastSaid <= today()) out.push({ op:'upsert', table:'completion', record:{ id:uid(),
+      schedule_id:rule.id, asset_id:rule.asset_id, animal_id:rule.animal_id, vehicle_id:rule.vehicle_id,
+      done_on:lastSaid, recorded_on:today(), origin:'planned', what:rec.title || 'Done', did_it:'us' } });
     rec.schedule_id = rule.id;
   } else if (sc) {
     out.push({ op:'upsert', table:'schedule', record:{ ...sc, kind:'once' } });
@@ -8370,6 +8600,7 @@ async function signOut() {
   localStorage.removeItem('dwellogs.account.v1');
   localStorage.removeItem('dwellogs.queue.v1');
   localStorage.removeItem('dwellogs.phoneonly');
+  localStorage.setItem('dwellogs.signedout', '1');
   const l = DwelLogs.localSnapshot() || {};
   const mine = (l.person || []).find(p => p.role === 'owner');
   if (mine) localStorage.setItem('dwellogs.me', mine.id); else localStorage.removeItem('dwellogs.me');
@@ -9432,7 +9663,7 @@ async function logDone(id) {
 function drawAdd() {
   app.innerHTML = `<h1>Add</h1>
     <div class="pick">${[
-      ['things','A thing','drawAddThing()'], ['todo','A job','newJob()'], ['gauge','A reading','drawReading()'], ...(PARKED.papers ? [] : [['paper','A paper','drawDoc()']]),
+      ['things','A thing','drawAddThing()'], ['todo','A task','newJob()'], ['gauge','A reading','drawReading()'], ...(PARKED.papers ? [] : [['paper','A paper','drawDoc()']]),
       ['animal','An animal','drawAnimal()'], ['things','A vehicle','drawVehicle()'],
       ['addplace','Another place','addPlace()'],
       ...(movers().length ? [['location','I&rsquo;ve moved','drawMoved()']] : [])
@@ -9873,15 +10104,15 @@ function drawJobs() {
     .flatMap(([k, l]) => placeRows(k).map(r => [k + ':' + r.id, subjName(k, r.id) + ' · ' + l.toLowerCase()])));
   const STATUS_WORDS = { idea:'an idea', open:'', quoted:'quoted', claimed:'taken', doing:'under way',
                          blocked:'waiting', done:'done', dropped:'dropped' };
-  const KIND_WORDS = { task:'Job', fault:'Something wrong', improvement:'Want it different', project:'Project', checkup:'Check-up' };
+  const KIND_WORDS = { task:'Task', fault:'Something wrong', improvement:'Want it different', project:'Project', checkup:'Check-up' };
   const P = byId('person');
   const filtered = ['kind','when','about','who','source'].some(k => F[k]);
-  app.innerHTML = `<h1>Jobs</h1>
-    <div class="actions" style="margin:-.2rem 0 .8rem"><button class="add" onclick="newJob()">Add a job</button></div>
+  app.innerHTML = `<h1>Tasks</h1>
+    <div class="actions" style="margin:-.2rem 0 .8rem"><button class="add" onclick="newJob()">Add a task</button></div>
     <div class="chips" style="margin-bottom:.6rem">${[['open','To do'], ['done','Done'], ['idea','Ideas'], ['all','All']]
       .map(([v, l]) => `<button type="button" aria-pressed="${F.status === v}" onclick="setJobsF('status','${v}')">${l}</button>`).join('')}</div>
     <details class="sec"${filtered ? ' open' : ''}><summary>Filter${filtered ? ' · on' : ''}</summary><div class="secb">
-      <label for="jf-kind">Kind</label>${sel('kind', [['', 'Any kind'], ['task', 'Jobs'], ['checkup', 'Check-ups'],
+      <label for="jf-kind">Kind</label>${sel('kind', [['', 'Any kind'], ['task', 'Tasks'], ['checkup', 'Check-ups'],
         ['fault', 'Something wrong'], ['improvement', 'Want it different'], ['project', 'Projects']])}
       <label for="jf-when">When</label>${sel('when', [['', 'Any time'], ['late', 'Late'], ['next30', 'Due in the next 30 days'],
         ['past30', 'Done in the last 30 days'], ['range', 'Between two dates']])}
@@ -9896,11 +10127,11 @@ function drawJobs() {
     </div></details>
     <label for="jf-sort">Sort by</label>${sel('sort', [['due', 'When it is due'], ['done', 'When it was done'],
       ['added', 'When it was added']].concat(PARKED.costs ? [] : [['cost', 'What it costs']]))}
-    <p class="meta" style="margin:.8rem 0 .4rem">${rows.length} ${rows.length === 1 ? 'job' : 'jobs'}</p>
+    <p class="meta" style="margin:.8rem 0 .4rem">${rows.length} ${rows.length === 1 ? 'task' : 'tasks'}</p>
     ${rows.map(r => {
       const d = r.status === 'done' ? r.done : r.due, dd = daysTo(r.due);
       const late = r.status !== 'done' && dd != null && dd < 0;
-      const bits = [KIND_WORDS[r.kind] || 'Job', r.about,
+      const bits = [KIND_WORDS[r.kind] || 'Task', r.about,
         r.status === 'done' ? (r.done ? 'done ' + r.done : 'done') : (r.due ? whenDue(dd) : (STATUS_WORDS[r.status] || '')),
         r.status !== 'done' && STATUS_WORDS[r.status] && r.due ? STATUS_WORDS[r.status] : '',
         r.who && P[r.who] ? P[r.who].name : '', r.cost != null ? money(r.cost) : ''].filter(Boolean);

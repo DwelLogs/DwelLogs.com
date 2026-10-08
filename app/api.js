@@ -727,9 +727,17 @@ const DwelLogs = (function () {
     'document', 'coverage', 'job', 'step', 'completion', 'reading'];
   async function liftToAccount(name) {
     const l = localDb(LOCAL) || {};
-    const myId = localStorage.getItem('dwellogs.me');
-    const id = await Account.rpc('claim_me', { p_name: name || null, p_person_id: myId || null });
     const place = ((l.property || [])[0] || {}).id || null;
+    /* The phone's own you is whoever owns the place on the phone -- not
+       whatever dwellogs.me says by now. Signing in (or accepting an invite)
+       first sets dwellogs.me to the account's id, and the phone's own row and
+       its ownership were then sent as somebody else's: the person row went up
+       before any membership that allowed it, and the database refused it
+       (8 Oct, bringing a home in). */
+    const owns = (l.membership || []).find(m => m.property_id === place && m.access === 'owner'
+      && (l.person || []).some(p => p.id === m.person_id));
+    const myId = (owns && owns.person_id) || localStorage.getItem('dwellogs.me');
+    const id = await Account.rpc('claim_me', { p_name: name || null, p_person_id: myId || null });
     /* Signed in somewhere else first, so the account already has you under
        another id: the phone's rows that point at the phone's you point at that
        one instead, or the move would make you twice. */

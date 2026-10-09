@@ -12,10 +12,11 @@
 :root {
   --bg: #eef3f7; --ink: #15243a; --muted: #52627a; --accent: #1f5fa8;
   --card: #ffffff; --line: #d6e0ea; --trace: #e0893a;
+  --leaf: #2f8a72;  /* drawings of what grows and lives; never text or status */
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0e1726; --ink: #e9f0f8; --muted: #9fb0c6; --accent: #6aa8ee;
-    --card: #152236; --line: #233450; --trace: #f0a257;
+    --card: #152236; --line: #233450; --trace: #f0a257; --leaf: #6fcbb2;
   }
 }

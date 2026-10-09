@@ -37,6 +37,7 @@ In code: `/css/tokens.css`. Change a color there and in this table together.
 | card     | `#ffffff` | `#152236` | cards                       |
 | line     | `#d6e0ea` | `#233450` | borders                     |
 | trace    | `#e0893a` | `#f0a257` | heart-monitor line, mark    |
+| leaf     | `#2f8a72` | `#6fcbb2` | drawings of what grows and lives: outdoor spaces, animals (added 2026-10-09) |
 
 ### Contrast (measured 2026-09-22)
 
@@ -44,6 +45,8 @@ Against the page background, light / dark: ink 13.97 / 15.64, muted
 5.55 / 8.12, accent 5.77 / 7.23. All pass WCAG AA for body text.
 **The trace orange is 2.41 in light mode** — decoration only. Never put text
 or a status icon in it on a light background. Re-measure any new pairing.
+**Leaf** (measured 2026-10-09) is 4.20 on a light card and 8.27 on a dark one: fine
+for drawings (3:1 for graphics), not for small text. Drawings only, never status.
 
 ## Type
 

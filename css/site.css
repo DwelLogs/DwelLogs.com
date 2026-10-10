@@ -90,3 +90,14 @@ footer a:hover { text-decoration: underline; }
   font-weight: 600; color: var(--accent); text-decoration: none;
 }
 .wordmark .top:hover { text-decoration: underline; }
+
+/* Questions, at the foot of the home page (10 Oct): one fold per question. */
+.faq { margin: 40px 0 0; }
+.faq h2 { font-size: 1.1rem; margin: 0 0 12px; }
+.faq details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.faq summary { cursor: pointer; font-weight: 600; }
+.faq table { width: 100%; border-collapse: collapse; margin: 12px 0 8px; font-size: .95rem; }
+.faq th, .faq td { text-align: left; vertical-align: top; padding: 8px 8px 8px 0; border-top: 1px solid var(--line); }
+.faq th { font-weight: 600; border-top: 0; }
+.faq td:first-child { color: var(--muted); }
+.faq p { color: var(--muted); font-size: .9rem; margin: 0; }

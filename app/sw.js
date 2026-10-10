@@ -19,7 +19,7 @@
    fetch the whole new page and code fails and leaves the working version in
    place, and /app/?fresh=1 still clears a stuck phone. */
 
-const STAMP = '5372d97a4e';
+const STAMP = 'e51fbaf2b3';
 const CACHE = 'dwellogs-' + STAMP;
 const SHELL = ['./', 'index.html', 'api.js?v=' + STAMP, 'manifest.webmanifest',
                'icon-192.png', 'icon-512.png'];

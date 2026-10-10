@@ -630,6 +630,15 @@ const DwelLogs = (function () {
        the catalogue sent these, so turning a repeat on for "Deworm" failed on
        an account (5 Oct). Filled once, here, for any screen that leaves them
        out: a person setting an interval is its source. */
+    /* Every new row says which place it is on. The rules check the place
+       first, so a row without one is refused -- even the owner's: a repeat
+       turned on from a task (and its Last done) went up without it and was
+       refused on 10 Oct ("Trim up trees"). Filled here once, for any screen
+       that leaves it out. */
+    if (!was && 'property_id' in cols && rec.property_id == null) {
+      const place = localStorage.getItem('dwellogs.place');
+      if (place) rec.property_id = place;
+    }
     if (!was && w.table === 'schedule') {
       if (rec.responsibility == null) rec.responsibility = 'owner';
       if (rec.interval_source == null) rec.interval_source = 'owner';

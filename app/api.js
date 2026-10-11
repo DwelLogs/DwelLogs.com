@@ -80,8 +80,8 @@ const TABLE_COLS = {
     cost_source:"p",next_due_on:"d",next_due_at:"n",muted:"b",then_id:"r"},
   completion: {id:"i",property_id:"r",schedule_id:"r",asset_id:"r",job_id:"r",animal_id:"r",
     vehicle_id:"r",visit_id:"r",supply_id:"r",how_many:"n",done_on:"d",recorded_on:"d",what:"T",
-    by_person_id:"r",did_it:"p",service_id:"r",cost:"c",paid_by_id:"r",outcome:"p",origin:"p",
-    expected_but_not_done:"T"},
+    by_person_id:"r",did_it:"p",service_id:"r",cost:"c",paid_by_id:"r",done_by_household:"t",
+    paid_by_household:"t",outcome:"p",origin:"p",expected_but_not_done:"T"},
   reading: {id:"i",asset_id:"r",animal_id:"r",vehicle_id:"r",property_id:"r",structure_id:"r",
     area_id:"r",schedule_id:"r",taken_on:"d",result_type:"p",value_num:"n",value_flag:"p",
     unit:"t",method:"t",source:"p",trusted:"b",by_person_id:"r"},
@@ -95,8 +95,9 @@ const TABLE_COLS = {
     depends_on_id:"r",bundled_to_id:"r",completion_id:"r",state:"p",safety:"p",
     affected_modes:"t",missed_by_document_id:"r",affects_supply_id:"r",investigating:"b",
     workaround:"T",workaround_holds_until:"t",deferred_until:"t",defer_reason:"T",
-    coverage_id:"r",reported_on:"d",reported_to_id:"r",last_chased_on:"d",reply:"T",change:"p",
-    now:"T",want:"T",required_by_coverage_id:"r",creates_asset_id:"r",retires_asset_id:"r"},
+    coverage_id:"r",reported_on:"d",reported_to_id:"r",reported_by_id:"r",last_chased_on:"d",
+    reply:"T",change:"p",now:"T",want:"T",required_by_coverage_id:"r",creates_asset_id:"r",
+    retires_asset_id:"r"},
   step: {id:"i",property_id:"r",job_id:"r",structure_id:"r",area_id:"r",where_else:"t",text:"t",
     position:"n",done:"b",done_on:"d",done_by_id:"r"},
   job_supply: {id:"i",property_id:"r",job_id:"r",supply_id:"r",how_many:"n",note:"t"},
@@ -114,6 +115,7 @@ const TABLE_COLS = {
     fits:"p",why_not:"T",chosen:"b",chosen_on:"d"},
   view: {id:"i",property_id:"r",person_id:"r",name:"t",filters:"T",sort:"t",on_home:"b",
     position:"n"},
+  personal: {id:"i",property_id:"r",person_id:"r",structure_id:"r",nickname:"t",seen_at:"D"},
   visit: {id:"i",property_id:"r",animal_id:"r",vehicle_id:"r",person_id:"r",asset_id:"r",
     job_id:"r",visited_on:"d",expected:"T",total_cost:"c",notes:"T"},
   supply: {id:"i",property_id:"r",area_id:"r",asset_id:"r",animal_id:"r",vehicle_id:"r",
@@ -781,6 +783,16 @@ const DwelLogs = (function () {
     return { id, rows: now.length };
   }
   async function claim(name) { return Account.rpc('claim_me', { p_name: name || null }); }
+  /* Delete my account and data (10 Oct): the server does it in one go --
+     public.delete_me() in 0002 -- then nothing of it is kept on this phone. */
+  async function deleteMe() {
+    const out = await Account.rpc('delete_me', {});
+    await Account.signOut().catch(() => {});
+    ['dwellogs.account.v1', 'dwellogs.queue.v1', 'dwellogs.local.v1', 'dwellogs.claimed', 'dwellogs.me',
+     'dwellogs.place', 'dwellogs.phoneonly', 'dwellogs.made'].forEach(k => localStorage.removeItem(k));
+    db = null;
+    return out;
+  }
 
   /* Adds missing tabs and columns and copies renamed columns forward. Additive
      only: nothing in their spreadsheet is reordered or removed, and columns of
@@ -957,7 +969,7 @@ const DwelLogs = (function () {
   function install(v) { Object.keys(v).forEach(k => { window[k] = v[k]; }); }
 
   return { configure, load, save, archive, write, migrate, photo, upload, shrink, view, install,
-           localSnapshot, liftToAccount, claim, account: Account,
+           localSnapshot, liftToAccount, claim, deleteMe, account: Account,
            /* Send what is waiting, now. The app calls it when the phone says the
               signal is back; it never redraws, so nothing being typed is lost. */
            async sync() { return CFG.account && queued().length ? flush() : true; },

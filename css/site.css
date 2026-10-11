@@ -91,3 +91,45 @@ footer a:hover { text-decoration: underline; }
 }
 .wordmark .top:hover { text-decoration: underline; }
 
+
+/* The front page as a pitch (decided 10 Oct: "the home page is lacklustre";
+   say plainly it is a web app, and get it onto the Home Screen). Wider than the
+   other pages so the screens can sit beside the words. */
+main.home { max-width: 1040px; }
+.home h2 { font-family: "Space Grotesk", system-ui, sans-serif; font-size: clamp(1.35rem, 3.2vw, 1.8rem);
+  line-height: 1.2; letter-spacing: -.015em; margin: 0 0 12px; }
+.home h3 { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1.1rem; margin: 0 0 8px; }
+.home section { margin: 0 0 72px; }
+.home p { max-width: 36em; }
+.home a { color: var(--accent); }
+.home .cta { color: var(--bg); } .home .cta.quiet { color: var(--accent); }
+.hero { display: grid; grid-template-columns: 1fr; gap: 32px; align-items: center; }
+.phone { margin: 0; justify-self: center; width: min(300px, 78vw); aspect-ratio: 390 / 760; overflow: hidden;
+  border-radius: 34px; border: 8px solid var(--ink); background: var(--card);
+  box-shadow: 0 24px 60px -24px color-mix(in srgb, var(--ink) 55%, transparent); }
+.phone img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.phone.sm { width: min(250px, 66vw); }
+.band { background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(3px);
+  border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 14px; padding: 22px 24px; }
+.band p { margin: 0 0 8px; color: var(--muted); } .band p:last-child { margin: 0; }
+.feat { display: grid; grid-template-columns: 1fr; gap: 28px; align-items: center; }
+.feat p, .story p { color: var(--muted); }
+.also { grid-template-columns: 1fr; margin-bottom: 72px; }
+.install .ways { display: grid; grid-template-columns: 1fr; gap: 14px; margin: 16px 0; }
+.way { background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(3px);
+  border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+.way ol { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; }
+/* Steps are plain numbered lines, not the feature cards every li gets above. */
+.way li { background: none; backdrop-filter: none; border: 0; border-radius: 0; padding: 0 0 0 .2rem; }
+.ico { width: 1.15em; height: 1.15em; vertical-align: -.2em; fill: none; stroke: var(--accent); stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; }
+.way .ico circle { fill: var(--accent); stroke: none; }
+.install .note { color: var(--muted); font-size: .95rem; }
+.story { border-top: 1px solid var(--line); padding-top: 40px; }
+@media (min-width: 760px) {
+  .hero { grid-template-columns: 1.2fr 1fr; }
+  .feat { grid-template-columns: auto 1fr; gap: 48px; }
+  .feat.flip > figure { order: 2; }
+  .also { grid-template-columns: 1fr 1fr; }
+  .install .ways { grid-template-columns: repeat(3, 1fr); }
+}

@@ -24,6 +24,7 @@
   <link rel="preload" href="/fonts/SpaceGrotesk.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/tokens.css">
   <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/flipbook.css">
 </head>
 <body>
   <div class="vitals" aria-hidden="true">
@@ -107,7 +108,13 @@
     </section>
 
     <section class="feat">
-      <figure class="phone sm"><img src="/see/19-plan.png" alt="A water leak plan: water off with where the main shutoff is and Take me there, then the electric, the plumber to call, and who to call." loading="lazy" width="390" height="1040"></figure>
+      <figure class="flipbook one" aria-label="Making an emergency plan yours"><ol>
+        <li><img src="/help/flipbooks/plan-1.png" alt="Home, with the red Emergency button under the place name." loading="lazy" width="390" height="360"><span class="cap">Tap Emergency.</span></li>
+        <li><img src="/help/flipbooks/plan-2.png" alt="The Water leak plan, labelled Suggested, based on common plumbing advice, with five steps." loading="lazy" width="390" height="640"><span class="cap">A suggested plan for a water leak.</span></li>
+        <li><img src="/help/flipbooks/plan-3.png" alt="The Plumber step slid right, showing a green Edit button." loading="lazy" width="390" height="520"><span class="cap">Slide a step to change it.</span></li>
+        <li><img src="/help/flipbooks/plan-4.png" alt="The step being edited: Dave, call, he knows the house." loading="lazy" width="390" height="520"><span class="cap">Your own plumber, Dave.</span></li>
+        <li><img src="/help/flipbooks/plan-5.png" alt="The saved plan, with Dave, call, and a Call button." loading="lazy" width="390" height="640"><span class="cap">Saved, with a Call button.</span></li>
+      </ol></figure>
       <div>
         <h2>When something goes wrong</h2>
         <p>A red Emergency button on Home. Water leak, fire, gas smell, earthquake, flood: each has your plan in
@@ -171,5 +178,6 @@
   <footer><p>&copy; 2026 DwelLogs.</p>
     <p class="say"><a href="/help/">Help</a> &middot; <a href="/see/">What it looks like</a>
       &middot; <a href="/changes/">What has changed</a> &middot; <a href="mailto:hello@dwellogs.com">hello@dwellogs.com</a></p></footer>
+<script src="/js/flipbook.js" defer></script>
 </body>
 </html>

@@ -20,6 +20,7 @@
   <link rel="preload" href="/fonts/SpaceGrotesk.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/tokens.css">
   <link rel="stylesheet" href="/css/help.css">
+  <link rel="stylesheet" href="/css/flipbook.css">
 </head>
 <body>
 <div class="wrap">
@@ -28,6 +29,12 @@
   <h1>Swiping</h1>
   <p class="lede">Slide a card or a line sideways and a button appears under it. Tap the button to do
     it; slide back or tap anywhere else to leave it.</p>
+
+  <figure class="flipbook" aria-label="Sliding a card left and right"><ol>
+      <li><img src="/help/flipbooks/swipe-1.png" alt="The Tasks list with Check the level, Propane tank, at the top." loading="lazy" width="390" height="300"><span class="cap">A check-up on Tasks, as it sits.</span></li>
+      <li><img src="/help/flipbooks/swipe-2.png" alt="The card slid left, with a red Stop button beside it." loading="lazy" width="390" height="300"><span class="cap">Slid left: Stop, so it stops repeating.</span></li>
+      <li><img src="/help/flipbooks/swipe-3.png" alt="The card slid right, with a green Done button beside it." loading="lazy" width="390" height="300"><span class="cap">Slid right: Done, today.</span></li>
+  </ol></figure>
 
   <table class="access">
     <thead><tr><th>Where</th><th>Slide right</th><th>Slide left</th></tr></thead>
@@ -47,5 +54,6 @@
     <a href="mailto:hello@dwellogs.com">hello@dwellogs.com</a>
     &middot; <a href="/help/">All help</a> &middot; <a href="/changes/">What has changed</a></footer>
 </div>
+<script src="/js/flipbook.js" defer></script>
 </body>
 </html>

@@ -20,6 +20,7 @@
   <link rel="preload" href="/fonts/SpaceGrotesk.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/tokens.css">
   <link rel="stylesheet" href="/css/help.css">
+  <link rel="stylesheet" href="/css/flipbook.css">
 </head>
 <body>
 <div class="wrap">
@@ -54,9 +55,19 @@
     <li><b>Take</b> and <b>If there&rsquo;s time</b> lists, for leaving in a hurry.</li>
   </ul>
   <p>The first time, you&rsquo;ll see a <b>suggested</b> plan, labelled with where it came from &mdash; Ready.gov,
-    CAL FIRE&rsquo;s Ready, Set, Go!, or common plumbing advice. <span class="button">Keep these</span> makes it
-    yours to edit; <span class="button">Start blank</span> lets you write your own. Steps that turn something
-    off are pointed at your own shutoffs.</p>
+    CAL FIRE&rsquo;s Ready, Set, Go!, or common plumbing advice. It&rsquo;s a draft until you save it: slide a step
+    right to change it &mdash; the plumber can be your own plumber, with their number &mdash; or left to remove it,
+    and <span class="button">Add a step</span> of your own. <span class="button">Save</span> makes it yours;
+    <span class="button">Cancel</span> leaves nothing behind. A saved plan works the same way. Steps that turn
+    something off are pointed at your own shutoffs.</p>
+  <figure class="flipbook" aria-label="Changing an emergency plan"><ol>
+      <li><img src="/help/flipbooks/plan-1.png" alt="Home, with the red Emergency button under the place name." loading="lazy" width="390" height="360"><span class="cap">Tap Emergency on Home.</span></li>
+      <li><img src="/help/flipbooks/plan-2.png" alt="The Water leak plan, labelled Suggested, based on common plumbing advice, with five steps." loading="lazy" width="390" height="640"><span class="cap">Water leak: a suggested plan, a draft until you save it.</span></li>
+      <li><img src="/help/flipbooks/plan-3.png" alt="The Plumber step slid right, showing a green Edit button." loading="lazy" width="390" height="520"><span class="cap">Slide a step right to change it.</span></li>
+      <li><img src="/help/flipbooks/plan-4.png" alt="The step being edited: What, Dave; Do, Call; Why, He knows the house; Points at, Dave (plumber)." loading="lazy" width="390" height="520"><span class="cap">The plumber becomes your own: Dave, who knows the house.</span></li>
+      <li><img src="/help/flipbooks/plan-5.png" alt="The saved plan, with Dave, call, and a Call button." loading="lazy" width="390" height="640"><span class="cap">Saved. Dave has a Call button now.</span></li>
+  </ol></figure>
+
 
   <h2 id="own">A situation of your own</h2>
   <p>Not every emergency is on the list &mdash; a break-in, someone who shouldn&rsquo;t be there. On the Emergency
@@ -111,5 +122,6 @@
     <a href="mailto:hello@dwellogs.com">hello@dwellogs.com</a>
     &middot; <a href="/help/">All help</a> &middot; <a href="/changes/">What has changed</a></footer>
 </div>
+<script src="/js/flipbook.js" defer></script>
 </body>
 </html>

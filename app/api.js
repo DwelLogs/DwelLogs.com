@@ -48,10 +48,11 @@ const TABLE_COLS = {
   shutoff: {id:"i",property_id:"r",structure_id:"r",area_id:"r",state:"p",last_tested_on:"d",
     upstream_shutoff_id:"r",utility:"p",label:"t",where:"T",how:"T",does_not_cover:"T",
     photo_id:"r",asset_id:"r"},
-  emergency_plan: {id:"i",property_id:"r",kind:"p",reviewed_on:"d",source:"t",grab:"T",
-    if_time:"T",notes:"T"},
+  emergency_plan: {id:"i",property_id:"r",kind:"p",kind_other:"t",reviewed_on:"d",source:"t",
+    grab:"T",if_time:"T",notes:"T"},
   plan_action: {id:"i",property_id:"r",plan_id:"r",what:"t",area_id:"r",act:"p",why:"t",
-    shutoff_id:"r",sort:"n"},
+    shutoff_id:"r",person_id:"r",asset_id:"r",animal_id:"r",vehicle_id:"r",document_id:"r",
+    sort:"n"},
   category: {id:"i",name:"t",sort:"n"},
   asset_type: {id:"i",category_id:"r",name:"t",source:"p",serial_format:"T"},
   asset: {id:"i",property_id:"r",asset_type_id:"r",structure_id:"r",area_id:"r",
@@ -130,7 +131,7 @@ const TABLE_COLS = {
   document: {id:"i",property_id:"r",animal_id:"r",vehicle_id:"r",asset_id:"r",structure_id:"r",
     name:"t",area_id:"r",kind:"p",purpose:"p",dated_on:"d",taken_on:"d",by_person_id:"r",
     drive_id:"t",url:"u",width:"n",height:"n",bytes:"n",file:"f",mime:"t",good_until:"d",
-    inherited:"b",note:"T"},
+    inherited:"b",note:"T",kept_where:"t",number:"t",call_id:"r"},
   service: {id:"i",property_id:"r",animal_id:"r",vehicle_id:"r",asset_id:"r",name:"t",
     person_id:"r",structure_id:"r",cost_per_visit:"c",started_on:"d",ended_on:"d"},
   person: {id:"i",name:"t",role:"p",company:"t",phone:"t",email:"t",added_in_id:"r",
@@ -146,6 +147,7 @@ const TABLE_COLS = {
   membership: {id:"i",property_id:"r",person_id:"r",scope_structure_id:"r",access:"p",
     cost_share:"%",cares_for_animals:"b",notify:"P"},
 };
+const REQUIRED_SAYS = { "property.name": "Name", "property.kind": "Kind", "property.country": "Country", "property.currency": "Currency", "property.units": "Unit system", "property.freezes": "Pipes freeze here", "structure.name": "Name", "structure.kind": "Kind", "structure.visibility": "Who sees inside it", "placement.arrived_on": "Arrived", "area.structure_id": "Structure", "area.name": "Name", "hookup.structure_id": "Structure", "hookup.utility": "Utility", "shutoff.property_id": "Property", "shutoff.utility": "Utility", "shutoff.label": "Label", "shutoff.where": "Where it is", "emergency_plan.property_id": "Property", "emergency_plan.kind": "For", "emergency_plan.reviewed_on": "Last reviewed", "plan_action.plan_id": "Plan", "plan_action.what": "What", "plan_action.act": "Do", "category.name": "Name", "asset_type.category_id": "Category", "asset_type.name": "Name", "asset_type.source": "Source", "asset.property_id": "Property", "asset.name": "Name", "asset.status": "Status", "supply_link.from_asset_id": "Feeds from", "fit_record.asset_id": "Asset", "feedback.kind": "Kind", "feedback.what": "What happened", "feedback.raised_on": "Raised", "suggestion.object": "Object", "suggestion.field": "Field", "suggestion.typed": "What they typed", "suggestion.count": "How many said it", "suggestion.first_seen_on": "First seen", "suggestion.last_seen_on": "Last seen", "suggestion.status": "Status", "vehicle.kind": "Kind", "vehicle.role": "Kept as", "animal.type": "Type", "animal.role": "Kept as", "budget.property_id": "Property", "budget.period_start": "From", "budget.period_end": "To", "budget.amount": "Amount", "schedule.title": "Title", "schedule.kind": "Kind", "schedule.responsibility": "Done by", "schedule.interval_source": "Interval came from", "schedule.cost_source": "Cost came from", "completion.done_on": "Done on", "completion.what": "What was done", "completion.origin": "Origin", "reading.taken_on": "Taken on", "reading.result_type": "Result type", "job.property_id": "Property", "job.kind": "Kind", "job.title": "Title", "job.source": "Came from", "job.status": "Status", "step.job_id": "Job", "step.text": "Step", "step.position": "Order", "job_supply.job_id": "Job", "job_supply.supply_id": "Supply", "job_also.job_id": "Job", "notify.job_id": "About", "notify.expecting": "What they think is happening", "notify.ask": "What to ask for", "notify.status": "Status", "comment.author_id": "By", "comment.body": "Comment", "comment.said_at": "When", "intention.property_id": "Property", "intention.slot": "For", "intention.starts_on": "Starting", "intention.text": "Intention", "tag.property_id": "Property", "tag.name": "Name", "tagging.tag_id": "Tag", "trail.job_id": "Job", "trail.happened_on": "When", "trail.what": "What", "candidate.name": "Name", "view.property_id": "Property", "view.person_id": "Whose", "view.name": "Name", "personal.property_id": "Property", "personal.person_id": "Whose", "visit.property_id": "Property", "visit.person_id": "Who came", "visit.visited_on": "Date", "supply.property_id": "Property", "supply.name": "Name", "coverage.kind": "Kind", "coverage.status": "Status", "coverage.expires_on": "Expires", "document.property_id": "Property", "document.name": "Name", "document.kind": "Kind", "service.property_id": "Property", "service.name": "Name", "service.person_id": "Who", "person.name": "Name", "person.role": "Role", "reminder_pref.person_id": "Person", "reminder_pref.channel": "How", "reminder_pref.cadence": "How often", "reminder_pref.never_about_unknowns": "Leave the unknowns alone", "invite.property_id": "Property", "invite.label": "Who it is for", "invite.access": "What they get", "invite.code": "Code", "invite.single_use": "One use only", "invite.expires_on": "Expires", "invite.sent_by_id": "Sent by", "invite.sent_on": "Sent", "invite.state": "State", "membership.property_id": "Property", "membership.person_id": "Person", "membership.access": "Access" };
 const TABLE_NAMES = Object.fromEntries(Object.keys(TABLE_COLS).map(t => [t, 1]));
 
 /* ------------------------------------------------------------------------
@@ -475,6 +477,11 @@ const Account = (function () {
     m = String(m || '');
     if (/row-level security|not yours/i.test(m)) return 'That is not yours to change on this place.';
     if (/duplicate key/i.test(m)) return 'Something with that id is already there and is not yours.';
+    /* A required field that arrived empty, named the way the screen names it
+       (12 Oct: "Null value in column label of relation shutoff" reached a person). */
+    const nn = /null value in column "([^"]+)" of relation "([^"]+)"/i.exec(m);
+    if (nn) return 'Fill in \u201c' + ((typeof REQUIRED_SAYS !== 'undefined' && REQUIRED_SAYS[nn[2] + '.' + nn[1]])
+      || nn[1].replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())) + '\u201d, then save again.';
     if (/not signed in/i.test(m)) return 'Signed in, but not set up yet. Open the app again.';
     return m.charAt(0).toUpperCase() + m.slice(1);
   }

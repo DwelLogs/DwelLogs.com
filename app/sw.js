@@ -19,7 +19,7 @@
    fetch the whole new page and code fails and leaves the working version in
    place, and /app/?fresh=1 still clears a stuck phone. */
 
-const STAMP = 'a3741ec365';
+const STAMP = 'b351a39f72';
 const CACHE = 'dwellogs-' + STAMP;
 const SHELL = ['./', 'index.html', 'api.js?v=' + STAMP, 'manifest.webmanifest',
                'icon-192.png', 'icon-512.png'];
@@ -65,6 +65,8 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // The upkeep notice is read fresh every time; a cached one would be stale.
+  if (url.pathname === '/notice.json') return;
 
   if (req.mode === 'navigate') { e.respondWith(fromCacheFirst(req)); return; }
 

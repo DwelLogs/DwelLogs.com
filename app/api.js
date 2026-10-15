@@ -469,6 +469,13 @@ const Account = (function () {
     const r = await timed(SB_URL + '/rest/v1/rpc/' + name,
       { method: 'POST', headers: head(tok), body: JSON.stringify(args || {}) }, ms);
     const j = await r.json().catch(() => null);
+    /* A 5xx, a timeout or a rate limit is the database being away -- an
+       upgrade, a restart -- not saying no (14 Oct). Taken for a refusal, a
+       save made then failed on screen, and a change waiting from a moment with
+       no signal was dropped for good. Away is handled like no signal: kept on
+       the phone and sent when it is back. Only a 4xx is a real no. */
+    if (!r.ok && (r.status >= 500 || r.status === 408 || r.status === 429))
+      throw Object.assign(new Error('DwelLogs is not answering just now.'), { down: true });
     if (!r.ok) throw Object.assign(new Error(readable((j && (j.message || j.msg)) || r.statusText)), { refused: true });
     return j;
   }
@@ -689,13 +696,15 @@ const DwelLogs = (function () {
   /* Send what is waiting, oldest first. No signal: it stays, and is sent next
      time. Refused: it can never go, so it is dropped and said, and the next
      read puts the phone back in step with what the database actually holds. */
-  let refusedNote = '';
+  let refusedNote = '', flushAway = false;
+  const waitWord = down => down ? 'Saved on this phone. It goes up when DwelLogs is back.'
+    : 'Saved on this phone. It goes up when there is signal.';
   async function flush() {
     let q = queued();
     while (q.length) {
       try { await Account.rpc('apply', { p_writes: q[0] }); }
       catch (e) {
-        if (!e.refused) return false;
+        if (!e.refused) { flushAway = !!e.down; return false; }
         refusedNote = 'A change made without signal could not be saved: ' + e.message;
       }
       q = q.slice(1); setQueue(q);
@@ -723,12 +732,14 @@ const DwelLogs = (function () {
   async function accountWrite(writes) {
     const batch = writes.flatMap(toDb);
     const out = localWrite(writes);
-    if (queued().length) { setQueue(queued().concat([batch])); await flush(); return out; }
+    // Behind changes still waiting, it waits its turn -- and says so.
+    if (queued().length) { setQueue(queued().concat([batch]));
+      if (!(await flush())) out.forEach(r => r.warnings.push(waitWord(flushAway))); return out; }
     try { await Account.rpc('apply', { p_writes: batch }); }
     catch (e) {
       if (e.refused) throw e;
       setQueue([batch]);
-      out.forEach(r => r.warnings.push('Saved on this phone. It goes up when there is signal.'));
+      out.forEach(r => r.warnings.push(waitWord(e.down)));
     }
     return out;
   }

@@ -529,15 +529,19 @@ const DwelLogs = (function () {
   }
   function localWrite(writes) {
     const d = db || localDb() || emptyDb();
+    /* One time for the whole save, as the database's now() is (5 Nov): Bring
+       back finds what one Delete took by rows sharing that time. */
+    const at = new Date().toISOString();
     const out = writes.map(w => {
       const rows = d[w.table] = d[w.table] || [];
       if (w.op === 'archive') {
-        const r = rows.find(x => x.id === w.id); if (r) r.status = 'archived';
+        const r = rows.find(x => x.id === w.id); if (r) { r.status = 'archived'; r.archived_at = at; }
         return { id: w.id, warnings: [] };
       }
       const rec = Object.assign({}, w.record);
-      rec.updated_at = new Date().toISOString();
+      rec.updated_at = at;
       if (!rec.status) rec.status = 'active';
+      if (rec.status !== 'archived') rec.archived_at = '';
       const i = rec.id ? rows.findIndex(x => x.id === rec.id) : -1;
       if (i >= 0) Object.assign(rows[i], rec);
       else { rec.id = rec.id || 'loc-' + Math.random().toString(36).slice(2, 10); rows.push(rec); }

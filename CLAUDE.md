@@ -60,9 +60,18 @@ Site-specific:
 - **Visual identity lives in [`brand/README.md`](brand/README.md)**: Blueprint
   palette, Space Grotesk, the heart-monitor mark, and which file goes where.
   Change colors there and in `css/tokens.css` together.
-- **No third-party requests.** Fonts are self-hosted (never Google Fonts), no
-  CDNs, no analytics or embeds without a deliberate decision. The product's
-  stance on customer data starts with the site.
+- **No third-party requests, with one decided exception.** Fonts are
+  self-hosted (never Google Fonts), no CDNs, no embeds without a deliberate
+  decision. The product's stance on customer data starts with the site.
+- **Visit counts (decided 25 Nov):** the public pages count visits with
+  GoatCounter (site code `dwellogs`, no cookies, no personal data), so tagged
+  links (`utm_campaign`) show which posts bring people here. `js/count.js` is
+  GoatCounter's own script, pinned; its count goes to `dwellogs.goatcounter.com`.
+  Each public page has the script line before `</body>` and a canonical link,
+  so a tagged visit counts as the page itself. **`app/` is never counted:**
+  people are signed in there with their own home's data. The home page footer
+  says what is counted. To update count.js, replace it from
+  `https://gc.zgo.at/count.js`, read the diff and bump `?v=` on every page.
 - Emails and link previews use `/og-image.png`. Regenerate it if the headline
   or palette changes.
 
@@ -71,5 +80,4 @@ Site-specific:
 - Protect `main` in repo Settings → Rules (free for public repos): require a
   PR, no direct pushes.
 - Email sign-up not wired up yet — needs a form service or backend.
-- No analytics, by choice so far. Decide before adding any tracking; the
-  product's stance on customer data starts with the site.
+- No privacy page yet. The home footer covers the visit counts; the app's own data handling isn't written up anywhere on the site.
